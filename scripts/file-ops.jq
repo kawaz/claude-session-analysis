@@ -1,4 +1,4 @@
-# Read/Write したファイル一覧を取得（Edit は Write に統合）
+# List Read/Write file operations (Edit merged into Write)
 # Usage: jq -sf file-ops.jq "$SESSION_FILE"
 
 [

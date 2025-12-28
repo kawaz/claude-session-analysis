@@ -1,5 +1,5 @@
 #!/bin/bash
-# セッションのタイムラインを表示
+# Show session timeline
 # Usage: timeline.sh <session_id_or_file>
 
 INPUT="$1"
@@ -10,7 +10,7 @@ if [[ -z "$INPUT" ]]; then
   exit 1
 fi
 
-# ファイルパスかセッションIDかを判定
+# Determine if input is file path or session ID
 if [[ -f "$INPUT" ]]; then
   SESSION_FILE="$INPUT"
 else

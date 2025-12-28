@@ -1,13 +1,13 @@
 #!/bin/bash
-# 現在のセッションID候補を返す
-# Claude に自分のセッションを判断させる方式
+# Returns current session ID candidates
+# Claude identifies its own session by matching displays
 #
 # Usage: current-session.sh [project_path] [seconds]
-#   project_path: プロジェクトパス（デフォルト: pwd）
-#   seconds: 何秒以内のセッションを対象にするか（デフォルト: 300）
+#   project_path: Project path (default: pwd)
+#   seconds: Time window in seconds (default: 300)
 #
-# 出力: 各セッションの最近3件の display（先頭15文字）を含む JSON
-# Claude は自分の会話内容と照合して、正しいセッションIDを選択する
+# Output: JSON with last 3 displays (15 chars each) per session
+# Claude matches displays with its conversation to identify the correct session
 
 PROJECT_PATH="${1:-$(pwd -P)}"
 SECONDS_AGO="${2:-300}"

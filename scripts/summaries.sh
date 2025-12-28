@@ -1,5 +1,5 @@
 #!/bin/bash
-# セッションタイトルの変遷を表示
+# Show session title history
 # Usage: summaries.sh <session_id_or_file>
 
 INPUT="$1"

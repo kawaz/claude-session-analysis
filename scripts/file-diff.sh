@@ -1,5 +1,5 @@
 #!/bin/bash
-# ファイルのバージョン間 diff を表示
+# Show diff between file versions
 # Usage: file-diff.sh <session_id> <backup_hash_prefix> [v1] [v2]
 # Example: file-diff.sh 3700ae13 43ce204d 4 5
 
@@ -13,7 +13,7 @@ if [[ -z "$SESSION_ID" || -z "$HASH_PREFIX" ]]; then
   exit 1
 fi
 
-# セッションディレクトリを探す
+# Find session directory
 SESSION_DIR=$(find ~/.claude/file-history -maxdepth 1 -type d -name "${SESSION_ID}*" | head -1)
 
 if [[ -z "$SESSION_DIR" ]]; then
@@ -21,7 +21,7 @@ if [[ -z "$SESSION_DIR" ]]; then
   exit 1
 fi
 
-# ファイルを探す
+# Find files
 FILE1=$(find "$SESSION_DIR" -name "${HASH_PREFIX}*@v${V1}" | head -1)
 FILE2=$(find "$SESSION_DIR" -name "${HASH_PREFIX}*@v${V2}" | head -1)
 

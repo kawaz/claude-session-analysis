@@ -1,5 +1,5 @@
 #!/bin/bash
-# ref（id-U, id-T, id-R, id-W 形式）から詳細を取得
+# Get details from ref (id-U, id-T, id-R, id-W format)
 # Usage: get-by-ref.sh <session_id_or_file> <ref>
 
 INPUT="$1"
@@ -17,10 +17,10 @@ else
   SESSION_FILE=$("$SCRIPT_DIR/resolve-session.sh" "$INPUT") || exit 1
 fi
 
-# 削除するフィールド一覧
+# Fields to omit from output
 OMIT_KEYS='["signature", "isSidechain", "userType", "version", "slug", "requestId", "sessionId", "stop_reason", "stop_sequence", "usage", "id", "role"]'
 
-# ref を id と type に分解 (id-type 形式)
+# Parse ref into id and type (id-type format)
 ID="${REF%%-*}"
 TYPE="${REF#*-}"
 

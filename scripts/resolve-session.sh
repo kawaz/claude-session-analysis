@@ -1,5 +1,5 @@
 #!/bin/bash
-# セッションIDからファイルパスを解決
+# Resolve session ID to file path
 # Usage: resolve-session.sh <session_id> [dir]
 
 SESSION_ID="$1"
@@ -9,7 +9,7 @@ if [[ -z "$SESSION_ID" ]]; then
   exit 1
 fi
 
-# カレントディレクトリのプロジェクトから探す（実パスとシンボリックリンク両方）
+# Search in current directory's project (both real path and symlink)
 for DIR in "${2:-$(pwd -P)}" "${2:-$(pwd)}"; do
   PROJECT_NAME=$(sed 's|[^A-Za-z0-9]|-|g' <<<"$DIR")
   PROJECT_DIR="$HOME/.claude/projects/$PROJECT_NAME"
@@ -23,7 +23,7 @@ for DIR in "${2:-$(pwd -P)}" "${2:-$(pwd)}"; do
   fi
 done
 
-# 見つからなければ全プロジェクトから検索
+# If not found, search all projects
 SESSION_FILE=$(ls "$HOME/.claude/projects"/*/${SESSION_ID}*.jsonl 2>/dev/null | head -1)
 
 if [[ -z "$SESSION_FILE" ]]; then

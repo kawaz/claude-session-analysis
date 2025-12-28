@@ -1,8 +1,8 @@
-# セッションのタイムラインを表示
+# Show session timeline
 # Usage: jq -sf timeline.jq "$SESSION_FILE"
 
 [
-  # Write: file-history-snapshot (バックアップ = 書き込み発生)
+  # Write: file-history-snapshot (backup = write occurred)
   (.[] | objects | select(.type=="file-history-snapshot") | select(.snapshot.trackedFileBackups | to_entries | length > 0) |
     . as $snap | .snapshot.trackedFileBackups | to_entries[] | select(.value.backupFileName) | {
       time: .value.backupTime,
@@ -20,14 +20,14 @@
       ref: $a.uuid[:8]
     }
   ),
-  # USER (isMeta除外)
+  # USER (exclude isMeta)
   (.[] | objects | select(.type=="user" and .isMeta != true and (.message.content | type == "string")) | {
     time: .timestamp,
     kind: "U",
     desc: .message.content[:55],
     ref: .uuid[:8]
   }),
-  # THINK (assistant の thinking)
+  # THINK (assistant thinking)
   (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? | select(.type=="thinking") | {
       time: $a.timestamp,
       kind: "T",

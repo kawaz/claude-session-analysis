@@ -1,5 +1,5 @@
 #!/bin/bash
-# Read/Write したファイル一覧を表示（Edit は Write に統合）
+# List Read/Write file operations (Edit merged into Write)
 # Usage: file-ops.sh <session_id_or_file>
 
 INPUT="$1"
