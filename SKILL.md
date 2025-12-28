@@ -61,10 +61,11 @@ Output:
 Get full content from timeline reference.
 
 ```bash
-./scripts/get-by-ref.sh 3700ae13 889ec8e3-U  # User message
-./scripts/get-by-ref.sh 3700ae13 3d274417-T  # AI thinking
-./scripts/get-by-ref.sh 3700ae13 176ecdae-R  # Read operation
-./scripts/get-by-ref.sh 3700ae13 038db204-W  # Write operation
+./scripts/get-by-ref.sh 3700ae13 889ec8e3-U       # User message
+./scripts/get-by-ref.sh 3700ae13 3d274417-T       # AI thinking
+./scripts/get-by-ref.sh 3700ae13 176ecdae-R       # Read operation
+./scripts/get-by-ref.sh 3700ae13 038db204-W       # Write operation
+./scripts/get-by-ref.sh --raw 3700ae13 889ec8e3-U # Full JSON (no omit)
 ```
 
 ### file-ops.sh - File Operations List
@@ -91,6 +92,13 @@ List sessions for current directory.
 ./scripts/sessions.sh              # Last 10
 ./scripts/sessions.sh --all        # All
 ./scripts/sessions.sh /path/to     # Specified directory
+```
+
+Output (relative time, human-readable size, session ID):
+```
+ 2s  351K  a2336a7c-f584-4e44-829c-be626b191dcc
+50m  1.1M  841b0544-7045-417c-8339-e42555094c73
+ 2h  1.6M  3700ae13-e952-4642-bbed-3c85936b848e
 ```
 
 ### summaries.sh - Summary History
