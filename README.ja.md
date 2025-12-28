@@ -14,7 +14,8 @@ Claude Code のセッションファイル（`.jsonl`）を分析し、過去の
 ### プラグインマーケットプレイス経由（推奨）
 
 ```
-/plugin https://github.com/kawaz/claude-session-analysis
+/plugin marketplace add kawaz/claude-plugins
+/plugin install claude-session-analysis@kawaz-claude-plugins
 ```
 
 ### スタンドアロンスキルとして

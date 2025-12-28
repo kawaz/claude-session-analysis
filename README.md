@@ -14,7 +14,8 @@ A Claude Code skill for analyzing session files (`.jsonl`) to review past conver
 ### Via Plugin Marketplace (Recommended)
 
 ```
-/plugin https://github.com/kawaz/claude-session-analysis
+/plugin marketplace add kawaz/claude-plugins
+/plugin install claude-session-analysis@kawaz-claude-plugins
 ```
 
 ### As a Standalone Skill
