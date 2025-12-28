@@ -11,18 +11,25 @@ A Claude Code skill for analyzing session files (`.jsonl`) to review past conver
 
 ## Installation
 
-### As a User Skill (Personal)
+### Via Plugin Marketplace (Recommended)
 
-```bash
-cd ~/.claude/skills
-git clone https://github.com/kawaz/claude-session-analysis.git
+```
+/plugin https://github.com/kawaz/claude-session-analysis
 ```
 
-### As a Project Skill (Shared)
+### As a Standalone Skill
 
 ```bash
-cd your-project/.claude/skills
+# Personal (user-level)
+cd ~/.claude/skills
 git clone https://github.com/kawaz/claude-session-analysis.git
+cd claude-session-analysis
+mv skills/claude-session-analysis/* .
+rmdir skills/claude-session-analysis skills
+
+# Project-level
+cd your-project/.claude/skills
+# (same steps as above)
 ```
 
 ## Usage

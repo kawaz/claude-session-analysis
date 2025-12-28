@@ -11,18 +11,25 @@ Claude Code のセッションファイル（`.jsonl`）を分析し、過去の
 
 ## インストール
 
-### ユーザースキルとして（個人用）
+### プラグインマーケットプレイス経由（推奨）
 
-```bash
-cd ~/.claude/skills
-git clone https://github.com/kawaz/claude-session-analysis.git
+```
+/plugin https://github.com/kawaz/claude-session-analysis
 ```
 
-### プロジェクトスキルとして（共有用）
+### スタンドアロンスキルとして
 
 ```bash
-cd your-project/.claude/skills
+# 個人用（ユーザーレベル）
+cd ~/.claude/skills
 git clone https://github.com/kawaz/claude-session-analysis.git
+cd claude-session-analysis
+mv skills/claude-session-analysis/* .
+rmdir skills/claude-session-analysis skills
+
+# プロジェクトレベル
+cd your-project/.claude/skills
+# （上記と同じ手順）
 ```
 
 ## 使い方

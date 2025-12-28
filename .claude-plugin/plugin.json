@@ -1,0 +1,8 @@
+{
+  "name": "claude-session-analysis",
+  "description": "Analyze Claude Code session files (.jsonl) to view timeline, file operations, and version diffs",
+  "version": "0.1.0",
+  "author": {
+    "name": "kawaz"
+  }
+}
