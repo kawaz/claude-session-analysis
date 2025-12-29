@@ -11,7 +11,7 @@ description: Analyze Claude Code session files (.jsonl) to view timeline, file o
 
 | Script | Description |
 |--------|-------------|
-| `./scripts/current-session.sh [dir] [sec]` | Get session candidates (default: cwd, 300s) |
+| `./scripts/current-session.sh [sec]` | Get session candidates (default: 300s) |
 | `./scripts/sessions.sh [--all] [dir]` | List sessions (time, size, ID) |
 | `./scripts/timeline.sh <session-id>` | Timeline view (U/T/R/W markers) |
 | `./scripts/get-by-ref.sh [--raw] <session-id> <marker>` | Get entry details |
