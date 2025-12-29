@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-end.sh"
+      }
+    ]
+  }
+}
