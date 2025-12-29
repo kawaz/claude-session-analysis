@@ -2,19 +2,17 @@
 # Returns current session ID candidates
 # Claude identifies its own session by matching displays
 #
-# Usage: current-session.sh [project_path] [seconds]
-#   project_path: Project path (default: pwd)
+# Usage: current-session.sh [seconds]
 #   seconds: Time window in seconds (default: 300)
 #
-# Output: JSON with last 3 displays (15 chars each) per session
+# Output: JSON with sessionId, project, and last 3 displays (15 chars each) per session
 # Claude matches displays with its conversation to identify the correct session
 
-PROJECT_PATH="${1:-$(pwd -P)}"
-SECONDS_AGO="${2:-300}"
+SECONDS_AGO="${1:-300}"
 
-jq -sc --arg p "$PROJECT_PATH" --argjson sec "$SECONDS_AGO" '
-  [.[] | select(.project == $p and now - $sec < .timestamp/1000)]
+jq -sc --argjson sec "$SECONDS_AGO" '
+  [.[] | select(now - $sec < .timestamp/1000)]
   | group_by(.sessionId)[]
   | sort_by(.timestamp)[-3:]
-  | {sessionId: .[0].sessionId, displays: [.[].display[:15]]}
+  | {sessionId: .[0].sessionId, project: .[0].project, displays: [.[].display[:15]]}
 ' ~/.claude/history.jsonl
