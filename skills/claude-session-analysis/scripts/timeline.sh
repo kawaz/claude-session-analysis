@@ -1,12 +1,28 @@
 #!/bin/bash
 # Show session timeline
-# Usage: timeline.sh <session_id_or_file>
+# Usage: timeline.sh [-t <types>] [-w <width>] <session_id_or_file> [range]
+# Types: U=User, T=Think, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo
+# Default: all types (UTFWBGASQD)
+# Range: ..marker (from start), marker.. (to end), marker..marker (between)
+
+SCRIPT_DIR="$(dirname "$0")"
+TYPES="UTFWBGASQD"
+WIDTH=55
+
+while getopts "t:w:" opt; do
+  case $opt in
+    t) TYPES="$OPTARG" ;;
+    w) WIDTH="$OPTARG" ;;
+    *) echo "Usage: $0 [-t <types>] [-w <width>] <session_id_or_file> [range]" >&2; exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
 
 INPUT="$1"
-SCRIPT_DIR="$(dirname "$0")"
+RANGE="${2:-}"
 
 if [[ -z "$INPUT" ]]; then
-  echo "Usage: $0 <session_id_or_file>" >&2
+  echo "Usage: $0 [-t <types>] [-w <width>] <session_id_or_file> [range]" >&2
   exit 1
 fi
 
@@ -20,4 +36,30 @@ else
   fi
 fi
 
-jq -rsf "$SCRIPT_DIR/timeline.jq" "$SESSION_FILE"
+# Parse range (..marker, marker.., marker..marker)
+FROM=""
+TO=""
+if [[ -n "$RANGE" ]]; then
+  if [[ "$RANGE" == ..* ]]; then
+    # ..marker
+    TO="${RANGE#..}"
+  elif [[ "$RANGE" == *.. ]]; then
+    # marker..
+    FROM="${RANGE%..}"
+  elif [[ "$RANGE" == *..* ]]; then
+    # marker..marker
+    FROM="${RANGE%..*}"
+    TO="${RANGE#*..}"
+  else
+    # single marker - show only that one
+    FROM="$RANGE"
+    TO="$RANGE"
+  fi
+fi
+
+jq -rsf "$SCRIPT_DIR/timeline.jq" \
+  --arg types "$TYPES" \
+  --argjson width "$WIDTH" \
+  --arg from "$FROM" \
+  --arg to "$TO" \
+  "$SESSION_FILE"
