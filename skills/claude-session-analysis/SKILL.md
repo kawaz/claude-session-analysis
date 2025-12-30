@@ -1,6 +1,6 @@
 ---
 name: claude-session-analysis
-description: Analyze Claude Code session files (.jsonl) to view timeline, file operations, and version diffs. Use this skill to review past sessions, track decision-making processes, or recover previous file versions.
+description: Analyze Claude Code session files. Find current session ID, view timeline (tl), or search past chats.
 ---
 
 # Claude Session Analysis
@@ -9,8 +9,8 @@ This is `{SKILL_DIR}/SKILL.md`. Scripts: `{SKILL_DIR}/scripts/`
 
 | Script | Description |
 |--------|-------------|
-| `current-session.sh [--full] [dir] [sec]` | Find current session (compact output, use directly) |
-| `sessions.sh [--full] [-g kw] [-mmin N] [-n N]` | List sessions (default: 1day, last 10) |
+| `current-session.sh [dir] [sec]` | **My session ID** |
+| `sessions.sh [--full] [-g kw] [-mmin 1440] [-n 10]` | Search sessions by keyword/time |
 | `resolve-session.sh <id>` | Session ID → file path |
 | `timeline.sh [-t <types>] [-w <width>] <id> [range]` | Timeline (default: all, 55 chars; range: `..m`, `m..`, `m..m`) |
 | `get-by-marker.sh [--raw] [-A n] [-B n] [-C n] <id> <marker>` | Entry details (with context) |

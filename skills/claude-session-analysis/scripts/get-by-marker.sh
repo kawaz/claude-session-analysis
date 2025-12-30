@@ -43,9 +43,10 @@ ID="${MARKER%%-*}"
 TYPE="${MARKER#*-}"
 
 # Determine which field to match based on type
+# F type can be either file-history-snapshot (messageId) or tool_use Write/Edit (uuid)
 case "$TYPE" in
-  F) ID_FIELD="messageId" ;;  # file-history-snapshot uses messageId
-  *) ID_FIELD="uuid" ;;       # others use uuid
+  F) MATCH_EXPR='((.messageId // "")[:8] == "'"$ID"'" or (.uuid // "")[:8] == "'"$ID"'")' ;;
+  *) MATCH_EXPR='((.uuid // "")[:8] == "'"$ID"'")' ;;
 esac
 
 # Build jq filter for context
@@ -53,7 +54,7 @@ if [[ "$BEFORE" -gt 0 || "$AFTER" -gt 0 ]]; then
   # Get entries with context in one jq call
   result=$(jq -rs '
     [.[] | objects | select(.uuid or .messageId)] as $all |
-    ($all | to_entries | map(select(.value.'"$ID_FIELD"'[:8] == "'"$ID"'")) | .[0].key) as $idx |
+    ($all | to_entries | map(select(.value | '"$MATCH_EXPR"')) | .[0].key) as $idx |
     if $idx then
       ([$idx - '"$BEFORE"', 0] | max) as $start |
       ([$idx + '"$AFTER"', ($all | length) - 1] | min) as $end |
@@ -64,7 +65,7 @@ if [[ "$BEFORE" -gt 0 || "$AFTER" -gt 0 ]]; then
   ' "$SESSION_FILE" 2>/dev/null)
 else
   # Single entry
-  result=$(jq -c "objects | select((.${ID_FIELD} // \"\")[:8] == \"$ID\")" "$SESSION_FILE" 2>/dev/null)
+  result=$(jq -c 'objects | select('"$MATCH_EXPR"')' "$SESSION_FILE" 2>/dev/null)
 fi
 
 if [[ -n "$result" ]]; then

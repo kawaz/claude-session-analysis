@@ -13,20 +13,37 @@ def truncate($w):
 
 [
   # F: File operations (Write/Edit with backup)
-  (.[] | objects | select(.type=="file-history-snapshot") | select(.snapshot.trackedFileBackups | to_entries | length > 0) |
-    . as $snap | .snapshot.trackedFileBackups | to_entries[] | select(.value.backupFileName) | {
+  (. as $all |
+    # Get first cwd from session
+    ([$all[] | objects | select(.cwd != null and .cwd != "") | .cwd][0] // "") as $session_cwd |
+    $all[] | objects | select(.type=="file-history-snapshot") | select(.snapshot.trackedFileBackups | to_entries | length > 0) |
+    . as $snap |
+    .snapshot.trackedFileBackups | to_entries[] | select(.value.backupFileName) |
+    (if .key | startswith("/") then .key else ($session_cwd + "/" + .key) end) as $fullpath |
+    {
       time: .value.backupTime,
       kind: "F",
-      desc: "\(.key | split("/")[-2:] | join("/")) \(.value.backupFileName | split("@") | "\(.[0][:8])@\(.[1])")",
+      desc: "\($fullpath | split("/")[-2:] | join("/")) \(.value.backupFileName | split("@") | "\(.[0][:8])@\(.[1])")",
       ref: $snap.messageId[:8]
     }
   ),
-  # F: File Read (from tool_use)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
-    select(.type=="tool_use" and .name == "Read") | {
-      time: $a.timestamp,
+  # F: File Read (from tool_use, with index for ordering)
+  (.[] | objects | select(.type=="assistant") as $a | $a.message.content | to_entries[] |
+    select(.value.type=="tool_use" and .value.name == "Read") |
+    (.value.input.file_path) as $path | {
+      time: "\($a.timestamp)_\(.key | tostring | "00000"[:-(.| tostring | length)] + (. | tostring))",
       kind: "F",
-      desc: (.input.file_path | split("/")[-2:] | join("/")),
+      desc: ($path | split("/")[-2:] | join("/")),
+      ref: $a.uuid[:8]
+    }
+  ),
+  # F: File Write/Edit without backup (from tool_use)
+  (.[] | objects | select(.type=="assistant") as $a | $a.message.content | to_entries[] |
+    select(.value.type=="tool_use" and (.value.name == "Write" or .value.name == "Edit")) |
+    (.value.input.file_path) as $path | {
+      time: "\($a.timestamp)_\(.key | tostring | "00000"[:-(.| tostring | length)] + (. | tostring))",
+      kind: "F",
+      desc: "\($path | split("/")[-2:] | join("/")) no-backup-\(.value.name | ascii_downcase)",
       ref: $a.uuid[:8]
     }
   ),
@@ -81,7 +98,13 @@ def truncate($w):
     select(.type=="tool_use" and (.name == "Bash" or .name == "BashOutput")) | {
       time: $a.timestamp,
       kind: "B",
-      desc: (.input.command // .input.description // ""),
+      desc: ((.input.command // .input.description // "") |
+        # Shorten full path commands: /a/b/c/d/prog arg -> …/d/prog arg
+        if startswith("/") then
+          (split(" ") | .[0]) as $cmd | (split(" ")[1:] | join(" ")) as $args |
+          ($cmd | split("/")[-2:] | join("/")) as $short |
+          "…/\($short)\(if $args != "" then " \($args)" else "" end)"
+        else . end),
       ref: $a.uuid[:8]
     }
   ),
@@ -131,6 +154,14 @@ def truncate($w):
     }
   )
 ] | map(select(type == "object" and .kind != null)) | sort_by(.time) | unique_by([.time,.kind,.desc]) |
+
+# Remove no-backup entries when backup exists for same ref
+group_by(.ref) | map(
+  if (map(.desc) | any(contains("@v"))) then
+    map(select(.desc | contains("no-backup") | not))
+  else . end
+) | flatten | sort_by(.time) |
+
 
 # Apply range filter
 (if $from != "" then (to_entries | map(select(.value.ref | startswith($from))) | .[0].key // 0) else 0 end) as $from_idx |
