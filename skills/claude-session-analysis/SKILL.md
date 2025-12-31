@@ -32,12 +32,9 @@ Types (all by default, filter with `-t`):
 - Sessions: `~/.claude/projects/{project-path}/{session-id}.jsonl`
 - Backups: `~/.claude/file-history/{session-id}/{hash}@v{version}`
 
-## Examples
+## Usage Tips
 
-```bash
-current-session.sh                  # Find session
-timeline.sh 3700ae13                # Full timeline
-timeline.sh -w 100 3700ae13 7e24..  # From marker, wide
-get-by-marker.sh -C 2 3700ae13 7e24-U  # With context
-file-diff.sh 3700ae13 713b7a55 1 2  # v1 vs v2
-```
+1. **Start with full timeline** (default width is enough for overview)
+2. **Dive deeper** with `get-by-marker.sh` or `-w` for specific entries
+
+⚠️ **Sandbox**: Pipes (`|`) don't work. Use `dangerouslyDisableSandbox: true` when piping output.
