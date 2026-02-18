@@ -48,7 +48,7 @@ Once installed, Claude can use this skill to analyze sessions. Example prompts:
 |--------|-------------|
 | `current-session.sh` | Get current session ID candidates |
 | `timeline.sh` | Show session timeline (U/T/R/W) |
-| `get-by-ref.sh` | Get details from timeline reference |
+| `get-by-marker.sh` | Get details from marker (timeline format: {type}{hash}) |
 | `file-ops.sh` | List Read/Write operations |
 | `file-diff.sh` | Show diff between file versions |
 | `sessions.sh` | List sessions for a directory |

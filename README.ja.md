@@ -48,7 +48,7 @@ cd your-project/.claude/skills
 |-----------|------|
 | `current-session.sh` | 現在のセッションID候補を取得 |
 | `timeline.sh` | セッションのタイムライン表示（U/T/R/W） |
-| `get-by-ref.sh` | タイムラインの参照から詳細を取得 |
+| `get-by-marker.sh` | マーカーから詳細を取得（形式: {type}{hash}） |
 | `file-ops.sh` | Read/Write 操作の一覧 |
 | `file-diff.sh` | ファイルバージョン間の差分表示 |
 | `sessions.sh` | ディレクトリのセッション一覧 |

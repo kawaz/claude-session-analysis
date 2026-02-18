@@ -1,0 +1,20 @@
+#compdef claude-session-analysis
+
+_claude-session-analysis() {
+  local scripts_dir="${functions_source[_claude-session-analysis]:h:h}/skills/claude-session-analysis/scripts"
+  local -a subcommands
+  local f
+  for f in "${scripts_dir}"/*.sh(N); do
+    local desc=$(sed -n '/^#!/d; /^[^#]/d; s/^# *//p; q' "$f")
+    subcommands+=("${f:t:r}:${desc:-${f:t:r}}")
+  done
+
+
+  if (( CURRENT == 2 )); then
+    _describe 'subcommand' subcommands
+  else
+    _files
+  fi
+}
+
+_claude-session-analysis "$@"

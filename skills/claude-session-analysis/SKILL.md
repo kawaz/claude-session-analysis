@@ -7,9 +7,10 @@ description: Analyze Claude Code session files. Find current session ID, view ti
 
 This is `{SKILL_DIR}/SKILL.md`. Scripts: `{SKILL_DIR}/scripts/`
 
+My session ID: `${CLAUDE_SESSION_ID}`
+
 | Script | Description |
 |--------|-------------|
-| `current-session.sh [dir] [sec]` | **My session ID** |
 | `sessions.sh [--full] [-g kw] [-mmin 1440] [-n 10]` | Search sessions by keyword/time |
 | `resolve-session.sh <id>` | Session ID → file path |
 | `timeline.sh [-t <types>] [-w <width>] <id> [range]` | Timeline (default: all, 55 chars; range: `..m`, `m..`, `m..m`) |
@@ -20,7 +21,7 @@ This is `{SKILL_DIR}/SKILL.md`. Scripts: `{SKILL_DIR}/scripts/`
 
 ## Timeline Markers
 
-Format: `{hash}-{type}` (e.g., `7e2451-U`) with `[+N]` for truncated chars
+Format: `{type}{hash}` (e.g., `U7e2451`) with `[+N]` for truncated chars
 
 Types (all by default, filter with `-t`):
 - **U**: User (includes /commands) | **T**: Think | **F**: File (Write: `{hash}@v{n}`)

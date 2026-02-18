@@ -1,22 +1,49 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 # Show diff between file versions
 # Usage: file-diff.sh <session_id> <backup_hash_prefix> <v1> [v2]
 #   v2 omitted: diff backup v1 vs current file
 # Example: file-diff.sh 3700ae13 43ce204d 1 2
 # Example: file-diff.sh 3700ae13 43ce204d 1     # vs current file
 
-SESSION_ID="$1"
-HASH_PREFIX="$2"
-V1="$3"
-V2="$4"
+if [[ "${1:-}" == "--help" ]]; then
+  echo "Usage: ${_PROG:-$0} <session_id_prefix> <backup_hash_prefix> <v1> [v2]"
+  echo "  v2 omitted: diff backup v1 vs current file"
+  exit 0
+fi
+
+SESSION_ID="${1:-}"
+HASH_PREFIX="${2:-}"
+V1="${3:-}"
+V2="${4:-}"
 
 SCRIPT_DIR="$(dirname "$0")"
 _claude_dirs=("${CLAUDE_CONFIG_DIR:-$HOME/.claude}")
 [[ "${_claude_dirs[0]}" != "$HOME/.claude" ]] && _claude_dirs+=("$HOME/.claude")
 
 if [[ -z "$SESSION_ID" || -z "$HASH_PREFIX" || -z "$V1" ]]; then
-  echo "Usage: $0 <session_id_prefix> <backup_hash_prefix> <v1> [v2]" >&2
+  echo "Usage: ${_PROG:-$0} <session_id_prefix> <backup_hash_prefix> <v1> [v2]" >&2
   echo "  v2 omitted: diff backup v1 vs current file" >&2
+  exit 1
+fi
+
+if [[ ! "$SESSION_ID" =~ ^[a-f0-9]+$ ]]; then
+  echo "Invalid session ID: $SESSION_ID" >&2
+  exit 1
+fi
+
+if [[ ! "$HASH_PREFIX" =~ ^[a-f0-9]+$ ]]; then
+  echo "Invalid hash prefix: $HASH_PREFIX" >&2
+  exit 1
+fi
+
+if [[ ! "$V1" =~ ^[0-9]+$ ]]; then
+  echo "Invalid version number v1: $V1" >&2
+  exit 1
+fi
+
+if [[ -n "$V2" && ! "$V2" =~ ^[0-9]+$ ]]; then
+  echo "Invalid version number v2: $V2" >&2
   exit 1
 fi
 
@@ -29,6 +56,7 @@ done
 
 if [[ -z "$SESSION_DIR" ]]; then
   echo "Session not found: $SESSION_ID" >&2
+  echo "Hint: Use 'claude-session-analysis sessions' to list available sessions" >&2
   exit 1
 fi
 
@@ -37,6 +65,7 @@ FILE1=$(find "$SESSION_DIR" -name "${HASH_PREFIX}*@v${V1}" | head -1)
 
 if [[ -z "$FILE1" ]]; then
   echo "File not found: ${HASH_PREFIX}*@v${V1}" >&2
+  echo "Hint: Use 'claude-session-analysis timeline <session_id> --types F' to list file operations" >&2
   exit 1
 fi
 
@@ -45,6 +74,7 @@ if [[ -n "$V2" ]]; then
   FILE2=$(find "$SESSION_DIR" -name "${HASH_PREFIX}*@v${V2}" | head -1)
   if [[ -z "$FILE2" ]]; then
     echo "File not found: ${HASH_PREFIX}*@v${V2}" >&2
+    echo "Hint: Use 'claude-session-analysis timeline <session_id> --types F' to list file operations" >&2
     exit 1
   fi
 else

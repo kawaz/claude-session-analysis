@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 # Show session timeline
 # Usage: timeline.sh [-t <types>] [-w <width>] <session_id_or_file> [range]
 # Types: U=User, T=Think, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo
@@ -9,20 +10,22 @@ SCRIPT_DIR="$(dirname "$0")"
 TYPES="UTFWBGASQD"
 WIDTH=55
 
+[[ "${1:-}" == "--help" ]] && { echo "Usage: ${_PROG:-$0} [-t <types>] [-w <width>] <session_id_or_file> [range]"; exit 0; }
+
 while getopts "t:w:" opt; do
   case $opt in
     t) TYPES="$OPTARG" ;;
     w) WIDTH="$OPTARG" ;;
-    *) echo "Usage: $0 [-t <types>] [-w <width>] <session_id_or_file> [range]" >&2; exit 1 ;;
+    *) echo "Usage: ${_PROG:-$0} [-t <types>] [-w <width>] <session_id_or_file> [range]" >&2; exit 1 ;;
   esac
 done
 shift $((OPTIND - 1))
 
-INPUT="$1"
+INPUT="${1:-}"
 RANGE="${2:-}"
 
 if [[ -z "$INPUT" ]]; then
-  echo "Usage: $0 [-t <types>] [-w <width>] <session_id_or_file> [range]" >&2
+  echo "Usage: ${_PROG:-$0} [-t <types>] [-w <width>] <session_id_or_file> [range]" >&2
   exit 1
 fi
 
@@ -30,10 +33,7 @@ fi
 if [[ -f "$INPUT" ]]; then
   SESSION_FILE="$INPUT"
 else
-  SESSION_FILE=$("$SCRIPT_DIR/resolve-session.sh" "$INPUT")
-  if [[ $? -ne 0 ]]; then
-    exit 1
-  fi
+  SESSION_FILE=$("$SCRIPT_DIR/resolve-session.sh" "$INPUT") || exit 1
 fi
 
 # Parse range (..marker, marker.., marker..marker)

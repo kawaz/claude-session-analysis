@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 # Get details from marker (timeline format: id-TYPE)
 # Usage: get-by-marker.sh [--raw] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>
 
@@ -7,8 +8,9 @@ NO_REDACT=false
 AFTER=0
 BEFORE=0
 
-while [[ "$1" == -* ]]; do
+while [[ "${1:-}" == -* ]]; do
   case "$1" in
+    --help) echo "Usage: ${_PROG:-$0} [--raw] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>"; exit 0 ;;
     --raw) RAW=true; shift ;;
     --no-redact) NO_REDACT=true; shift ;;
     -A) AFTER="$2"; shift 2 ;;
@@ -18,12 +20,12 @@ while [[ "$1" == -* ]]; do
   esac
 done
 
-INPUT="$1"
-MARKER="$2"
+INPUT="${1:-}"
+MARKER="${2:-}"
 SCRIPT_DIR="$(dirname "$0")"
 
 if [[ -z "$INPUT" || -z "$MARKER" ]]; then
-  echo "Usage: $0 [--raw] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>" >&2
+  echo "Usage: ${_PROG:-$0} [--raw] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>" >&2
   exit 1
 fi
 
@@ -38,21 +40,21 @@ OMIT_KEYS='["signature", "isSidechain", "userType", "version", "slug", "requestI
 # Fields to redact (replace with "[omitted]")
 REDACT_KEYS='["data"]'
 
-# Parse marker into id and type (id-type format)
-ID="${MARKER%%-*}"
-TYPE="${MARKER#*-}"
+# Parse marker into type and id (e.g., U7e2451 → type=U, id=7e2451)
+TYPE="${MARKER%%[a-f0-9]*}"
+ID="${MARKER#"$TYPE"}"
 
 # Determine which field to match based on type
 # F type can be either file-history-snapshot (messageId) or tool_use Write/Edit (uuid)
 case "$TYPE" in
-  F) MATCH_EXPR='((.messageId // "")[:8] == "'"$ID"'" or (.uuid // "")[:8] == "'"$ID"'")' ;;
-  *) MATCH_EXPR='((.uuid // "")[:8] == "'"$ID"'")' ;;
+  F) MATCH_EXPR='((.messageId // "")[:8] == $id or (.uuid // "")[:8] == $id)' ;;
+  *) MATCH_EXPR='((.uuid // "")[:8] == $id)' ;;
 esac
 
 # Build jq filter for context
 if [[ "$BEFORE" -gt 0 || "$AFTER" -gt 0 ]]; then
   # Get entries with context in one jq call
-  result=$(jq -rs '
+  result=$(jq -rs --arg id "$ID" '
     [.[] | objects | select(.uuid or .messageId)] as $all |
     ($all | to_entries | map(select(.value | '"$MATCH_EXPR"')) | .[0].key) as $idx |
     if $idx then
@@ -62,10 +64,10 @@ if [[ "$BEFORE" -gt 0 || "$AFTER" -gt 0 ]]; then
     else
       empty
     end
-  ' "$SESSION_FILE" 2>/dev/null)
+  ' "$SESSION_FILE" 2>/dev/null) || true
 else
   # Single entry
-  result=$(jq -c 'objects | select('"$MATCH_EXPR"')' "$SESSION_FILE" 2>/dev/null)
+  result=$(jq -c --arg id "$ID" 'objects | select('"$MATCH_EXPR"')' "$SESSION_FILE" 2>/dev/null) || true
 fi
 
 if [[ -n "$result" ]]; then

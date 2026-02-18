@@ -163,12 +163,14 @@ group_by(.ref) | map(
 ) | flatten | sort_by(.time) |
 
 
-# Apply range filter
-(if $from != "" then (to_entries | map(select(.value.ref | startswith($from))) | .[0].key // 0) else 0 end) as $from_idx |
-(if $to != "" then (to_entries | map(select(.value.ref | startswith($to))) | .[-1].key // (length - 1)) else (length - 1) end) as $to_idx |
+# Apply range filter (strip leading uppercase type prefix from marker if present, e.g. "Ub2d18fa6" -> "b2d18fa6")
+($from | if test("^[A-Z][a-f0-9]") then .[1:] else . end) as $from_clean |
+($to | if test("^[A-Z][a-f0-9]") then .[1:] else . end) as $to_clean |
+(if $from_clean != "" then (to_entries | map(select(.value.ref | startswith($from_clean))) | .[0].key // 0) else 0 end) as $from_idx |
+(if $to_clean != "" then (to_entries | map(select(.value.ref | startswith($to_clean))) | .[-1].key // (length - 1)) else (length - 1) end) as $to_idx |
 .[$from_idx:$to_idx + 1] |
 
 # Output with type filter and truncation
 .[] |
 select(.kind as $k | $types | contains($k)) |
-"\(.ref)-\(.kind) \(if .notrunc then .desc else (.desc | gsub("\n"; " ") | truncate($width)) end)"
+"\(.kind)\(.ref) \(if .notrunc then .desc else (.desc | gsub("\n"; " ") | truncate($width)) end)"

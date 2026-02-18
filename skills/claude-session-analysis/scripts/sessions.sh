@@ -1,13 +1,23 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 # List all sessions
 # Usage: sessions.sh [-g kw] [-mmin N] [-n N]
 # -g: search keyword, output session ID only
 # -mmin N: +N=older than N min, -N/N=newer than N min (default: 1440 = 1day)
 # -n N: show last N sessions (default: 10)
 
+_usage() {
+  echo "Usage: ${_PROG:-$0} [-g kw] [-mmin N] [-n N]"
+  echo "  -g: search keyword, output session ID only"
+  echo "  -mmin N: +N=older than N min, -N/N=newer than N min (default: 1440 = 1day)"
+  echo "  -n N: show last N sessions (default: 10)"
+  exit "${1:-0}"
+}
+
 GREP_KEYWORD="" MMIN="1440" TAIL="10" FULL=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --help) _usage 0 ;;
     -g) GREP_KEYWORD="$2"; shift 2 ;;
     -mmin) MMIN="$2"; shift 2 ;;
     -n) TAIL="$2"; shift 2 ;;
@@ -20,7 +30,7 @@ _claude_dirs=("${CLAUDE_CONFIG_DIR:-$HOME/.claude}")
 [[ "${_claude_dirs[0]}" != "$HOME/.claude" ]] && _claude_dirs+=("$HOME/.claude")
 _projects=()
 for _d in "${_claude_dirs[@]}"; do [[ -d "$_d/projects" ]] && _projects+=("$_d/projects"); done
-grep -rm1 '"cwd"' "${_projects[@]}" 2>/dev/null | grep -vE '/agent-[^/]+\.jsonl:{' | \
+{ grep -rm1 '"cwd"' "${_projects[@]}" 2>/dev/null | grep -vE '/agent-[^/]+\.jsonl:{' || true; } | \
 perl -CSD -e '
   use utf8;
   use Encode qw(decode);
