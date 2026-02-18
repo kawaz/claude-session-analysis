@@ -75,7 +75,7 @@ perl -CSD -e '
   for my$e(@out){
     next unless$e;
     my$sid=$full?$e->[3]:substr($e->[3],0,8);
-    my$dir=$e->[4];$dir=~s|.*/|| unless$full;
+    my$dir=$e->[4];unless($full){$dir=~s|.*/([^/]+/[^/]+)$|$1|};
     my$ctx=$e->[5]?"\t$e->[5]":"";
     printf"%s\t%s\t%s\t%s%s\n",ago($e->[1]),h($e->[2]),$sid,$dir,$ctx;
   }

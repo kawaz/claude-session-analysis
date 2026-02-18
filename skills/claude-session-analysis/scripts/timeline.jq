@@ -83,6 +83,13 @@ def truncate($w):
       desc: .thinking,
       ref: $a.uuid[:8]
   }),
+  # R: Response (assistant text output, skip whitespace-only)
+  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? | select(.type=="text" and (.text | gsub("\\s"; "") | length > 0)) | {
+      time: $a.timestamp,
+      kind: "R",
+      desc: .text,
+      ref: $a.uuid[:8]
+  }),
   # W: Web (WebFetch, WebSearch)
   (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and (.name == "WebFetch" or .name == "WebSearch")) | {

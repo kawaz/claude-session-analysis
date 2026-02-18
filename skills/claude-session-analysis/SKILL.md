@@ -24,7 +24,7 @@ My session ID: `${CLAUDE_SESSION_ID}`
 Format: `{type}{hash}` (e.g., `U7e2451`) with `[+N]` for truncated chars
 
 Types (all by default, filter with `-t`):
-- **U**: User (includes /commands) | **T**: Think | **F**: File (Write: `{hash}@v{n}`)
+- **U**: User (includes /commands) | **T**: Think | **R**: Response | **F**: File (Write: `{hash}@v{n}`)
 - **W**: Web (no truncate) | **B**: Bash | **G**: Grep/Glob
 - **A**: Agent | **S**: Skill | **Q**: Question | **D**: toDo
 

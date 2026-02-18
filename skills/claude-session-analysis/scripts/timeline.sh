@@ -2,15 +2,26 @@
 set -euo pipefail
 # Show session timeline
 # Usage: timeline.sh [-t <types>] [-w <width>] <session_id_or_file> [range]
-# Types: U=User, T=Think, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo
-# Default: all types (UTFWBGASQD)
+# Types: U=User, T=Think, R=Response, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo
+# Default: all types (UTRFWBGASQD)
 # Range: ..marker (from start), marker.. (to end), marker..marker (between)
 
 SCRIPT_DIR="$(dirname "$0")"
-TYPES="UTFWBGASQD"
+TYPES="UTRFWBGASQD"
 WIDTH=55
 
-[[ "${1:-}" == "--help" ]] && { echo "Usage: ${_PROG:-$0} [-t <types>] [-w <width>] <session_id_or_file> [range]"; exit 0; }
+if [[ "${1:-}" == "--help" ]]; then
+  cat <<EOF
+Usage: ${_PROG:-$0} [-t <types>] [-w <width>] <session_id_or_file> [range]
+
+Types (default: UTRFWBGASQD):
+  U=User  T=Think  R=Response  F=File  W=Web
+  B=Bash  G=Grep   A=Agent     S=Skill Q=Question D=toDo
+
+Range: ..marker (from start), marker.. (to end), marker..marker (between)
+EOF
+  exit 0
+fi
 
 while getopts "t:w:" opt; do
   case $opt in

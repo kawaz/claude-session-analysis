@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Get details from marker (timeline format: id-TYPE)
+# Get details from marker (e.g. U7e2451)
 # Usage: get-by-marker.sh [--raw] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>
 
 RAW=false
