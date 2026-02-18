@@ -11,7 +11,8 @@ V1="$3"
 V2="$4"
 
 SCRIPT_DIR="$(dirname "$0")"
-CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+_claude_dirs=("${CLAUDE_CONFIG_DIR:-$HOME/.claude}")
+[[ "${_claude_dirs[0]}" != "$HOME/.claude" ]] && _claude_dirs+=("$HOME/.claude")
 
 if [[ -z "$SESSION_ID" || -z "$HASH_PREFIX" || -z "$V1" ]]; then
   echo "Usage: $0 <session_id_prefix> <backup_hash_prefix> <v1> [v2]" >&2
@@ -20,7 +21,11 @@ if [[ -z "$SESSION_ID" || -z "$HASH_PREFIX" || -z "$V1" ]]; then
 fi
 
 # Find session directory
-SESSION_DIR=$(find "$CLAUDE_CONFIG_DIR/file-history" -maxdepth 1 -type d -name "${SESSION_ID}*" | head -1)
+SESSION_DIR=""
+for _d in "${_claude_dirs[@]}"; do
+  SESSION_DIR=$(find "$_d/file-history" -maxdepth 1 -type d -name "${SESSION_ID}*" 2>/dev/null | head -1)
+  [[ -n "$SESSION_DIR" ]] && break
+done
 
 if [[ -z "$SESSION_DIR" ]]; then
   echo "Session not found: $SESSION_ID" >&2

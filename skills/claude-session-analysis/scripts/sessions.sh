@@ -16,8 +16,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-grep -rm1 '"cwd"' "$CLAUDE_CONFIG_DIR/projects" 2>/dev/null | grep -vE '/agent-[^/]+\.jsonl:{' | \
+_claude_dirs=("${CLAUDE_CONFIG_DIR:-$HOME/.claude}")
+[[ "${_claude_dirs[0]}" != "$HOME/.claude" ]] && _claude_dirs+=("$HOME/.claude")
+_projects=()
+for _d in "${_claude_dirs[@]}"; do [[ -d "$_d/projects" ]] && _projects+=("$_d/projects"); done
+grep -rm1 '"cwd"' "${_projects[@]}" 2>/dev/null | grep -vE '/agent-[^/]+\.jsonl:{' | \
 perl -CSD -e '
   use utf8;
   use Encode qw(decode);
