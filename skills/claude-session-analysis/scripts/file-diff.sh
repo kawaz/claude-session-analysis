@@ -27,7 +27,7 @@ if [[ -z "$SESSION_ID" || -z "$HASH_PREFIX" || -z "$V1" ]]; then
   exit 1
 fi
 
-if [[ ! "$SESSION_ID" =~ ^[a-f0-9]+$ ]]; then
+if [[ ! "$SESSION_ID" =~ ^[a-f0-9-]+$ ]]; then
   echo "Invalid session ID: $SESSION_ID" >&2
   exit 1
 fi
