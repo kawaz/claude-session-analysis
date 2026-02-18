@@ -16,7 +16,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-grep -rm1 '"cwd"' ~/.claude/projects 2>/dev/null | grep -vE '/agent-[^/]+\.jsonl:{' | \
+CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+grep -rm1 '"cwd"' "$CLAUDE_CONFIG_DIR/projects" 2>/dev/null | grep -vE '/agent-[^/]+\.jsonl:{' | \
 perl -CSD -e '
   use utf8;
   use Encode qw(decode);

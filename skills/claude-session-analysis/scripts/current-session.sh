@@ -11,10 +11,11 @@
 
 PROJECT_PATH="${1:-$(pwd -P)}"
 SECONDS_AGO="${2:-300}"
+CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
 jq -sc --arg p "$PROJECT_PATH" --argjson sec "$SECONDS_AGO" '
   [.[] | select(.project == $p and now - $sec < .timestamp/1000)]
   | group_by(.sessionId)[]
   | sort_by(.timestamp)[-3:]
   | {sessionId: .[0].sessionId, displays: [.[].display[:15]]}
-' ~/.claude/history.jsonl
+' "$CLAUDE_CONFIG_DIR/history.jsonl" 2>/dev/null
