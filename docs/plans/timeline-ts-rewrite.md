@@ -59,17 +59,23 @@ skills/claude-session-analysis/scripts/
 ```ts
 import { $ } from "bun";
 const SHEBANG = "#!/usr/bin/env bun\n";
-const OUTFILE = "skills/claude-session-analysis/scripts/timeline";
+const OUTDIR = "skills/claude-session-analysis/scripts";
+const OUTFILE = `${OUTDIR}/timeline`;
 const result = await Bun.build({
   entrypoints: ["src/timeline/index.ts"],
-  outdir: ".",
-  naming: OUTFILE,
+  outdir: OUTDIR,
+  naming: "timeline.js",
   target: "bun",
 });
-const content = await Bun.file(OUTFILE).arrayBuffer();
+// .js → 拡張子なしにリネーム + shebang付与
+const content = await Bun.file(`${OUTFILE}.js`).arrayBuffer();
 await Bun.write(OUTFILE, new Blob([SHEBANG, content]));
-await $`chmod +x ${OUTFILE}`;
+await $`rm ${OUTFILE}.js && chmod +x ${OUTFILE}`;
 ```
+
+### ビルド成果物のgit管理
+
+`skills/claude-session-analysis/scripts/timeline` はビルド成果物だが、プラグインとして配布するためgitにコミットする。ソース変更時は `bun run build` 後にコミット。
 
 ## モジュール設計
 
@@ -132,6 +138,14 @@ interface TimelineEvent {
   desc: string;
   notrunc?: boolean;
 }
+
+// 入力JSONLエントリの discriminated union
+interface ContentBlock { type: string; [key: string]: unknown; }
+type SessionEntry =
+  | { type: "user"; uuid: string; timestamp: string; message: { content: string | ContentBlock[] }; isMeta?: boolean; isCompactSummary?: boolean; cwd?: string; }
+  | { type: "assistant"; uuid: string; timestamp: string; message: { content: ContentBlock[] }; }
+  | { type: "system"; uuid: string; timestamp: string; content: string; }
+  | { type: "file-history-snapshot"; messageId: string; snapshot: { trackedFileBackups: Record<string, { backupFileName: string; backupTime: string }> }; }
 ```
 
 #### イベントタイプ一覧 (extract.ts)
@@ -190,10 +204,13 @@ interface TimelineEvent {
 - `CLAUDE_CONFIG_DIR` 優先順位
 
 #### timeline/*.test.ts
-- extract: 各タイプのイベント抽出
-- filter: dedup / no-backup除去 / 範囲フィルタ / タイプフィルタ
+- extract: 各タイプのイベント抽出（string/array content, systemスラッシュコマンド, cwd解決, backupFileNameパース含む）
+- filter: dedup（time+kind+descキー） / no-backup除去 / 範囲フィルタ（前方一致・短縮マーカー・オフセット・クランプ） / タイプフィルタ
 - format: カラー化 / 絵文字 / ANSIコード / timestamps / raw
 - parse-args: CLI引数パース
+
+#### E2Eテスト
+- 実際のセッションJSONLを入力として、既存 `timeline.sh` の出力と `timeline` (TS版)の出力をdiffで比較し一致を確認
 
 ## 既存shとの共存
 
