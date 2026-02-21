@@ -2,11 +2,11 @@
 
 ## 概要
 
-`timeline.sh` + `timeline.jq` の全機能を `timeline.ts`（`#!/usr/bin/env bun` shebang）として再実装する。既存のshは残し、並行運用可能にする。将来の他スクリプトTS化を見据え、共通モジュール `lib.ts` も同時に作成する。
+`timeline.sh` + `timeline.jq` の全機能を TypeScript (bun) で再実装する。既存のshは残し、並行運用可能にする。将来の他スクリプトTS化を見据え、共通モジュール `lib.ts` も同時に作成する。
 
 ## 方針
 
-- **独立スクリプト**: `skills/claude-session-analysis/scripts/timeline.ts` として配置。既存のsh/jqには手を加えない
+- **src/ + bun build**: ソースは `src/` に配置し、`scripts/build.ts` で `Bun.build()` → shebang付き単一ファイルを `skills/claude-session-analysis/scripts/` に出力（antenna-cli方式）
 - **完全移植**: timeline.jq の全ロジック（JSONL解析、タイプ分類、マーカー生成、dedup、no-backup除去、範囲フィルタ、カラー化、truncate）を再現
 - **TDD**: `bun test` でテストファーストで進める
 - **bun固有機能**: `Bun.file()`, `Bun.argv`, `Bun.stdout`, `Bun.Glob` 等を活用
@@ -15,18 +15,65 @@
 ## ファイル構成
 
 ```
-skills/claude-session-analysis/scripts/
-  timeline.ts          # メインスクリプト (shebang: #!/usr/bin/env bun)
-  lib.ts               # 共通モジュール (omit, redact, formatSize, truncate等)
-  timeline.test.ts     # timeline.ts のテスト
-  lib.test.ts          # lib.ts のテスト
-  resolve-session.ts   # セッションID解決（timeline.tsから使用）
+package.json               # scripts.build, devDependencies(@types/bun)
+tsconfig.json              # bun標準設定
+scripts/
+  build.ts                 # Bun.build() でバンドル + shebang付与
+src/
+  lib.ts                   # 共通モジュール
+  lib.test.ts
+  resolve-session.ts       # セッションID解決
   resolve-session.test.ts
+  timeline/
+    index.ts               # メインエントリーポイント（CLI）
+    parse-args.ts           # CLI引数パース
+    extract.ts              # JSONLからイベント抽出
+    filter.ts               # dedup, no-backup除去, 範囲フィルタ, タイプフィルタ
+    format.ts               # 出力整形（カラー化、truncate）
+    types.ts                # 型定義
+    *.test.ts               # 各モジュールのテスト
+skills/claude-session-analysis/scripts/
+  timeline                 # ← ビルド成果物（shebang付き単一ファイル）
+```
+
+## ビルド
+
+### package.json
+
+```json
+{
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
+```
+
+### scripts/build.ts
+
+```ts
+import { $ } from "bun";
+const SHEBANG = "#!/usr/bin/env bun\n";
+const OUTFILE = "skills/claude-session-analysis/scripts/timeline";
+const result = await Bun.build({
+  entrypoints: ["src/timeline/index.ts"],
+  outdir: ".",
+  naming: OUTFILE,
+  target: "bun",
+});
+const content = await Bun.file(OUTFILE).arrayBuffer();
+await Bun.write(OUTFILE, new Blob([SHEBANG, content]));
+await $`chmod +x ${OUTFILE}`;
 ```
 
 ## モジュール設計
 
-### lib.ts
+### src/lib.ts
 
 | 関数 | 元 | 用途 |
 |------|-----|------|
@@ -37,19 +84,19 @@ skills/claude-session-analysis/scripts/
 | `truncate(str, width)` | timeline.jq | 幅制限付き文字列切り詰め |
 | `shortenPath(path, n)` | timeline.jq | パスを末尾n要素に短縮 |
 
-### resolve-session.ts
+### src/resolve-session.ts
 
 `resolve-session.sh` と同等のロジック:
 - セッションID（短縮形対応）→ `.jsonl` ファイルパスに解決
 - `CLAUDE_CONFIG_DIR` 環境変数対応
 - `Bun.Glob` でファイル検索
 
-### timeline.ts
+### src/timeline/
 
-#### CLI引数
+#### CLI引数 (parse-args.ts)
 
 ```
-timeline.ts [options] <session_id_or_file> [range]
+timeline [options] <session_id_or_file> [range]
 
 Options:
   -t <types>                表示タイプ (default: "UTRFWBGASQDI")
@@ -62,23 +109,32 @@ Options:
   --help                    ヘルプ
 ```
 
-#### 処理パイプライン
+#### 処理パイプライン (index.ts)
 
 ```
 JSONL読み込み → イベント抽出 → dedup → no-backup除去 → sort → 範囲フィルタ → タイプフィルタ → 出力整形
 ```
 
 1. **JSONL読み込み**: `Bun.file(path).text()` → 行分割 → `JSON.parse`
-2. **イベント抽出**: 各JSONLエントリからイベント配列を生成
-   - 型: `{ kind: string, ref: string, time: string, desc: string, notrunc?: boolean }`
-3. **dedup**: `time+kind+desc` の組み合わせで重複排除
-4. **no-backup除去**: `ref` でグループ化 → `@v` 含むグループから `no-backup` エントリ除去
-5. **sort**: `.time` でソート
-6. **範囲フィルタ**: from/toマーカーをパースし、前方一致で検索、オフセット適用、クランプ
-7. **タイプフィルタ**: `-t` で指定されたタイプのみ通す
-8. **出力整形**: カラー化（ANSI + 絵文字）/ タイムスタンプ / RAWモード
+2. **イベント抽出** (extract.ts): 各JSONLエントリからイベント配列を生成
+3. **フィルタ** (filter.ts): dedup → no-backup除去 → sort → 範囲フィルタ → タイプフィルタ
+4. **出力整形** (format.ts): カラー化（ANSI + 絵文字）/ タイムスタンプ / RAWモード
 
-#### イベントタイプ一覧
+#### 型定義 (types.ts)
+
+```ts
+type EventKind = "U" | "T" | "R" | "F" | "W" | "B" | "G" | "A" | "S" | "Q" | "D" | "I";
+
+interface TimelineEvent {
+  kind: EventKind;
+  ref: string;     // 8桁hex (uuid先頭8文字)
+  time: string;    // ISO8601 (ソートサフィックス _00001 付きの場合あり)
+  desc: string;
+  notrunc?: boolean;
+}
+```
+
+#### イベントタイプ一覧 (extract.ts)
 
 | Kind | ソース | 抽出条件 |
 |------|--------|----------|
@@ -95,7 +151,7 @@ JSONL読み込み → イベント抽出 → dedup → no-backup除去 → sort 
 | D | todo | TodoWrite tool_use |
 | I | info | auto-compact, task-notification, teammate-message, Request interrupted |
 
-#### カラー化
+#### カラー化 (format.ts)
 
 | Kind | ANSI | 絵文字 | 備考 |
 |------|------|--------|------|
@@ -116,7 +172,7 @@ JSONL読み込み → イベント抽出 → dedup → no-backup除去 → sort 
 
 ### テストデータ
 
-実際のセッションJSONLから抜粋したフィクスチャを `__fixtures__/` に配置。最小限のJSONLスニペットで各タイプをカバーする。
+テスト用の最小限JSONLスニペットをテストファイル内にインラインで定義。
 
 ### テストケース（主要）
 
@@ -133,21 +189,17 @@ JSONL読み込み → イベント抽出 → dedup → no-backup除去 → sort 
 - 存在しないID → エラー
 - `CLAUDE_CONFIG_DIR` 優先順位
 
-#### timeline.test.ts
-- JSONL解析: 各タイプのイベント抽出
-- dedup: 重複排除
-- no-backup除去: バックアップあり/なし
-- 範囲フィルタ: from/to/offset/clamp
-- タイプフィルタ: `-t` 指定
-- カラー化: 絵文字/ANSIコード
-- 出力フォーマット: timestamps/raw/通常
-- CLI引数パース
+#### timeline/*.test.ts
+- extract: 各タイプのイベント抽出
+- filter: dedup / no-backup除去 / 範囲フィルタ / タイプフィルタ
+- format: カラー化 / 絵文字 / ANSIコード / timestamps / raw
+- parse-args: CLI引数パース
 
 ## 既存shとの共存
 
 - `timeline.sh` / `timeline.jq` はそのまま残す
-- `bin/claude-session-analysis.sh` のディスパッチャーは変更しない（将来的に `.ts` 優先に切り替え可能だが今回はスコープ外）
-- `timeline.ts` は `chmod +x` して直接実行可能にする
+- `bin/claude-session-analysis.sh` のディスパッチャーは変更しない（将来的にビルド成果物の `timeline` を優先する切り替えも可能だが今回はスコープ外）
+- ビルド成果物 `scripts/timeline` は `chmod +x` で直接実行可能
 
 ## 非スコープ
 
