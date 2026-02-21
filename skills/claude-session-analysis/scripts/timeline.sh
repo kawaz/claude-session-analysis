@@ -110,22 +110,22 @@ colorize() {
       before = substr($0, 1, RSTART-1)
       after = substr($0, RSTART+9)
 
-      if      (t == "U") { c = "\033[32m"; e = "\xF0\x9F\x91\xA4" }
-      else if (t == "T") { c = "\033[34m"; e = "\xF0\x9F\xA7\xA0" }
-      else if (t == "R") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
-      else if (t == "Q") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
-      else if (t == "B") { c = "\033[2m"; e = "\xF0\x9F\x9A\x97" }
+      if      (t == "U") { c = "\033[32m"; e = "\n\n👤" }
+      else if (t == "T") { c = "\033[3;34m"; e = "🧠" }
+      else if (t == "R") { c = "\033[34m"; e = "🤖" }
+      else if (t == "Q") { c = "\033[34m"; e = "🤖" }
+      else if (t == "B") { c = "\033[2m"; e = "▶️" }
       else if (t == "F") {
         c = "\033[2m"
-        if (index($0, "no-backup-") || match($0, /@v/)) e = "\xF0\x9F\x93\x9D"
-        else e = "\xF0\x9F\x91\x80"
+        if (index($0, "no-backup-") || match($0, /@v/)) e = "📝"
+        else e = "👀"
       }
-      else if (t == "W") { c = "\033[2m"; e = "\xF0\x9F\x9B\x9C" }
-      else if (t == "S") { c = "\033[2m"; e = "\xE2\x9A\xA1\xEF\xB8\x8F" }
-      else if (t == "G") { c = "\033[2m"; e = "\xF0\x9F\x94\x8D" }
-      else if (t == "A") { c = "\033[2m"; e = "\xF0\x9F\x91\xBB" }
-      else if (t == "D") { c = "\033[2m"; e = "\xE2\x9C\x85" }
-      else if (t == "I") { c = "\033[2m"; e = "\xE2\x84\xB9\xEF\xB8\x8F" }
+      else if (t == "W") { c = "\033[2m"; e = "🛜" }
+      else if (t == "S") { c = "\033[2m"; e = "⚡️" }
+      else if (t == "G") { c = "\033[2m"; e = "🔍" }
+      else if (t == "A") { c = "\033[2m"; e = "👻" }
+      else if (t == "D") { c = "\033[2m"; e = "✅" }
+      else if (t == "I") { c = "\033[2m"; e = "ℹ️" }
       else { c = ""; e = "" }
 
       printf "%s%s %s%s%s\033[0m\n", c, e, before, marker, after
