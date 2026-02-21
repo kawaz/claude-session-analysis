@@ -1,6 +1,6 @@
 # Show session timeline with type filtering
 # Usage: jq -rsf timeline.jq --arg types "UTF" --argjson width 55 --arg from "" --arg to "" "$SESSION_FILE"
-# Types: U=User, T=Think, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo
+# Types: U=User, T=Think, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo, C=Compact
 
 def truncate($w):
   if $w <= 0 then .
@@ -9,6 +9,28 @@ def truncate($w):
     if $len <= $w then $s
     else "\($s[:$w])[+\($len - $w)]"
     end
+  end;
+
+# Parse range marker: strip type prefix and extract offset
+# "Uefb128a2-2" -> {id: "efb128a2", offset: -2}
+# "efb128a2+3" -> {id: "efb128a2", offset: 3}
+# "efb128a2"   -> {id: "efb128a2", offset: 0}
+def parse_range_marker:
+  (if test("^[A-Z][a-f0-9]") then .[1:] else . end) |
+  if test("[+-][0-9]+$") then
+    capture("^(?<id>.+?)(?<offset>[+-][0-9]+)$") |
+    {id: .id, offset: (.offset | tonumber)}
+  else
+    {id: ., offset: 0}
+  end;
+
+# Extract HH:MM:SS from ISO timestamp (handles sort suffix like "_00001")
+def format_time:
+  if . == null then "--------"
+  else
+    split("_")[0] |
+    if test("T") then split("T")[1] | split(".")[0]
+    else "--------" end
   end;
 
 [
@@ -48,7 +70,7 @@ def truncate($w):
     }
   ),
   # U: User message (string content)
-  (.[] | objects | select(.type=="user" and .isMeta != true and (.message.content | type == "string")) | {
+  (.[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string")) | {
     time: .timestamp,
     kind: "U",
     desc: (if ((.message.content | gsub("^\\s+|\\s+$"; "")) | startswith("<") and endswith(">") and test("<command-name>")) then
@@ -59,7 +81,7 @@ def truncate($w):
     ref: .uuid[:8]
   }),
   # U: User message (array content - for agent sessions, exclude tool_result)
-  (.[] | objects | select(.type=="user" and .isMeta != true and (.message.content | type == "array")) |
+  (.[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
     (.message.content[] | select(.type == "text")) as $c | {
       time: .timestamp,
       kind: "U",
@@ -159,7 +181,14 @@ def truncate($w):
       desc: "Todo: \(.input.todos | length) items",
       ref: $a.uuid[:8]
     }
-  )
+  ),
+  # C: Compact (auto-compact summary)
+  (.[] | objects | select(.type=="user" and .isCompactSummary == true) | {
+    time: .timestamp,
+    kind: "C",
+    desc: "[auto-compact]",
+    ref: .uuid[:8]
+  })
 ] | map(select(type == "object" and .kind != null)) | sort_by(.time) | unique_by([.time,.kind,.desc]) |
 
 # Remove no-backup entries when backup exists for same ref
@@ -170,14 +199,25 @@ group_by(.ref) | map(
 ) | flatten | sort_by(.time) |
 
 
-# Apply range filter (strip leading uppercase type prefix from marker if present, e.g. "Ub2d18fa6" -> "b2d18fa6")
-($from | if test("^[A-Z][a-f0-9]") then .[1:] else . end) as $from_clean |
-($to | if test("^[A-Z][a-f0-9]") then .[1:] else . end) as $to_clean |
-(if $from_clean != "" then (to_entries | map(select(.value.ref | startswith($from_clean))) | .[0].key // 0) else 0 end) as $from_idx |
-(if $to_clean != "" then (to_entries | map(select(.value.ref | startswith($to_clean))) | .[-1].key // (length - 1)) else (length - 1) end) as $to_idx |
-.[$from_idx:$to_idx + 1] |
+# Apply range filter with offset support (e.g. "Uefb128a2-2..Uefb128a2+2")
+($from | parse_range_marker) as $fp |
+($to | parse_range_marker) as $tp |
+(if $fp.id != "" then
+  (to_entries | map(select(.value.ref | startswith($fp.id))) | .[0].key // 0) + $fp.offset
+else 0 end) as $from_idx |
+(if $tp.id != "" then
+  (to_entries | map(select(.value.ref | startswith($tp.id))) | .[-1].key // (length - 1)) + $tp.offset
+else (length - 1) end) as $to_idx |
+([([$from_idx, 0] | max), (length - 1)] | min) as $from_clamped |
+([([$to_idx, 0] | max), (length - 1)] | min) as $to_clamped |
+.[$from_clamped:$to_clamped + 1] |
 
 # Output with type filter and truncation
 .[] |
 select(.kind as $k | $types | contains($k)) |
-"\(.kind)\(.ref) \(if .notrunc then .desc else (.desc | gsub("\n"; " ") | truncate($width)) end)"
+(if .notrunc then .desc else (.desc | gsub("\n"; " ") | truncate($width)) end) as $desc_part |
+if $timestamps then
+  "\(.time | format_time) \(.kind)\(.ref) \($desc_part)"
+else
+  "\(.kind)\(.ref) \($desc_part)"
+end
