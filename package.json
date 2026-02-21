@@ -1,0 +1,11 @@
+{
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
