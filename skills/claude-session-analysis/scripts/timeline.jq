@@ -25,13 +25,9 @@ def parse_range_marker:
   end;
 
 # Extract HH:MM:SS from ISO timestamp (handles sort suffix like "_00001")
-def format_time:
-  if . == null then "--------"
-  else
-    split("_")[0] |
-    if test("T") then split("T")[1] | split(".")[0]
-    else "--------" end
-  end;
+# Remove sort suffix (e.g. "_00001") from timestamp
+def clean_time:
+  split("_")[0];
 
 . as $all |
 [
@@ -235,7 +231,7 @@ if $raw > 0 then
 else
   (if .notrunc then .desc else (.desc | gsub("\n"; " ") | truncate($width)) end) as $desc_part |
   if $timestamps then
-    "\(.time | format_time) \(.kind)\(.ref) \($desc_part)"
+    "\(.time | clean_time) \(.kind)\(.ref) \($desc_part)"
   else
     "\(.kind)\(.ref) \($desc_part)"
   end
