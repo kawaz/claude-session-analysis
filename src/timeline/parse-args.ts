@@ -47,16 +47,24 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
     if (arg === "-t") {
       i++;
+      if (i >= argv.length) throw new Error("-t requires a value");
       result.types = argv[i];
     } else if (arg === "-w") {
       i++;
-      result.width = parseInt(argv[i], 10);
+      if (i >= argv.length) throw new Error("-w requires a value");
+      const w = parseInt(argv[i], 10);
+      if (isNaN(w)) throw new Error(`-w requires a number, got: ${argv[i]}`);
+      result.width = w;
     } else if (arg === "--timestamps") {
       result.timestamps = true;
     } else if (arg === "--colors") {
       result.colors = "always";
     } else if (arg.startsWith("--colors=")) {
       const value = arg.slice("--colors=".length);
+      const validColors = ["auto", "always", "never"];
+      if (!validColors.includes(value)) {
+        throw new Error(`Invalid --colors value: ${value} (expected: auto, always, never)`);
+      }
       result.colors = value as "auto" | "always" | "never";
     } else if (arg === "--no-colors") {
       result.colors = "never";

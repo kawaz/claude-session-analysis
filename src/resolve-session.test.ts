@@ -48,14 +48,14 @@ describe("resolveSession", () => {
   });
 
   test("不正なセッションID → エラー", async () => {
-    expect(resolveSession("invalid!id")).rejects.toThrow();
+    await expect(resolveSession("invalid!id")).rejects.toThrow();
   });
 
   test("存在しないID → エラー", async () => {
     const originalEnv = process.env.CLAUDE_CONFIG_DIR;
     process.env.CLAUDE_CONFIG_DIR = tmpDir;
     try {
-      expect(resolveSession("ffffffff")).rejects.toThrow(/not found/i);
+      await expect(resolveSession("ffffffff")).rejects.toThrow(/not found/i);
     } finally {
       process.env.CLAUDE_CONFIG_DIR = originalEnv;
     }

@@ -26,11 +26,11 @@ function extractAttr(xml: string, attr: string): string {
 export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
-  // session_cwd: 最初の cwd を持つエントリから取得
+  // session_cwd: 最初の cwd を持つエントリから取得（全エントリ型を検索）
   let sessionCwd = "";
   for (const e of entries) {
-    if (e.type === "user" && e.cwd) {
-      sessionCwd = e.cwd;
+    if ((e as Record<string, unknown>).cwd) {
+      sessionCwd = (e as Record<string, unknown>).cwd as string;
       break;
     }
   }
@@ -102,7 +102,8 @@ function extractUserStringContent(
   }
 
   // XML風スラッシュコマンド
-  if (content.startsWith("<") && content.includes("<command-name>")) {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("<") && trimmed.endsWith(">") && trimmed.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
     events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
@@ -140,14 +141,6 @@ function extractUserArrayContent(
     if (text.startsWith("<teammate-message")) {
       const teammateId = extractAttr(text, "teammate_id");
       events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
-      continue;
-    }
-
-    // XML風スラッシュコマンド
-    if (text.startsWith("<") && text.includes("<command-name>")) {
-      const cmd = extractTag(text, "command-name");
-      const args = extractTag(text, "command-args");
-      events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
       continue;
     }
 
@@ -308,7 +301,8 @@ function extractSystemEvents(entry: SystemEntry, events: TimelineEvent[]): void 
   if (!content) return;
 
   // スラッシュコマンド
-  if (content.includes("<command-name>")) {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("<") && trimmed.endsWith(">") && trimmed.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
     events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });

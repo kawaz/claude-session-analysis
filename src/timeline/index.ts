@@ -28,7 +28,14 @@ async function main() {
   // JSONL読み込み
   const text = await Bun.file(sessionFile).text();
   const rawLines = text.split("\n").filter((line) => line.trim());
-  const entries: SessionEntry[] = rawLines.map((line) => JSON.parse(line));
+  const entries: SessionEntry[] = [];
+  for (const line of rawLines) {
+    try {
+      entries.push(JSON.parse(line) as SessionEntry);
+    } catch {
+      // 不正なJSON行をスキップ（書き込み途中のデータ等）
+    }
+  }
 
   // イベント抽出
   const events = extractEvents(entries);
@@ -42,8 +49,8 @@ async function main() {
 
   // --raw / --raw2: マーカーからエントリを検索して JSON 出力
   if (args.rawMode > 0) {
-    // 全エントリを解析済みオブジェクトとして保持（uuid/messageId でルックアップ）
-    const parsed: Record<string, unknown>[] = rawLines.map((line) => JSON.parse(line));
+    // rawMode で使う parsed は entries をそのまま Record<string, unknown>[] として使用
+    const parsed = entries as unknown as Record<string, unknown>[];
     const output: string[] = [];
     for (const event of filtered) {
       const marker = `${event.kind}${event.ref}`;
@@ -118,7 +125,14 @@ Range:
   ..marker    From start to marker
   marker..    From marker to end
   from..to    Between markers
-  marker      Single marker only`);
+  marker      Single marker only
+
+Examples:
+  ${prog} abc12345                      Show timeline for session
+  ${prog} ./path/to/session.jsonl       Show timeline from file
+  ${prog} -t UR abc12345                Show only User & Response
+  ${prog} --timestamps abc12345         Show with timestamps
+  ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
 
 main().catch((err) => {

@@ -35,5 +35,6 @@ export async function resolveSession(input: string): Promise<string> {
     }
   }
 
-  throw new Error(`Session not found: ${input}`);
+  const searched = searchDirs.map(d => `${d}/projects/*/`).join(", ");
+  throw new Error(`Session not found: ${input}\n  Searched in: ${searched}\n  Hint: Use a full session ID or provide a direct file path`);
 }

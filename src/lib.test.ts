@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { truncate, formatSize, omit, redact, pick, shortenPath } from "./lib.ts";
+import { truncate, formatSize, omit, redact, redactWithHint, pick, shortenPath, lastSegments } from "./lib.ts";
 
 describe("truncate", () => {
   test("returns string as-is when within width", () => {
@@ -16,6 +16,10 @@ describe("truncate", () => {
 
   test("returns empty string as-is", () => {
     expect(truncate("", 5)).toBe("");
+  });
+
+  test("負数widthは元文字列を返す", () => {
+    expect(truncate("hello", -1)).toBe("hello");
   });
 });
 
@@ -57,8 +61,8 @@ describe("omit", () => {
 
 describe("redact", () => {
   test("replaces specified key values with [omitted:SIZE]", () => {
-    // JSON.stringify("hello") = '"hello"' = 7 chars
-    expect(redact({ a: "hello" }, ["a"])).toEqual({ a: "[omitted:7B]" });
+    // jq tostring: string -> そのまま (引用符なし) = "hello".length = 5 chars
+    expect(redact({ a: "hello" }, ["a"])).toEqual({ a: "[omitted:5B]" });
   });
 });
 
@@ -79,5 +83,24 @@ describe("shortenPath", () => {
 
   test("returns path as-is when split results in <= n non-empty segments", () => {
     expect(shortenPath("/a", 2)).toBe("/a");
+  });
+});
+
+describe("redactWithHint", () => {
+  test("値を [omitted:SIZE --raw --no-redact] に置換", () => {
+    const result = redactWithHint({ a: "hello" }, ["a"]);
+    expect(result).toEqual({ a: "[omitted:5B --raw --no-redact]" });
+  });
+});
+
+describe("lastSegments", () => {
+  test("末尾2要素を返す（…/なし）", () => {
+    expect(lastSegments("/usr/local/bin/bun")).toBe("bin/bun");
+  });
+  test("要素数が2以下ならそのまま", () => {
+    expect(lastSegments("bin/bun")).toBe("bin/bun");
+  });
+  test("先頭スラッシュ付き1要素", () => {
+    expect(lastSegments("/bun")).toBe("/bun");
   });
 });

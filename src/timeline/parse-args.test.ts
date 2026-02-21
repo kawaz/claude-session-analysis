@@ -113,4 +113,20 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--unknown", "session-id"])).toThrow();
     expect(() => parseArgs(["-z", "session-id"])).toThrow();
   });
+
+  test("--colors=invalid でエラー", () => {
+    expect(() => parseArgs(["--colors=invalid", "session"])).toThrow(/Invalid --colors value/);
+  });
+
+  test("-t の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["-t"])).toThrow(/-t requires/);
+  });
+
+  test("-w の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["-w"])).toThrow(/-w requires/);
+  });
+
+  test("-w に非数値を渡した場合エラー", () => {
+    expect(() => parseArgs(["-w", "abc", "session"])).toThrow(/-w requires a number/);
+  });
 });

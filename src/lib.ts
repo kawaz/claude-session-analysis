@@ -5,8 +5,8 @@ export function truncate(str: string, width: number): string {
 }
 
 export function formatSize(bytes: number): string {
-  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)}M`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)}K`;
+  if (bytes >= 1048576) return `${(Math.floor(bytes / 1048576 * 10) / 10).toFixed(1)}M`;
+  if (bytes >= 1024) return `${(Math.floor(bytes / 1024 * 10) / 10).toFixed(1)}K`;
   return `${bytes}B`;
 }
 
@@ -34,7 +34,7 @@ export function redact(obj: unknown, keys: string[]): unknown {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
       if (keys.includes(k)) {
-        const size = JSON.stringify(v).length;
+        const size = typeof v === "string" ? v.length : JSON.stringify(v).length;
         result[k] = `[omitted:${formatSize(size)}]`;
       } else {
         result[k] = redact(v, keys);
@@ -53,7 +53,7 @@ export function redactWithHint(obj: unknown, keys: string[]): unknown {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
       if (keys.includes(k)) {
-        const size = JSON.stringify(v).length;
+        const size = typeof v === "string" ? v.length : JSON.stringify(v).length;
         result[k] = `[omitted:${formatSize(size)} --raw --no-redact]`;
       } else {
         result[k] = redactWithHint(v, keys);

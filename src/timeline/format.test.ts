@@ -16,7 +16,8 @@ describe("colorize", () => {
     const result = colorize("Uabc12345 hello");
     expect(result).toContain("\x1b[32m");
     expect(result).toContain("👤");
-    expect(result).toStartWith("\n\n");
+    // \n\n は ANSI コードの後に来る
+    expect(result).toMatch(/\x1b\[32m\n\n👤/);
     expect(result).toEndWith("\x1b[0m");
   });
   test("Tイベント → italic青 + 🧠", () => {
@@ -142,6 +143,12 @@ describe("formatEvent", () => {
     const event: TimelineEvent = { ...baseEvent, desc: "line1\nline2\nline3" };
     const result = formatEvent(event, { rawMode: 0, width: 55, timestamps: false });
     expect(result).toBe("Rabc12345 line1 line2 line3");
+  });
+
+  test("notrunc時は改行を除去しない", () => {
+    const event: TimelineEvent = { kind: "W", ref: "abc12345", time: "2024-01-01T00:00:00", desc: "line1\nline2", notrunc: true };
+    const result = formatEvent(event, { rawMode: 0, width: 55, timestamps: false });
+    expect(result).toContain("line1\nline2");
   });
 });
 

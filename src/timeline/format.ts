@@ -48,8 +48,10 @@ export function colorize(line: string): string {
     }
   }
 
-  const prefix = kind === "U" ? "\n\n" : "";
-  return `${prefix}${ansi}${emoji} ${beforeMarker}${marker}${afterMarker}\x1b[0m`;
+  if (kind === "U") {
+    return `${ansi}\n\n${emoji} ${beforeMarker}${marker}${afterMarker}\x1b[0m`;
+  }
+  return `${ansi}${emoji} ${beforeMarker}${marker}${afterMarker}\x1b[0m`;
 }
 
 /** 単一イベントをフォーマット */
@@ -61,9 +63,11 @@ export function formatEvent(
     return `${event.kind}${event.ref}`;
   }
 
-  let desc = event.desc.replace(/\n/g, " ");
-  if (!event.notrunc) {
-    desc = truncate(desc, opts.width);
+  let desc: string;
+  if (event.notrunc) {
+    desc = event.desc;
+  } else {
+    desc = truncate(event.desc.replace(/\n/g, " "), opts.width);
   }
 
   if (opts.timestamps) {

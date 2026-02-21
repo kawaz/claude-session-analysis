@@ -33,16 +33,27 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "-t") {
       i++;
+      if (i >= argv.length)
+        throw new Error("-t requires a value");
       result.types = argv[i];
     } else if (arg === "-w") {
       i++;
-      result.width = parseInt(argv[i], 10);
+      if (i >= argv.length)
+        throw new Error("-w requires a value");
+      const w = parseInt(argv[i], 10);
+      if (isNaN(w))
+        throw new Error(`-w requires a number, got: ${argv[i]}`);
+      result.width = w;
     } else if (arg === "--timestamps") {
       result.timestamps = true;
     } else if (arg === "--colors") {
       result.colors = "always";
     } else if (arg.startsWith("--colors=")) {
       const value = arg.slice("--colors=".length);
+      const validColors = ["auto", "always", "never"];
+      if (!validColors.includes(value)) {
+        throw new Error(`Invalid --colors value: ${value} (expected: auto, always, never)`);
+      }
       result.colors = value;
     } else if (arg === "--no-colors") {
       result.colors = "never";
@@ -96,7 +107,10 @@ async function resolveSession(input) {
       return `${dir}/${match}`;
     }
   }
-  throw new Error(`Session not found: ${input}`);
+  const searched = searchDirs.map((d) => `${d}/projects/*/`).join(", ");
+  throw new Error(`Session not found: ${input}
+  Searched in: ${searched}
+  Hint: Use a full session ID or provide a direct file path`);
 }
 
 // src/lib.ts
@@ -109,9 +123,9 @@ function truncate(str, width) {
 }
 function formatSize(bytes) {
   if (bytes >= 1048576)
-    return `${(bytes / 1048576).toFixed(1)}M`;
+    return `${(Math.floor(bytes / 1048576 * 10) / 10).toFixed(1)}M`;
   if (bytes >= 1024)
-    return `${(bytes / 1024).toFixed(1)}K`;
+    return `${(Math.floor(bytes / 1024 * 10) / 10).toFixed(1)}K`;
   return `${bytes}B`;
 }
 function omit(obj, keys) {
@@ -137,7 +151,7 @@ function redact(obj, keys) {
     const result = {};
     for (const [k, v] of Object.entries(obj)) {
       if (keys.includes(k)) {
-        const size = JSON.stringify(v).length;
+        const size = typeof v === "string" ? v.length : JSON.stringify(v).length;
         result[k] = `[omitted:${formatSize(size)}]`;
       } else {
         result[k] = redact(v, keys);
@@ -155,7 +169,7 @@ function redactWithHint(obj, keys) {
     const result = {};
     for (const [k, v] of Object.entries(obj)) {
       if (keys.includes(k)) {
-        const size = JSON.stringify(v).length;
+        const size = typeof v === "string" ? v.length : JSON.stringify(v).length;
         result[k] = `[omitted:${formatSize(size)} --raw --no-redact]`;
       } else {
         result[k] = redactWithHint(v, keys);
@@ -193,7 +207,7 @@ function extractEvents(entries) {
   const events = [];
   let sessionCwd = "";
   for (const e of entries) {
-    if (e.type === "user" && e.cwd) {
+    if (e.cwd) {
       sessionCwd = e.cwd;
       break;
     }
@@ -248,7 +262,8 @@ function extractUserStringContent(content, ref, time, events) {
     events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
     return;
   }
-  if (content.startsWith("<") && content.includes("<command-name>")) {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("<") && trimmed.endsWith(">") && trimmed.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
     events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
@@ -273,12 +288,6 @@ function extractUserArrayContent(content, ref, time, events) {
     if (text.startsWith("<teammate-message")) {
       const teammateId = extractAttr(text, "teammate_id");
       events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
-      continue;
-    }
-    if (text.startsWith("<") && text.includes("<command-name>")) {
-      const cmd = extractTag(text, "command-name");
-      const args = extractTag(text, "command-args");
-      events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
       continue;
     }
     events.push({ kind: "U", ref, time, desc: text });
@@ -406,7 +415,8 @@ function extractSystemEvents(entry, events) {
   const content = entry.content;
   if (!content)
     return;
-  if (content.includes("<command-name>")) {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("<") && trimmed.endsWith(">") && trimmed.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
     events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
@@ -575,18 +585,22 @@ function colorize(line) {
       emoji = "\uD83D\uDC40";
     }
   }
-  const prefix = kind === "U" ? `
+  if (kind === "U") {
+    return `${ansi}
 
-` : "";
-  return `${prefix}${ansi}${emoji} ${beforeMarker}${marker}${afterMarker}\x1B[0m`;
+${emoji} ${beforeMarker}${marker}${afterMarker}\x1B[0m`;
+  }
+  return `${ansi}${emoji} ${beforeMarker}${marker}${afterMarker}\x1B[0m`;
 }
 function formatEvent(event, opts) {
   if (opts.rawMode > 0) {
     return `${event.kind}${event.ref}`;
   }
-  let desc = event.desc.replace(/\n/g, " ");
-  if (!event.notrunc) {
-    desc = truncate(desc, opts.width);
+  let desc;
+  if (event.notrunc) {
+    desc = event.desc;
+  } else {
+    desc = truncate(event.desc.replace(/\n/g, " "), opts.width);
   }
   if (opts.timestamps) {
     return `${cleanTime(event.time)} ${event.kind}${event.ref} ${desc}`;
@@ -634,7 +648,12 @@ async function main() {
   const text = await Bun.file(sessionFile).text();
   const rawLines = text.split(`
 `).filter((line) => line.trim());
-  const entries = rawLines.map((line) => JSON.parse(line));
+  const entries = [];
+  for (const line of rawLines) {
+    try {
+      entries.push(JSON.parse(line));
+    } catch {}
+  }
   const events = extractEvents(entries);
   const filtered = pipeline(events, {
     types: args.types,
@@ -642,7 +661,7 @@ async function main() {
     to: args.to
   });
   if (args.rawMode > 0) {
-    const parsed = rawLines.map((line) => JSON.parse(line));
+    const parsed = entries;
     const output2 = [];
     for (const event of filtered) {
       const marker = `${event.kind}${event.ref}`;
@@ -701,7 +720,14 @@ Range:
   ..marker    From start to marker
   marker..    From marker to end
   from..to    Between markers
-  marker      Single marker only`);
+  marker      Single marker only
+
+Examples:
+  ${prog} abc12345                      Show timeline for session
+  ${prog} ./path/to/session.jsonl       Show timeline from file
+  ${prog} -t UR abc12345                Show only User & Response
+  ${prog} --timestamps abc12345         Show with timestamps
+  ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
 main().catch((err) => {
   console.error(err.message);

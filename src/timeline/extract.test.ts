@@ -223,6 +223,23 @@ describe("F (File) events", () => {
       desc: "project/out.txt no-backup-write",
     });
   });
+
+  test("Edit tool_use (no-backup)", () => {
+    const entries: SessionEntry[] = [
+      mkAssistant([
+        { type: "tool_use", name: "Edit", input: { file_path: "/home/user/project/src/lib.ts", old_string: "foo", new_string: "bar" } },
+      ]),
+    ];
+    const events = extractEvents(entries);
+    const fEvents = events.filter((e) => e.kind === "F");
+    expect(fEvents).toHaveLength(1);
+    expect(fEvents[0]).toEqual({
+      kind: "F",
+      ref: "bbccddee",
+      time: "2025-01-01T00:01:00Z_00000",
+      desc: "src/lib.ts no-backup-edit",
+    });
+  });
 });
 
 // --- B (Bash) ---
