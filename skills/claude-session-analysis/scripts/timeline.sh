@@ -111,7 +111,7 @@ colorize() {
       after = substr($0, RSTART+9)
 
       if      (t == "U") { c = "\033[32m"; e = "\xF0\x9F\x91\xA4" }
-      else if (t == "T") { c = "\033[2;34m"; e = "\xF0\x9F\xA7\xA0" }
+      else if (t == "T") { c = "\033[34m"; e = "\xF0\x9F\xA7\xA0" }
       else if (t == "R") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
       else if (t == "Q") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
       else if (t == "B") { c = "\033[2;35m"; e = "\xF0\x9F\x9A\x97" }
