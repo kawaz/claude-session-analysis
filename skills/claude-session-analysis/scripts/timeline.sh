@@ -114,17 +114,17 @@ colorize() {
       else if (t == "T") { c = "\033[34m"; e = "\xF0\x9F\xA7\xA0" }
       else if (t == "R") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
       else if (t == "Q") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
-      else if (t == "B") { c = "\033[2;35m"; e = "\xF0\x9F\x9A\x97" }
+      else if (t == "B") { c = "\033[2m"; e = "\xF0\x9F\x9A\x97" }
       else if (t == "F") {
-        c = "\033[2;35m"
+        c = "\033[2m"
         if (index($0, "no-backup-") || match($0, /@v/)) e = "\xF0\x9F\x93\x9D"
         else e = "\xF0\x9F\x91\x80"
       }
-      else if (t == "W") { c = "\033[2;35m"; e = "\xF0\x9F\x9B\x9C" }
-      else if (t == "S") { c = "\033[2;35m"; e = "\xE2\x9A\xA1\xEF\xB8\x8F" }
-      else if (t == "G") { c = "\033[2;35m"; e = "\xF0\x9F\x94\x8D" }
-      else if (t == "A") { c = "\033[2;35m"; e = "\xF0\x9F\x91\xBB" }
-      else if (t == "D") { c = "\033[2;35m"; e = "\xE2\x9C\x85" }
+      else if (t == "W") { c = "\033[2m"; e = "\xF0\x9F\x9B\x9C" }
+      else if (t == "S") { c = "\033[2m"; e = "\xE2\x9A\xA1\xEF\xB8\x8F" }
+      else if (t == "G") { c = "\033[2m"; e = "\xF0\x9F\x94\x8D" }
+      else if (t == "A") { c = "\033[2m"; e = "\xF0\x9F\x91\xBB" }
+      else if (t == "D") { c = "\033[2m"; e = "\xE2\x9C\x85" }
       else if (t == "I") { c = "\033[2m"; e = "\xE2\x84\xB9\xEF\xB8\x8F" }
       else { c = ""; e = "" }
 
