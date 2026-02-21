@@ -66,8 +66,8 @@ def clean_time:
       ref: $a.uuid[:8]
     }
   ),
-  # U: User message (string content, exclude [Request interrupted)
-  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | startswith("[Request interrupted") | not)) | {
+  # U: User message (string content, exclude system-like messages)
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | (startswith("[Request interrupted") or startswith("<task-notification>")) | not)) | {
     time: .timestamp,
     kind: "U",
     desc: (if ((.message.content | gsub("^\\s+|\\s+$"; "")) | startswith("<") and endswith(">") and test("<command-name>")) then
@@ -77,9 +77,9 @@ def clean_time:
     else .message.content end),
     ref: .uuid[:8]
   }),
-  # U: User message (array content - for agent sessions, exclude tool_result and [Request interrupted)
+  # U: User message (array content - for agent sessions, exclude system-like messages)
   ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
-    (.message.content[] | select(.type == "text" and (.text | startswith("[Request interrupted") | not))) as $c | {
+    (.message.content[] | select(.type == "text" and (.text | (startswith("[Request interrupted") or startswith("<task-notification>")) | not))) as $c | {
       time: .timestamp,
       kind: "U",
       desc: $c.text,
@@ -194,12 +194,22 @@ def clean_time:
       ref: .uuid[:8]
     }
   ),
-  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | startswith("[Request interrupted"))) | {
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | (startswith("[Request interrupted") or startswith("<task-notification>")))) | {
     time: .timestamp,
     kind: "I",
-    desc: .message.content,
+    desc: (if (.message.content | startswith("<task-notification>")) then
+      "[task-notification] " + ((.message.content | capture("<summary>(?<s>[^<]+)</summary>") | .s) // "")
+    else .message.content end),
     ref: .uuid[:8]
-  })
+  }),
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
+    (.message.content[] | select(.type == "text" and (.text | startswith("<task-notification>")))) as $c | {
+      time: .timestamp,
+      kind: "I",
+      desc: "[task-notification] " + (($c.text | capture("<summary>(?<s>[^<]+)</summary>") | .s) // ""),
+      ref: .uuid[:8]
+    }
+  )
 ] | map(select(type == "object" and .kind != null)) | sort_by(.time) | unique_by([.time,.kind,.desc]) |
 
 # Remove no-backup entries when backup exists for same ref
