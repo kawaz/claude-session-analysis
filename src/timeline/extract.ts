@@ -309,6 +309,8 @@ function extractSystemEvents(entry: SystemEntry, events: TimelineEvent[]): void 
   const time = entry.timestamp;
   const content = entry.content;
 
+  if (!content) return;
+
   // スラッシュコマンド
   if (content.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
@@ -326,6 +328,8 @@ function extractFileSnapshotEvents(
   const backups = entry.snapshot.trackedFileBackups;
 
   for (const [key, backup] of Object.entries(backups)) {
+    if (!backup.backupFileName) continue;
+
     let path = key;
     if (!path.startsWith("/")) {
       path = `${sessionCwd}/${path}`;

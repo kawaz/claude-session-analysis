@@ -1,0 +1,602 @@
+#!/usr/bin/env bun
+// @bun
+
+// src/timeline/parse-args.ts
+function parseRange(range) {
+  if (range === "") {
+    return { from: "", to: "" };
+  }
+  const dotIdx = range.indexOf("..");
+  if (dotIdx === -1) {
+    return { from: range, to: range };
+  }
+  return {
+    from: range.slice(0, dotIdx),
+    to: range.slice(dotIdx + 2)
+  };
+}
+function parseArgs(argv) {
+  const result = {
+    types: "UTRFWBGASQDI",
+    width: 55,
+    timestamps: false,
+    colors: "auto",
+    rawMode: 0,
+    input: "",
+    from: "",
+    to: "",
+    help: false
+  };
+  const positional = [];
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === "-t") {
+      i++;
+      result.types = argv[i];
+    } else if (arg === "-w") {
+      i++;
+      result.width = parseInt(argv[i], 10);
+    } else if (arg === "--timestamps") {
+      result.timestamps = true;
+    } else if (arg === "--colors") {
+      result.colors = "always";
+    } else if (arg.startsWith("--colors=")) {
+      const value = arg.slice("--colors=".length);
+      result.colors = value;
+    } else if (arg === "--no-colors") {
+      result.colors = "never";
+    } else if (arg === "--raw") {
+      result.rawMode = 1;
+    } else if (arg === "--raw2") {
+      result.rawMode = 2;
+    } else if (arg === "--help" || arg === "-h") {
+      result.help = true;
+    } else if (arg.startsWith("-")) {
+      throw new Error(`Unknown option: ${arg}`);
+    } else {
+      positional.push(arg);
+    }
+    i++;
+  }
+  result.input = positional[0] ?? "";
+  if (positional.length >= 2) {
+    const { from, to } = parseRange(positional[1]);
+    result.from = from;
+    result.to = to;
+  }
+  if (!result.help && result.input === "") {
+    throw new Error("Input is required (session ID or file path)");
+  }
+  return result;
+}
+
+// src/resolve-session.ts
+async function resolveSession(input) {
+  if (await Bun.file(input).exists()) {
+    return input;
+  }
+  if (!/^[a-f0-9-]+$/.test(input)) {
+    throw new Error(`Invalid session ID: ${input}`);
+  }
+  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const defaultDir = `${process.env.HOME}/.claude`;
+  const searchDirs = [];
+  if (configDir) {
+    searchDirs.push(configDir);
+    if (configDir !== defaultDir) {
+      searchDirs.push(defaultDir);
+    }
+  } else {
+    searchDirs.push(defaultDir);
+  }
+  const glob = new Bun.Glob(`projects/*/${input}*.jsonl`);
+  for (const dir of searchDirs) {
+    for (const match of glob.scanSync(dir)) {
+      return `${dir}/${match}`;
+    }
+  }
+  throw new Error(`Session not found: ${input}`);
+}
+
+// src/lib.ts
+function truncate(str, width) {
+  if (width <= 0)
+    return str;
+  if (str.length <= width)
+    return str;
+  return `${str.slice(0, width)}[+${str.length - width}]`;
+}
+function shortenPath(path, n = 2) {
+  const segments = path.split("/").filter((s) => s !== "");
+  if (segments.length <= n)
+    return path;
+  return `\u2026/${segments.slice(-n).join("/")}`;
+}
+
+// src/timeline/extract.ts
+function extractTag(xml, tag) {
+  const re = new RegExp(`<${tag}>(.*?)</${tag}>`, "s");
+  const m = xml.match(re);
+  return m ? m[1] : "";
+}
+function extractAttr(xml, attr) {
+  const re = new RegExp(`${attr}="([^"]*)"`, "s");
+  const m = xml.match(re);
+  return m ? m[1] : "";
+}
+function extractEvents(entries) {
+  const events = [];
+  let sessionCwd = "";
+  for (const e of entries) {
+    if (e.type === "user" && e.cwd) {
+      sessionCwd = e.cwd;
+      break;
+    }
+  }
+  for (const entry of entries) {
+    switch (entry.type) {
+      case "user":
+        extractUserEvents(entry, events);
+        break;
+      case "assistant":
+        extractAssistantEvents(entry, events);
+        break;
+      case "system":
+        extractSystemEvents(entry, events);
+        break;
+      case "file-history-snapshot":
+        extractFileSnapshotEvents(entry, sessionCwd, events);
+        break;
+    }
+  }
+  return events;
+}
+function extractUserEvents(entry, events) {
+  const ref = entry.uuid.slice(0, 8);
+  const time = entry.timestamp;
+  if (entry.isCompactSummary === true) {
+    events.push({ kind: "I", ref, time, desc: "[auto-compact]" });
+    return;
+  }
+  if (entry.isMeta === true) {
+    return;
+  }
+  const content = entry.message.content;
+  if (typeof content === "string") {
+    extractUserStringContent(content, ref, time, events);
+  } else if (Array.isArray(content)) {
+    extractUserArrayContent(content, ref, time, events);
+  }
+}
+function extractUserStringContent(content, ref, time, events) {
+  if (content.startsWith("[Request interrupted")) {
+    events.push({ kind: "I", ref, time, desc: content });
+    return;
+  }
+  if (content.startsWith("<task-notification>")) {
+    const summary = extractTag(content, "summary");
+    events.push({ kind: "I", ref, time, desc: `[task-notification] ${summary}` });
+    return;
+  }
+  if (content.startsWith("<teammate-message")) {
+    const teammateId = extractAttr(content, "teammate_id");
+    events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
+    return;
+  }
+  if (content.startsWith("<") && content.includes("<command-name>")) {
+    const cmd = extractTag(content, "command-name");
+    const args = extractTag(content, "command-args");
+    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+    return;
+  }
+  events.push({ kind: "U", ref, time, desc: content });
+}
+function extractUserArrayContent(content, ref, time, events) {
+  for (const block of content) {
+    if (block.type !== "text")
+      continue;
+    const text = block.text;
+    if (text.startsWith("[Request interrupted")) {
+      events.push({ kind: "I", ref, time, desc: text });
+      continue;
+    }
+    if (text.startsWith("<task-notification>")) {
+      const summary = extractTag(text, "summary");
+      events.push({ kind: "I", ref, time, desc: `[task-notification] ${summary}` });
+      continue;
+    }
+    if (text.startsWith("<teammate-message")) {
+      const teammateId = extractAttr(text, "teammate_id");
+      events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
+      continue;
+    }
+    if (text.startsWith("<") && text.includes("<command-name>")) {
+      const cmd = extractTag(text, "command-name");
+      const args = extractTag(text, "command-args");
+      events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+      continue;
+    }
+    events.push({ kind: "U", ref, time, desc: text });
+  }
+}
+function extractAssistantEvents(entry, events) {
+  const ref = entry.uuid.slice(0, 8);
+  const timestamp = entry.timestamp;
+  const content = entry.message.content;
+  for (let i = 0;i < content.length; i++) {
+    const block = content[i];
+    const timeSuffix = `${timestamp}_${String(i).padStart(5, "0")}`;
+    if (block.type === "thinking") {
+      events.push({ kind: "T", ref, time: timestamp, desc: block.thinking });
+    } else if (block.type === "text") {
+      const text = block.text;
+      if (text.replace(/\s/g, "").length === 0)
+        continue;
+      events.push({ kind: "R", ref, time: timestamp, desc: text });
+    } else if (block.type === "tool_use") {
+      extractToolUseEvent(block, ref, timeSuffix, events);
+    }
+  }
+}
+function extractToolUseEvent(block, ref, time, events) {
+  const name = block.name;
+  const input = block.input || {};
+  if (name === "Read") {
+    events.push({
+      kind: "F",
+      ref,
+      time,
+      desc: shortenPath(input.file_path)
+    });
+    return;
+  }
+  if (name === "Write" || name === "Edit") {
+    events.push({
+      kind: "F",
+      ref,
+      time,
+      desc: `${shortenPath(input.file_path)} no-backup-${name.toLowerCase()}`
+    });
+    return;
+  }
+  if (name === "WebFetch" || name === "WebSearch") {
+    events.push({
+      kind: "W",
+      ref,
+      time,
+      desc: input.url || input.query || "",
+      notrunc: true
+    });
+    return;
+  }
+  if (name === "Bash" || name === "BashOutput") {
+    let desc = input.command || input.description || "";
+    if (desc.startsWith("/")) {
+      const parts = desc.split(" ");
+      parts[0] = shortenPath(parts[0]);
+      desc = parts.join(" ");
+    }
+    events.push({ kind: "B", ref, time, desc });
+    return;
+  }
+  if (name === "Grep" || name === "Glob") {
+    events.push({
+      kind: "G",
+      ref,
+      time,
+      desc: `${name}: ${input.pattern}`
+    });
+    return;
+  }
+  if (name === "Task") {
+    const description = input.description;
+    const prompt = input.prompt;
+    let desc = "";
+    if (description && prompt) {
+      desc = `${description}: ${prompt}`;
+    } else {
+      desc = description || prompt || "";
+    }
+    events.push({ kind: "A", ref, time, desc });
+    return;
+  }
+  if (name === "TaskOutput") {
+    events.push({
+      kind: "A",
+      ref,
+      time,
+      desc: `${input.task_id} output`
+    });
+    return;
+  }
+  if (name === "Skill") {
+    events.push({
+      kind: "S",
+      ref,
+      time,
+      desc: input.skill
+    });
+    return;
+  }
+  if (name === "AskUserQuestion") {
+    const questions = input.questions;
+    events.push({
+      kind: "Q",
+      ref,
+      time,
+      desc: questions?.[0]?.question || ""
+    });
+    return;
+  }
+  if (name === "TodoWrite") {
+    const todos = input.todos;
+    events.push({
+      kind: "D",
+      ref,
+      time,
+      desc: `Todo: ${todos?.length || 0} items`
+    });
+    return;
+  }
+}
+function extractSystemEvents(entry, events) {
+  const ref = entry.uuid.slice(0, 8);
+  const time = entry.timestamp;
+  const content = entry.content;
+  if (!content)
+    return;
+  if (content.includes("<command-name>")) {
+    const cmd = extractTag(content, "command-name");
+    const args = extractTag(content, "command-args");
+    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+  }
+}
+function extractFileSnapshotEvents(entry, sessionCwd, events) {
+  const ref = entry.messageId.slice(0, 8);
+  const backups = entry.snapshot.trackedFileBackups;
+  for (const [key, backup] of Object.entries(backups)) {
+    if (!backup.backupFileName)
+      continue;
+    let path = key;
+    if (!path.startsWith("/")) {
+      path = `${sessionCwd}/${path}`;
+    }
+    const bfn = backup.backupFileName;
+    const hash = bfn.split("@")[0].slice(0, 8);
+    const version = bfn.split("@")[1];
+    events.push({
+      kind: "F",
+      ref,
+      time: backup.backupTime,
+      desc: `${shortenPath(path)} ${hash}@${version}`
+    });
+  }
+}
+
+// src/timeline/filter.ts
+function dedup(events) {
+  const seen = new Set;
+  const result = [];
+  for (const e of events) {
+    const key = `${e.time}\x00${e.kind}\x00${e.desc}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(e);
+    }
+  }
+  return result;
+}
+function removeNoBackup(events) {
+  const groups = new Map;
+  for (const e of events) {
+    const group = groups.get(e.ref);
+    if (group) {
+      group.push(e);
+    } else {
+      groups.set(e.ref, [e]);
+    }
+  }
+  const result = [];
+  for (const group of groups.values()) {
+    const hasBackup = group.some((e) => e.desc.includes("@v"));
+    if (hasBackup) {
+      for (const e of group) {
+        if (!e.desc.includes("no-backup")) {
+          result.push(e);
+        }
+      }
+    } else {
+      result.push(...group);
+    }
+  }
+  return result.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+}
+function parseRangeMarker(s) {
+  if (s === "")
+    return { id: "", offset: 0 };
+  let rest = s;
+  if (/^[A-Z][a-f0-9]/.test(rest)) {
+    rest = rest.slice(1);
+  }
+  const offsetMatch = rest.match(/([+-]\d+)$/);
+  let offset = 0;
+  if (offsetMatch) {
+    offset = parseInt(offsetMatch[1], 10);
+    rest = rest.slice(0, -offsetMatch[1].length);
+  }
+  return { id: rest, offset };
+}
+function filterByRange(events, from, to) {
+  if (events.length === 0)
+    return [];
+  const fromMarker = parseRangeMarker(from);
+  const toMarker = parseRangeMarker(to);
+  let fromIdx;
+  if (fromMarker.id === "") {
+    fromIdx = 0;
+  } else {
+    const idx = events.findIndex((e) => e.ref.startsWith(fromMarker.id));
+    if (idx === -1) {
+      fromIdx = 0;
+    } else {
+      fromIdx = idx + fromMarker.offset;
+    }
+  }
+  let toIdx;
+  if (toMarker.id === "") {
+    toIdx = events.length - 1;
+  } else {
+    let lastIdx = -1;
+    for (let i = events.length - 1;i >= 0; i--) {
+      if (events[i].ref.startsWith(toMarker.id)) {
+        lastIdx = i;
+        break;
+      }
+    }
+    if (lastIdx === -1) {
+      toIdx = events.length - 1;
+    } else {
+      toIdx = lastIdx + toMarker.offset;
+    }
+  }
+  fromIdx = Math.max(0, Math.min(fromIdx, events.length - 1));
+  toIdx = Math.max(0, Math.min(toIdx, events.length - 1));
+  return events.slice(fromIdx, toIdx + 1);
+}
+function filterByType(events, types) {
+  return events.filter((e) => types.includes(e.kind));
+}
+function pipeline(events, opts) {
+  let result = dedup(events);
+  result = removeNoBackup(result);
+  result = result.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+  result = filterByRange(result, opts.from, opts.to);
+  result = filterByType(result, opts.types);
+  return result;
+}
+
+// src/timeline/format.ts
+function cleanTime(time) {
+  return time.split("_")[0];
+}
+var MARKER_RE = /([UTRFWBGASQDI])([0-9a-f]{8})/;
+var COLOR_MAP = {
+  U: { ansi: "\x1B[32m", emoji: "\uD83D\uDC64" },
+  T: { ansi: "\x1B[3;34m", emoji: "\uD83E\uDDE0" },
+  R: { ansi: "\x1B[34m", emoji: "\uD83E\uDD16" },
+  Q: { ansi: "\x1B[34m", emoji: "\uD83E\uDD16" },
+  B: { ansi: "\x1B[2m", emoji: "\u25B6\uFE0F" },
+  F: { ansi: "\x1B[2m", emoji: "\uD83D\uDC40" },
+  W: { ansi: "\x1B[2m", emoji: "\uD83D\uDEDC" },
+  S: { ansi: "\x1B[2m", emoji: "\u26A1\uFE0F" },
+  G: { ansi: "\x1B[2m", emoji: "\uD83D\uDD0D" },
+  A: { ansi: "\x1B[2m", emoji: "\uD83D\uDC7B" },
+  D: { ansi: "\x1B[2m", emoji: "\u2705" },
+  I: { ansi: "\x1B[2m", emoji: "\u2139\uFE0F" }
+};
+function colorize(line) {
+  const m = MARKER_RE.exec(line);
+  if (!m)
+    return line;
+  const kind = m[1];
+  const marker = m[0];
+  const idx = m.index;
+  const beforeMarker = line.slice(0, idx);
+  const afterMarker = line.slice(idx + marker.length);
+  const color = COLOR_MAP[kind];
+  if (!color)
+    return line;
+  let { ansi, emoji } = color;
+  if (kind === "F") {
+    if (afterMarker.includes("no-backup-") || /@v/.test(afterMarker)) {
+      emoji = "\uD83D\uDCDD";
+    } else {
+      emoji = "\uD83D\uDC40";
+    }
+  }
+  const prefix = kind === "U" ? `
+
+` : "";
+  return `${prefix}${ansi}${emoji} ${beforeMarker}${marker}${afterMarker}\x1B[0m`;
+}
+function formatEvent(event, opts) {
+  if (opts.rawMode > 0) {
+    return `${event.kind}${event.ref}`;
+  }
+  let desc = event.desc.replace(/\n/g, " ");
+  if (!event.notrunc) {
+    desc = truncate(desc, opts.width);
+  }
+  if (opts.timestamps) {
+    return `${cleanTime(event.time)} ${event.kind}${event.ref} ${desc}`;
+  }
+  return `${event.kind}${event.ref} ${desc}`;
+}
+function formatEvents(events, opts) {
+  const lines = events.map((e) => {
+    let line = formatEvent(e, opts);
+    if (opts.colors) {
+      line = colorize(line);
+    }
+    return line;
+  });
+  return lines.join(`
+`);
+}
+
+// src/timeline/index.ts
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    printUsage();
+    process.exit(0);
+  }
+  const sessionFile = await resolveSession(args.input);
+  const text = await Bun.file(sessionFile).text();
+  const entries = text.split(`
+`).filter((line) => line.trim()).map((line) => JSON.parse(line));
+  const events = extractEvents(entries);
+  const filtered = pipeline(events, {
+    types: args.types,
+    from: args.from,
+    to: args.to
+  });
+  const useColors = args.colors === "always" ? true : args.colors === "never" ? false : process.stdout.isTTY ?? false;
+  const output = formatEvents(filtered, {
+    rawMode: args.rawMode,
+    width: args.width,
+    timestamps: args.timestamps,
+    colors: useColors
+  });
+  await Bun.write(Bun.stdout, output + `
+`);
+}
+function printUsage() {
+  const prog = process.env._PROG || "timeline";
+  console.log(`Usage: ${prog} [options] <session_id_or_file> [range]
+
+Options:
+  -t <types>                  Filter by type (default: UTRFWBGASQDI)
+  -w <width>                  Truncation width (default: 55)
+  --timestamps                Show timestamps
+  --colors[=auto|always|never] Color output (default: auto)
+  --no-colors                 Disable colors
+  --raw                       Output markers only (for get-by-marker)
+  --raw2                      Output markers only (redact only)
+  --help, -h                  Show this help
+
+Types:
+  U=User T=Think R=Response F=File W=Web B=Bash
+  G=Grep/Glob A=Agent S=Skill Q=Question D=toDo I=Info
+
+Range:
+  ..marker    From start to marker
+  marker..    From marker to end
+  from..to    Between markers
+  marker      Single marker only`);
+}
+main().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});
