@@ -107,11 +107,75 @@ function truncate(str, width) {
     return str;
   return `${str.slice(0, width)}[+${str.length - width}]`;
 }
+function formatSize(bytes) {
+  if (bytes >= 1048576)
+    return `${(bytes / 1048576).toFixed(1)}M`;
+  if (bytes >= 1024)
+    return `${(bytes / 1024).toFixed(1)}K`;
+  return `${bytes}B`;
+}
+function omit(obj, keys) {
+  if (Array.isArray(obj)) {
+    return obj.map((item) => omit(item, keys));
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (!keys.includes(k)) {
+        result[k] = omit(v, keys);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+function redact(obj, keys) {
+  if (Array.isArray(obj)) {
+    return obj.map((item) => redact(item, keys));
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (keys.includes(k)) {
+        const size = JSON.stringify(v).length;
+        result[k] = `[omitted:${formatSize(size)}]`;
+      } else {
+        result[k] = redact(v, keys);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+function redactWithHint(obj, keys) {
+  if (Array.isArray(obj)) {
+    return obj.map((item) => redactWithHint(item, keys));
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (keys.includes(k)) {
+        const size = JSON.stringify(v).length;
+        result[k] = `[omitted:${formatSize(size)} --raw --no-redact]`;
+      } else {
+        result[k] = redactWithHint(v, keys);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
 function shortenPath(path, n = 2) {
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n)
     return path;
   return `\u2026/${segments.slice(-n).join("/")}`;
+}
+function lastSegments(path, n = 2) {
+  const segments = path.split("/").filter((s) => s !== "");
+  if (segments.length <= n)
+    return path;
+  return segments.slice(-n).join("/");
 }
 
 // src/timeline/extract.ts
@@ -187,7 +251,7 @@ function extractUserStringContent(content, ref, time, events) {
   if (content.startsWith("<") && content.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
-    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
     return;
   }
   events.push({ kind: "U", ref, time, desc: content });
@@ -214,7 +278,7 @@ function extractUserArrayContent(content, ref, time, events) {
     if (text.startsWith("<") && text.includes("<command-name>")) {
       const cmd = extractTag(text, "command-name");
       const args = extractTag(text, "command-args");
-      events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+      events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
       continue;
     }
     events.push({ kind: "U", ref, time, desc: text });
@@ -247,7 +311,7 @@ function extractToolUseEvent(block, ref, time, events) {
       kind: "F",
       ref,
       time,
-      desc: shortenPath(input.file_path)
+      desc: lastSegments(input.file_path)
     });
     return;
   }
@@ -256,7 +320,7 @@ function extractToolUseEvent(block, ref, time, events) {
       kind: "F",
       ref,
       time,
-      desc: `${shortenPath(input.file_path)} no-backup-${name.toLowerCase()}`
+      desc: `${lastSegments(input.file_path)} no-backup-${name.toLowerCase()}`
     });
     return;
   }
@@ -290,14 +354,10 @@ function extractToolUseEvent(block, ref, time, events) {
     return;
   }
   if (name === "Task") {
-    const description = input.description;
-    const prompt = input.prompt;
-    let desc = "";
-    if (description && prompt) {
-      desc = `${description}: ${prompt}`;
-    } else {
-      desc = description || prompt || "";
-    }
+    const blockId = (block.id || "").slice(-8);
+    const description = input.description || "";
+    const prompt = input.prompt || "";
+    const desc = `${blockId} ${description}: ${prompt}`;
     events.push({ kind: "A", ref, time, desc });
     return;
   }
@@ -349,7 +409,7 @@ function extractSystemEvents(entry, events) {
   if (content.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
-    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
   }
 }
 function extractFileSnapshotEvents(entry, sessionCwd, events) {
@@ -369,7 +429,7 @@ function extractFileSnapshotEvents(entry, sessionCwd, events) {
       kind: "F",
       ref,
       time: backup.backupTime,
-      desc: `${shortenPath(path)} ${hash}@${version}`
+      desc: `${lastSegments(path)} ${hash}@${version}`
     });
   }
 }
@@ -470,7 +530,7 @@ function filterByType(events, types) {
 function pipeline(events, opts) {
   let result = dedup(events);
   result = removeNoBackup(result);
-  result = result.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+  result = result.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : a.desc < b.desc ? -1 : a.desc > b.desc ? 1 : 0);
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
   return result;
@@ -546,6 +606,24 @@ function formatEvents(events, opts) {
 }
 
 // src/timeline/index.ts
+var OMIT_KEYS = [
+  "signature",
+  "isSidechain",
+  "userType",
+  "version",
+  "slug",
+  "requestId",
+  "sessionId",
+  "stop_reason",
+  "stop_sequence",
+  "usage",
+  "id",
+  "role",
+  "parentUuid",
+  "uuid",
+  "thinkingMetadata"
+];
+var REDACT_KEYS = ["data"];
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -554,14 +632,43 @@ async function main() {
   }
   const sessionFile = await resolveSession(args.input);
   const text = await Bun.file(sessionFile).text();
-  const entries = text.split(`
-`).filter((line) => line.trim()).map((line) => JSON.parse(line));
+  const rawLines = text.split(`
+`).filter((line) => line.trim());
+  const entries = rawLines.map((line) => JSON.parse(line));
   const events = extractEvents(entries);
   const filtered = pipeline(events, {
     types: args.types,
     from: args.from,
     to: args.to
   });
+  if (args.rawMode > 0) {
+    const parsed = rawLines.map((line) => JSON.parse(line));
+    const output2 = [];
+    for (const event of filtered) {
+      const marker = `${event.kind}${event.ref}`;
+      const id = marker.slice(1);
+      const matchType = marker[0];
+      const matches = parsed.filter((e) => {
+        if (matchType === "F") {
+          return (e.messageId || "").slice(0, 8) === id || (e.uuid || "").slice(0, 8) === id;
+        }
+        return (e.uuid || "").slice(0, 8) === id;
+      });
+      for (const entry of matches) {
+        let processed;
+        if (args.rawMode === 2) {
+          processed = redactWithHint(entry, REDACT_KEYS);
+        } else {
+          processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
+        }
+        output2.push(JSON.stringify(processed, null, 2));
+      }
+    }
+    await Bun.write(Bun.stdout, output2.join(`
+`) + `
+`);
+    return;
+  }
   const useColors = args.colors === "always" ? true : args.colors === "never" ? false : process.stdout.isTTY ?? false;
   const output = formatEvents(filtered, {
     rawMode: args.rawMode,

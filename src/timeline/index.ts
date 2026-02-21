@@ -4,7 +4,15 @@ import { resolveSession } from "../resolve-session.ts";
 import { extractEvents } from "./extract.ts";
 import { pipeline } from "./filter.ts";
 import { formatEvents } from "./format.ts";
+import { omit, redact, redactWithHint } from "../lib.ts";
 import type { SessionEntry } from "./types.ts";
+
+const OMIT_KEYS = [
+  "signature", "isSidechain", "userType", "version", "slug",
+  "requestId", "sessionId", "stop_reason", "stop_sequence",
+  "usage", "id", "role", "parentUuid", "uuid", "thinkingMetadata",
+];
+const REDACT_KEYS = ["data"];
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -19,10 +27,8 @@ async function main() {
 
   // JSONL読み込み
   const text = await Bun.file(sessionFile).text();
-  const entries: SessionEntry[] = text
-    .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line));
+  const rawLines = text.split("\n").filter((line) => line.trim());
+  const entries: SessionEntry[] = rawLines.map((line) => JSON.parse(line));
 
   // イベント抽出
   const events = extractEvents(entries);
@@ -33,6 +39,43 @@ async function main() {
     from: args.from,
     to: args.to,
   });
+
+  // --raw / --raw2: マーカーからエントリを検索して JSON 出力
+  if (args.rawMode > 0) {
+    // 全エントリを解析済みオブジェクトとして保持（uuid/messageId でルックアップ）
+    const parsed: Record<string, unknown>[] = rawLines.map((line) => JSON.parse(line));
+    const output: string[] = [];
+    for (const event of filtered) {
+      const marker = `${event.kind}${event.ref}`;
+      const id = marker.slice(1); // type prefix を除去
+      const matchType = marker[0];
+
+      // エントリ検索（複数マッチ対応）
+      const matches = parsed.filter((e: Record<string, unknown>) => {
+        if (matchType === "F") {
+          return (
+            ((e.messageId as string) || "").slice(0, 8) === id ||
+            ((e.uuid as string) || "").slice(0, 8) === id
+          );
+        }
+        return ((e.uuid as string) || "").slice(0, 8) === id;
+      });
+
+      for (const entry of matches) {
+        let processed: unknown;
+        if (args.rawMode === 2) {
+          // --raw2: redact with hint (no omit)
+          processed = redactWithHint(entry, REDACT_KEYS);
+        } else {
+          // --raw: omit + redact
+          processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
+        }
+        output.push(JSON.stringify(processed, null, 2));
+      }
+    }
+    await Bun.write(Bun.stdout, output.join("\n") + "\n");
+    return;
+  }
 
   // カラー判定
   const useColors =

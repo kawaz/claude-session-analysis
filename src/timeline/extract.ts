@@ -7,7 +7,7 @@ import type {
   SystemEntry,
   FileHistorySnapshotEntry,
 } from "./types.ts";
-import { shortenPath } from "../lib.ts";
+import { shortenPath, lastSegments } from "../lib.ts";
 
 // XMLタグの値を取得するヘルパー
 function extractTag(xml: string, tag: string): string {
@@ -105,7 +105,7 @@ function extractUserStringContent(
   if (content.startsWith("<") && content.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
-    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
     return;
   }
 
@@ -147,7 +147,7 @@ function extractUserArrayContent(
     if (text.startsWith("<") && text.includes("<command-name>")) {
       const cmd = extractTag(text, "command-name");
       const args = extractTag(text, "command-args");
-      events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+      events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
       continue;
     }
 
@@ -193,7 +193,7 @@ function extractToolUseEvent(
       kind: "F",
       ref,
       time,
-      desc: shortenPath(input.file_path as string),
+      desc: lastSegments(input.file_path as string),
     });
     return;
   }
@@ -204,7 +204,7 @@ function extractToolUseEvent(
       kind: "F",
       ref,
       time,
-      desc: `${shortenPath(input.file_path as string)} no-backup-${name.toLowerCase()}`,
+      desc: `${lastSegments(input.file_path as string)} no-backup-${name.toLowerCase()}`,
     });
     return;
   }
@@ -247,14 +247,10 @@ function extractToolUseEvent(
 
   // A (Agent/Task)
   if (name === "Task") {
-    const description = input.description as string | undefined;
-    const prompt = input.prompt as string | undefined;
-    let desc = "";
-    if (description && prompt) {
-      desc = `${description}: ${prompt}`;
-    } else {
-      desc = description || prompt || "";
-    }
+    const blockId = ((block.id as string) || "").slice(-8);
+    const description = (input.description as string) || "";
+    const prompt = (input.prompt as string) || "";
+    const desc = `${blockId} ${description}: ${prompt}`;
     events.push({ kind: "A", ref, time, desc });
     return;
   }
@@ -315,7 +311,7 @@ function extractSystemEvents(entry: SystemEntry, events: TimelineEvent[]): void 
   if (content.includes("<command-name>")) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
-    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}`.trim() });
+    events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
   }
 }
 
@@ -341,7 +337,7 @@ function extractFileSnapshotEvents(
       kind: "F",
       ref,
       time: backup.backupTime,
-      desc: `${shortenPath(path)} ${hash}@${version}`,
+      desc: `${lastSegments(path)} ${hash}@${version}`,
     });
   }
 }

@@ -169,7 +169,7 @@ describe("F (File) events", () => {
       kind: "F",
       ref: "ddeeff00",
       time: "2025-01-01T00:05:00Z",
-      desc: "\u2026/src/foo.ts abcdef12@v1",
+      desc: "src/foo.ts abcdef12@v1",
     });
   });
 
@@ -187,7 +187,7 @@ describe("F (File) events", () => {
     const fEvents = events.filter((e) => e.kind === "F");
     expect(fEvents).toHaveLength(1);
     // /home/user/project/src/bar.ts -> .../src/bar.ts
-    expect(fEvents[0].desc).toBe("\u2026/src/bar.ts 11223344@v2");
+    expect(fEvents[0].desc).toBe("src/bar.ts 11223344@v2");
   });
 
   test("Read tool_use", () => {
@@ -203,7 +203,7 @@ describe("F (File) events", () => {
       kind: "F",
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
-      desc: "\u2026/src/main.ts",
+      desc: "src/main.ts",
     });
   });
 
@@ -220,7 +220,7 @@ describe("F (File) events", () => {
       kind: "F",
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
-      desc: "\u2026/project/out.txt no-backup-write",
+      desc: "project/out.txt no-backup-write",
     });
   });
 });
@@ -340,13 +340,13 @@ describe("A (Agent/Task) events", () => {
   test("Task", () => {
     const entries: SessionEntry[] = [
       mkAssistant([
-        { type: "tool_use", name: "Task", input: { description: "analyze code", prompt: "find bugs" } },
+        { type: "tool_use", name: "Task", id: "toolu_01AbCdEfGhIjKlMnOpQrStUv", input: { description: "analyze code", prompt: "find bugs" } },
       ]),
     ];
     const events = extractEvents(entries);
     const aEvents = events.filter((e) => e.kind === "A");
     expect(aEvents).toHaveLength(1);
-    expect(aEvents[0].desc).toBe("analyze code: find bugs");
+    expect(aEvents[0].desc).toBe("OpQrStUv analyze code: find bugs");
   });
 
   test("TaskOutput", () => {

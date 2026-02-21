@@ -134,7 +134,13 @@ export function pipeline(
 ): TimelineEvent[] {
   let result = dedup(events);
   result = removeNoBackup(result);
-  result = result.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+  // jq の group_by(.ref) | flatten | sort_by(.time) + unique_by に合わせ、
+  // 同一 time のイベントは ref, desc の辞書順で安定させる
+  result = result.sort((a, b) =>
+    a.time < b.time ? -1 : a.time > b.time ? 1 :
+    a.ref < b.ref ? -1 : a.ref > b.ref ? 1 :
+    a.desc < b.desc ? -1 : a.desc > b.desc ? 1 : 0
+  );
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
   return result;
