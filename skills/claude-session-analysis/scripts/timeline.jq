@@ -1,6 +1,6 @@
 # Show session timeline with type filtering
-# Usage: jq -rsf timeline.jq --arg types "UTF" --argjson width 55 --arg from "" --arg to "" "$SESSION_FILE"
-# Types: U=User, T=Think, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo, C=Compact
+# Usage: jq -rsf timeline.jq --arg types "UTF" --argjson width 55 --arg from "" --arg to "" --argjson raw 0 "$SESSION_FILE"
+# Types: U=User, T=Think, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo, I=Info
 
 def truncate($w):
   if $w <= 0 then .
@@ -33,12 +33,13 @@ def format_time:
     else "--------" end
   end;
 
+. as $all |
 [
   # F: File operations (Write/Edit with backup)
-  (. as $all |
+  ($all | . as $data |
     # Get first cwd from session
-    ([$all[] | objects | select(.cwd != null and .cwd != "") | .cwd][0] // "") as $session_cwd |
-    $all[] | objects | select(.type=="file-history-snapshot") | select(.snapshot.trackedFileBackups | to_entries | length > 0) |
+    ([$data[] | objects | select(.cwd != null and .cwd != "") | .cwd][0] // "") as $session_cwd |
+    $data[] | objects | select(.type=="file-history-snapshot") | select(.snapshot.trackedFileBackups | to_entries | length > 0) |
     . as $snap |
     .snapshot.trackedFileBackups | to_entries[] | select(.value.backupFileName) |
     (if .key | startswith("/") then .key else ($session_cwd + "/" + .key) end) as $fullpath |
@@ -50,7 +51,7 @@ def format_time:
     }
   ),
   # F: File Read (from tool_use, with index for ordering)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content | to_entries[] |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content | to_entries[] |
     select(.value.type=="tool_use" and .value.name == "Read") |
     (.value.input.file_path) as $path | {
       time: "\($a.timestamp)_\(.key | tostring | "00000"[:-(.| tostring | length)] + (. | tostring))",
@@ -60,7 +61,7 @@ def format_time:
     }
   ),
   # F: File Write/Edit without backup (from tool_use)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content | to_entries[] |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content | to_entries[] |
     select(.value.type=="tool_use" and (.value.name == "Write" or .value.name == "Edit")) |
     (.value.input.file_path) as $path | {
       time: "\($a.timestamp)_\(.key | tostring | "00000"[:-(.| tostring | length)] + (. | tostring))",
@@ -69,8 +70,8 @@ def format_time:
       ref: $a.uuid[:8]
     }
   ),
-  # U: User message (string content)
-  (.[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string")) | {
+  # U: User message (string content, exclude [Request interrupted)
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | startswith("[Request interrupted") | not)) | {
     time: .timestamp,
     kind: "U",
     desc: (if ((.message.content | gsub("^\\s+|\\s+$"; "")) | startswith("<") and endswith(">") and test("<command-name>")) then
@@ -80,9 +81,9 @@ def format_time:
     else .message.content end),
     ref: .uuid[:8]
   }),
-  # U: User message (array content - for agent sessions, exclude tool_result)
-  (.[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
-    (.message.content[] | select(.type == "text")) as $c | {
+  # U: User message (array content - for agent sessions, exclude tool_result and [Request interrupted)
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
+    (.message.content[] | select(.type == "text" and (.text | startswith("[Request interrupted") | not))) as $c | {
       time: .timestamp,
       kind: "U",
       desc: $c.text,
@@ -90,7 +91,7 @@ def format_time:
     }
   ),
   # U: System local_command (slash commands like /status)
-  (.[] | objects | select(.type=="system" and (.content | type == "string") and ((.content | gsub("^\\s+|\\s+$"; "")) | startswith("<") and endswith(">") and test("<command-name>"))) | {
+  ($all[] | objects | select(.type=="system" and (.content | type == "string") and ((.content | gsub("^\\s+|\\s+$"; "")) | startswith("<") and endswith(">") and test("<command-name>"))) | {
     time: .timestamp,
     kind: "U",
     desc: (((.content | capture("<command-name>(?<cmd>[^<]+)</command-name>") | .cmd) // "") +
@@ -99,21 +100,21 @@ def format_time:
     ref: .uuid[:8]
   }),
   # T: Think (assistant thinking)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? | select(.type=="thinking") | {
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? | select(.type=="thinking") | {
       time: $a.timestamp,
       kind: "T",
       desc: .thinking,
       ref: $a.uuid[:8]
   }),
   # R: Response (assistant text output, skip whitespace-only)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? | select(.type=="text" and (.text | gsub("\\s"; "") | length > 0)) | {
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? | select(.type=="text" and (.text | gsub("\\s"; "") | length > 0)) | {
       time: $a.timestamp,
       kind: "R",
       desc: .text,
       ref: $a.uuid[:8]
   }),
   # W: Web (WebFetch, WebSearch)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and (.name == "WebFetch" or .name == "WebSearch")) | {
       time: $a.timestamp,
       kind: "W",
@@ -123,22 +124,22 @@ def format_time:
     }
   ),
   # B: Bash
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and (.name == "Bash" or .name == "BashOutput")) | {
       time: $a.timestamp,
       kind: "B",
       desc: ((.input.command // .input.description // "") |
-        # Shorten full path commands: /a/b/c/d/prog arg -> …/d/prog arg
+        # Shorten full path commands: /a/b/c/d/prog arg -> .../d/prog arg
         if startswith("/") then
           (split(" ") | .[0]) as $cmd | (split(" ")[1:] | join(" ")) as $args |
           ($cmd | split("/")[-2:] | join("/")) as $short |
-          "…/\($short)\(if $args != "" then " \($args)" else "" end)"
+          "\u2026/\($short)\(if $args != "" then " \($args)" else "" end)"
         else . end),
       ref: $a.uuid[:8]
     }
   ),
   # G: Grep/Glob
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and (.name == "Grep" or .name == "Glob")) | {
       time: $a.timestamp,
       kind: "G",
@@ -147,7 +148,7 @@ def format_time:
     }
   ),
   # A: Agent (Task)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and (.name == "Task" or .name == "TaskOutput")) | {
       time: $a.timestamp,
       kind: "A",
@@ -156,7 +157,7 @@ def format_time:
     }
   ),
   # S: Skill
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and .name == "Skill") | {
       time: $a.timestamp,
       kind: "S",
@@ -165,7 +166,7 @@ def format_time:
     }
   ),
   # Q: Question (AskUserQuestion)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and .name == "AskUserQuestion") | {
       time: $a.timestamp,
       kind: "Q",
@@ -174,7 +175,7 @@ def format_time:
     }
   ),
   # D: toDo (TodoWrite)
-  (.[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
+  ($all[] | objects | select(.type=="assistant") as $a | $a.message.content[]? |
     select(.type=="tool_use" and .name == "TodoWrite") | {
       time: $a.timestamp,
       kind: "D",
@@ -182,11 +183,25 @@ def format_time:
       ref: $a.uuid[:8]
     }
   ),
-  # C: Compact (auto-compact summary)
-  (.[] | objects | select(.type=="user" and .isCompactSummary == true) | {
+  # I: Info (system-like messages in user type)
+  ($all[] | objects | select(.type=="user" and .isCompactSummary == true) | {
     time: .timestamp,
-    kind: "C",
+    kind: "I",
     desc: "[auto-compact]",
+    ref: .uuid[:8]
+  }),
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
+    (.message.content[] | select(.type == "text" and (.text | startswith("[Request interrupted")))) as $c | {
+      time: .timestamp,
+      kind: "I",
+      desc: $c.text,
+      ref: .uuid[:8]
+    }
+  ),
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | startswith("[Request interrupted"))) | {
+    time: .timestamp,
+    kind: "I",
+    desc: .message.content,
     ref: .uuid[:8]
   })
 ] | map(select(type == "object" and .kind != null)) | sort_by(.time) | unique_by([.time,.kind,.desc]) |
@@ -212,12 +227,16 @@ else (length - 1) end) as $to_idx |
 ([([$to_idx, 0] | max), (length - 1)] | min) as $to_clamped |
 .[$from_clamped:$to_clamped + 1] |
 
-# Output with type filter and truncation
+# Output
 .[] |
 select(.kind as $k | $types | contains($k)) |
-(if .notrunc then .desc else (.desc | gsub("\n"; " ") | truncate($width)) end) as $desc_part |
-if $timestamps then
-  "\(.time | format_time) \(.kind)\(.ref) \($desc_part)"
+if $raw > 0 then
+  "\(.kind)\(.ref)"
 else
-  "\(.kind)\(.ref) \($desc_part)"
+  (if .notrunc then .desc else (.desc | gsub("\n"; " ") | truncate($width)) end) as $desc_part |
+  if $timestamps then
+    "\(.time | format_time) \(.kind)\(.ref) \($desc_part)"
+  else
+    "\(.kind)\(.ref) \($desc_part)"
+  end
 end

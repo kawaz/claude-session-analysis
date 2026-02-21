@@ -1,77 +1,62 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Show session timeline
-# Usage: timeline.sh [-t <types>] [-w <width>] [--timestamps] [--colors[=auto|always|never]] <session_id_or_file> [range]
-# Types: U=User, T=Think, R=Response, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo, C=Compact
-# Default: all types (UTRFWBGASQDC)
+# Usage: timeline.sh [-t <types>] [-w <width>] [--timestamps] [--colors[=auto|always|never]] [--raw|--raw2] <session_id_or_file> [range]
+# Types: U=User, T=Think, R=Response, F=File, W=Web, B=Bash, G=Grep, A=Agent, S=Skill, Q=Question, D=toDo, I=Info
+# Default: all types (UTRFWBGASQDI)
 # Range: ..marker (from start), marker.. (to end), marker..marker (between)
 #   Markers support offset: marker-N, marker+N
 
 SCRIPT_DIR="$(dirname "$0")"
-TYPES="UTRFWBGASQDC"
+TYPES="UTRFWBGASQDI"
 WIDTH=55
 TIMESTAMPS=false
 COLORS=auto
+RAW_MODE=0
 
-USAGE="Usage: ${_PROG:-$0} [-t <types>] [-w <width>] [--timestamps] [--colors[=auto|always|never]] <session_id_or_file> [range]"
-
-if [[ "${1:-}" == "--help" ]]; then
+show_help() {
   cat <<EOF
-$USAGE
+Usage: ${_PROG:-$0} [-t <types>] [-w <width>] [--timestamps] [--colors[=auto|always|never]] [--raw|--raw2] <session_id_or_file> [range]
 
-Types (default: UTRFWBGASQDC):
+Types (default: UTRFWBGASQDI):
   U=User  T=Think  R=Response  F=File    W=Web
   B=Bash  G=Grep   A=Agent     S=Skill   Q=Question
-  D=toDo  C=Compact
+  D=toDo  I=Info
 
 Range: ..marker, marker.., marker..marker
   Markers support offset: marker-N, marker+N
   Example: Uefb128a2-2..Uefb128a2+2
-EOF
-  exit 0
-fi
 
-# Parse long options first, collect remaining args
-ARGS=()
+Options:
+  --raw       Output raw JSON (omit + redact)
+  --raw2      Output raw JSON (redact only)
+  --timestamps  Show timestamps
+  --colors[=auto|always|never]  Color output
+  --no-colors   Disable colors
+EOF
+}
+
+# Parse all options with while loop (position-free)
+POS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --timestamps)
-      TIMESTAMPS=true
-      shift
-      ;;
-    --colors)
-      COLORS=auto
-      shift
-      ;;
-    --colors=*)
-      COLORS="${1#--colors=}"
-      shift
-      ;;
-    --no-colors)
-      COLORS=never
-      shift
-      ;;
-    *)
-      ARGS+=("$1")
-      shift
-      ;;
+    --help) show_help; exit 0 ;;
+    --timestamps) TIMESTAMPS=true; shift ;;
+    --raw) RAW_MODE=1; shift ;;
+    --raw2) RAW_MODE=2; shift ;;
+    --colors) COLORS=always; shift ;;
+    --colors=*) COLORS="${1#--colors=}"; shift ;;
+    --no-colors) COLORS=never; shift ;;
+    -t) TYPES="${2:?-t requires argument}"; shift 2 ;;
+    -w) WIDTH="${2:?-w requires argument}"; shift 2 ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
+    *) POS+=("$1"); shift ;;
   esac
 done
+INPUT="${POS[0]:-}"
+RANGE="${POS[1]:-}"
 
-# Restore positional args for getopts
-set -- "${ARGS[@]+"${ARGS[@]}"}"
-
-while getopts "t:w:" opt; do
-  case $opt in
-    t) TYPES="$OPTARG" ;;
-    w) WIDTH="$OPTARG" ;;
-    *) echo "$USAGE" >&2; exit 1 ;;
-  esac
-done
-shift $((OPTIND - 1))
-
-INPUT="${1:-}"
-RANGE="${2:-}"
+USAGE="Usage: ${_PROG:-$0} [-t <types>] [-w <width>] [--timestamps] [--colors[=auto|always|never]] [--raw|--raw2] <session_id_or_file> [range]"
 
 if [[ -z "$INPUT" ]]; then
   echo "$USAGE" >&2
@@ -115,27 +100,35 @@ else
   COLORS=false
 fi
 
-# Colorize output by type character
+# Colorize output by type character with emoji
 colorize() {
   awk '
   {
-    # Detect type character: match TypeChar + 8 hex digits pattern
-    if (match($0, /[UTRFWBGASQDC][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/)) {
+    if (match($0, /[UTRFWBGASQDI][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/)) {
       t = substr($0, RSTART, 1)
-      if      (t == "U") c = "\033[32m"
-      else if (t == "T") c = "\033[90m"
-      else if (t == "R") c = "\033[0m"
-      else if (t == "F") c = "\033[33m"
-      else if (t == "W") c = "\033[36m"
-      else if (t == "B") c = "\033[35m"
-      else if (t == "G") c = "\033[35m"
-      else if (t == "A") c = "\033[34m"
-      else if (t == "S") c = "\033[34m"
-      else if (t == "Q") c = "\033[92m"
-      else if (t == "D") c = "\033[93m"
-      else if (t == "C") c = "\033[90m"
-      else                c = ""
-      printf "%s%s\033[0m\n", c, $0
+      marker = substr($0, RSTART, 9)
+      before = substr($0, 1, RSTART-1)
+      after = substr($0, RSTART+9)
+
+      if      (t == "U") { c = "\033[32m"; e = "\xF0\x9F\x91\xA4" }
+      else if (t == "T") { c = "\033[2;34m"; e = "\xF0\x9F\xA7\xA0" }
+      else if (t == "R") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
+      else if (t == "Q") { c = "\033[34m"; e = "\xF0\x9F\xA4\x96" }
+      else if (t == "B") { c = "\033[2;35m"; e = "\xF0\x9F\x9A\x97" }
+      else if (t == "F") {
+        c = "\033[2;35m"
+        if (index($0, "no-backup-") || match($0, /@v/)) e = "\xF0\x9F\x93\x9D"
+        else e = "\xF0\x9F\x91\x80"
+      }
+      else if (t == "W") { c = "\033[2;35m"; e = "\xF0\x9F\x9B\x9C" }
+      else if (t == "S") { c = "\033[2;35m"; e = "\xE2\x9A\xA1\xEF\xB8\x8F" }
+      else if (t == "G") { c = "\033[2;35m"; e = "\xF0\x9F\x94\x8D" }
+      else if (t == "A") { c = "\033[2;35m"; e = "\xF0\x9F\x91\xBB" }
+      else if (t == "D") { c = "\033[2;35m"; e = "\xE2\x9C\x85" }
+      else if (t == "I") { c = "\033[2m"; e = "\xE2\x84\xB9\xEF\xB8\x8F" }
+      else { c = ""; e = "" }
+
+      printf "%s%s%s%s%s\033[0m\n", c, before, marker, e, after
     } else {
       print
     }
@@ -150,10 +143,17 @@ jq_output() {
     --arg from "$FROM" \
     --arg to "$TO" \
     --argjson timestamps "$TIMESTAMPS" \
+    --argjson raw "$RAW_MODE" \
     "$SESSION_FILE"
 }
 
-if [[ "$COLORS" == "true" ]]; then
+if [[ "$RAW_MODE" -gt 0 ]]; then
+  raw_flag=""
+  [[ "$RAW_MODE" -eq 2 ]] && raw_flag="--raw"
+  jq_output | while IFS= read -r line; do
+    "$SCRIPT_DIR/get-by-marker.sh" $raw_flag "$SESSION_FILE" "$line"
+  done
+elif [[ "$COLORS" == "true" ]]; then
   jq_output | colorize
 else
   jq_output
