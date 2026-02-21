@@ -1,0 +1,108 @@
+#!/usr/bin/env bun
+// @bun
+
+// src/resolve-session.ts
+async function resolveSession(input) {
+  if (await Bun.file(input).exists()) {
+    return input;
+  }
+  if (!/^[a-f0-9-]+$/.test(input)) {
+    throw new Error(`Invalid session ID: ${input}`);
+  }
+  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const defaultDir = `${process.env.HOME}/.claude`;
+  const searchDirs = [];
+  if (configDir) {
+    searchDirs.push(configDir);
+    if (configDir !== defaultDir) {
+      searchDirs.push(defaultDir);
+    }
+  } else {
+    searchDirs.push(defaultDir);
+  }
+  const glob = new Bun.Glob(`projects/*/${input}*.jsonl`);
+  for (const dir of searchDirs) {
+    for (const match of glob.scanSync(dir)) {
+      return `${dir}/${match}`;
+    }
+  }
+  const searched = searchDirs.map((d) => `${d}/projects/*/`).join(", ");
+  throw new Error(`Session not found: ${input}
+  Searched in: ${searched}
+  Hint: Use a full session ID or provide a direct file path`);
+}
+
+// src/file-ops/extract.ts
+var FILE_OPS_TOOLS = new Set(["Read", "Write", "Edit"]);
+function extractFileOps(entries) {
+  const readSet = new Set;
+  const writeSet = new Set;
+  for (const entry of entries) {
+    if (entry.type !== "assistant")
+      continue;
+    const message = entry.message;
+    if (!message)
+      continue;
+    const content = message.content;
+    if (!Array.isArray(content))
+      continue;
+    for (const block of content) {
+      if (block.type !== "tool_use")
+        continue;
+      const name = block.name;
+      if (!FILE_OPS_TOOLS.has(name))
+        continue;
+      const input = block.input;
+      if (!input)
+        continue;
+      const filePath = input.file_path;
+      if (!filePath)
+        continue;
+      const tool = name === "Edit" ? "Write" : name;
+      if (tool === "Read") {
+        readSet.add(filePath);
+      } else {
+        writeSet.add(filePath);
+      }
+    }
+  }
+  const result = {};
+  if (readSet.size > 0)
+    result.Read = [...readSet].sort();
+  if (writeSet.size > 0)
+    result.Write = [...writeSet].sort();
+  return result;
+}
+function extractFileOpsFromJsonl(jsonl) {
+  const entries = [];
+  for (const line of jsonl.split(`
+`)) {
+    if (!line.trim())
+      continue;
+    try {
+      entries.push(JSON.parse(line));
+    } catch {}
+  }
+  return extractFileOps(entries);
+}
+
+// src/file-ops/index.ts
+async function main() {
+  const input = process.argv[2];
+  if (!input || input === "--help") {
+    const prog = process.env._PROG || "file-ops";
+    console.log(`Usage: ${prog} <session_id_or_file>`);
+    if (!input)
+      process.exit(1);
+    return;
+  }
+  const sessionFile = await resolveSession(input);
+  const text = await Bun.file(sessionFile).text();
+  const result = extractFileOpsFromJsonl(text);
+  await Bun.write(Bun.stdout, JSON.stringify(result, null, 2) + `
+`);
+}
+main().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});

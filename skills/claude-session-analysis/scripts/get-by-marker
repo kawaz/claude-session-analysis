@@ -1,0 +1,231 @@
+#!/usr/bin/env bun
+// @bun
+
+// src/resolve-session.ts
+async function resolveSession(input) {
+  if (await Bun.file(input).exists()) {
+    return input;
+  }
+  if (!/^[a-f0-9-]+$/.test(input)) {
+    throw new Error(`Invalid session ID: ${input}`);
+  }
+  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const defaultDir = `${process.env.HOME}/.claude`;
+  const searchDirs = [];
+  if (configDir) {
+    searchDirs.push(configDir);
+    if (configDir !== defaultDir) {
+      searchDirs.push(defaultDir);
+    }
+  } else {
+    searchDirs.push(defaultDir);
+  }
+  const glob = new Bun.Glob(`projects/*/${input}*.jsonl`);
+  for (const dir of searchDirs) {
+    for (const match of glob.scanSync(dir)) {
+      return `${dir}/${match}`;
+    }
+  }
+  const searched = searchDirs.map((d) => `${d}/projects/*/`).join(", ");
+  throw new Error(`Session not found: ${input}
+  Searched in: ${searched}
+  Hint: Use a full session ID or provide a direct file path`);
+}
+
+// src/lib.ts
+function formatSize(bytes) {
+  if (bytes >= 1048576)
+    return `${(Math.floor(bytes / 1048576 * 10) / 10).toFixed(1)}M`;
+  if (bytes >= 1024)
+    return `${(Math.floor(bytes / 1024 * 10) / 10).toFixed(1)}K`;
+  return `${bytes}B`;
+}
+function omit(obj, keys) {
+  if (Array.isArray(obj)) {
+    return obj.map((item) => omit(item, keys));
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (!keys.includes(k)) {
+        result[k] = omit(v, keys);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+function redact(obj, keys) {
+  if (Array.isArray(obj)) {
+    return obj.map((item) => redact(item, keys));
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (keys.includes(k)) {
+        const size = typeof v === "string" ? v.length : JSON.stringify(v).length;
+        result[k] = `[omitted:${formatSize(size)}]`;
+      } else {
+        result[k] = redact(v, keys);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+function redactWithHint(obj, keys) {
+  if (Array.isArray(obj)) {
+    return obj.map((item) => redactWithHint(item, keys));
+  }
+  if (obj !== null && typeof obj === "object") {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (keys.includes(k)) {
+        const size = typeof v === "string" ? v.length : JSON.stringify(v).length;
+        result[k] = `[omitted:${formatSize(size)} --raw --no-redact]`;
+      } else {
+        result[k] = redactWithHint(v, keys);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+
+// src/get-by-marker/extract.ts
+function parseMarker(marker) {
+  const type = marker.replace(/[a-f0-9].*$/, "");
+  const id = marker.slice(type.length);
+  return { type, id };
+}
+function matchesEntry(entry, type, id) {
+  if (type === "F") {
+    const uuid2 = (entry.uuid || "").slice(0, id.length);
+    const messageId = (entry.messageId || "").slice(0, id.length);
+    return uuid2 === id || messageId === id;
+  }
+  const uuid = (entry.uuid || "").slice(0, id.length);
+  return uuid === id;
+}
+function hasIdentifier(entry) {
+  return Boolean(entry.uuid || entry.messageId);
+}
+function findEntries(entries, type, id) {
+  return entries.filter((entry) => matchesEntry(entry, type, id));
+}
+function findEntriesWithContext(entries, type, id, before, after) {
+  const indexable = entries.filter(hasIdentifier);
+  const matchIdx = indexable.findIndex((entry) => matchesEntry(entry, type, id));
+  if (matchIdx === -1)
+    return [];
+  const start = Math.max(matchIdx - before, 0);
+  const end = Math.min(matchIdx + after, indexable.length - 1);
+  return indexable.slice(start, end + 1);
+}
+
+// src/get-by-marker/index.ts
+var OMIT_KEYS = [
+  "signature",
+  "isSidechain",
+  "userType",
+  "version",
+  "slug",
+  "requestId",
+  "sessionId",
+  "stop_reason",
+  "stop_sequence",
+  "usage",
+  "id",
+  "role",
+  "parentUuid",
+  "uuid",
+  "thinkingMetadata"
+];
+var REDACT_KEYS = ["data"];
+async function main() {
+  let rawMode = 0;
+  let after = 0;
+  let before = 0;
+  const argv = process.argv.slice(2);
+  const positional = [];
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === "--help") {
+      printUsage();
+      return;
+    } else if (arg === "--raw") {
+      rawMode = 1;
+      i++;
+    } else if (arg === "--raw2") {
+      rawMode = 2;
+      i++;
+    } else if (arg === "-A") {
+      after = Number(argv[i + 1]);
+      i += 2;
+    } else if (arg === "-B") {
+      before = Number(argv[i + 1]);
+      i += 2;
+    } else if (arg === "-C") {
+      after = Number(argv[i + 1]);
+      before = Number(argv[i + 1]);
+      i += 2;
+    } else if (arg.startsWith("-")) {
+      console.error(`Unknown option: ${arg}`);
+      process.exit(1);
+    } else {
+      positional.push(arg);
+      i++;
+    }
+  }
+  const input = positional[0];
+  const marker = positional[1];
+  if (!input || !marker) {
+    printUsage();
+    process.exit(1);
+  }
+  const sessionFile = await resolveSession(input);
+  const text = await Bun.file(sessionFile).text();
+  const rawLines = text.split(`
+`).filter((line) => line.trim());
+  const entries = [];
+  for (const line of rawLines) {
+    try {
+      entries.push(JSON.parse(line));
+    } catch {}
+  }
+  const { type, id } = parseMarker(marker);
+  let result;
+  if (before > 0 || after > 0) {
+    result = findEntriesWithContext(entries, type, id, before, after);
+  } else {
+    result = findEntries(entries, type, id);
+  }
+  if (result.length === 0) {
+    console.error(`Not found: ${marker}`);
+    process.exit(1);
+  }
+  const output = [];
+  for (const entry of result) {
+    let processed;
+    if (rawMode === 2) {
+      processed = redactWithHint(omit(entry, OMIT_KEYS), REDACT_KEYS);
+    } else if (rawMode === 1) {
+      processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
+    } else {
+      processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
+    }
+    output.push(JSON.stringify(processed, null, 2));
+  }
+  await Bun.write(Bun.stdout, output.join(`
+`) + `
+`);
+}
+function printUsage() {
+  const prog = process.env._PROG || "get-by-marker";
+  console.log(`Usage: ${prog} [--raw] [--raw2] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>`);
+}
+main().catch((err) => {
+  console.error(err.message);
+  process.exit(1);
+});
