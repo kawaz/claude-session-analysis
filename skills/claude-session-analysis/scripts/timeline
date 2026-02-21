@@ -25,6 +25,8 @@ function parseArgs(argv) {
     input: "",
     from: "",
     to: "",
+    mdMode: "off",
+    emoji: "auto",
     help: false
   };
   const positional = [];
@@ -46,6 +48,8 @@ function parseArgs(argv) {
       result.width = w;
     } else if (arg === "--timestamps") {
       result.timestamps = true;
+    } else if (arg === "--no-timestamps") {
+      result.timestamps = false;
     } else if (arg === "--colors") {
       result.colors = "always";
     } else if (arg.startsWith("--colors=")) {
@@ -57,6 +61,14 @@ function parseArgs(argv) {
       result.colors = value;
     } else if (arg === "--no-colors") {
       result.colors = "never";
+    } else if (arg === "--md-render") {
+      result.mdMode = "render";
+    } else if (arg === "--md-source") {
+      result.mdMode = "source";
+    } else if (arg === "--emoji") {
+      result.emoji = "always";
+    } else if (arg === "--no-emoji") {
+      result.emoji = "never";
     } else if (arg === "--raw") {
       result.rawMode = 1;
     } else if (arg === "--raw2") {
@@ -565,7 +577,11 @@ var COLOR_MAP = {
   D: { ansi: "\x1B[2m", emoji: "\u2705" },
   I: { ansi: "\x1B[2m", emoji: "\u2139\uFE0F" }
 };
-function colorize(line) {
+function colorize(line, opts) {
+  const useColors = opts?.colors ?? true;
+  const useEmoji = opts?.emoji ?? true;
+  if (!useColors && !useEmoji)
+    return line;
   const m = MARKER_RE.exec(line);
   if (!m)
     return line;
@@ -585,20 +601,31 @@ function colorize(line) {
       emoji = "\uD83D\uDC40";
     }
   }
+  const emojiPrefix = useEmoji ? `${emoji} ` : "";
+  const ansiStart = useColors ? ansi : "";
+  const ansiEnd = useColors ? "\x1B[0m" : "";
   if (kind === "U") {
-    return `${ansi}
+    return `${ansiStart}
 
-${emoji} ${beforeMarker}${marker}${afterMarker}\x1B[0m`;
+${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
   }
-  return `${ansi}${emoji} ${beforeMarker}${marker}${afterMarker}\x1B[0m`;
+  return `${ansiStart}${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
 }
+var QTRU_KINDS = new Set(["Q", "T", "R", "U"]);
 function formatEvent(event, opts) {
   if (opts.rawMode > 0) {
     return `${event.kind}${event.ref}`;
   }
+  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  if (isMd && QTRU_KINDS.has(event.kind)) {
+    if (opts.timestamps) {
+      return `${cleanTime(event.time)} ${event.kind}${event.ref}`;
+    }
+    return `${event.kind}${event.ref}`;
+  }
   let desc;
-  if (event.notrunc) {
-    desc = event.desc;
+  if (isMd || event.notrunc) {
+    desc = event.notrunc ? event.desc : event.desc.replace(/\n/g, " ");
   } else {
     desc = truncate(event.desc.replace(/\n/g, " "), opts.width);
   }
@@ -608,14 +635,24 @@ function formatEvent(event, opts) {
   return `${event.kind}${event.ref} ${desc}`;
 }
 function formatEvents(events, opts) {
-  const lines = events.map((e) => {
+  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  const needColorize = opts.colors || opts.emoji;
+  const output = [];
+  for (const e of events) {
     let line = formatEvent(e, opts);
-    if (opts.colors) {
-      line = colorize(line);
+    if (needColorize) {
+      line = colorize(line, { colors: opts.colors, emoji: opts.emoji });
     }
-    return line;
-  });
-  return lines.join(`
+    if (isMd && QTRU_KINDS.has(e.kind)) {
+      output.push(line);
+      output.push("");
+      output.push(e.desc);
+      output.push("");
+    } else {
+      output.push(line);
+    }
+  }
+  return output.join(`
 `);
 }
 
@@ -689,12 +726,33 @@ async function main() {
     return;
   }
   const useColors = args.colors === "always" ? true : args.colors === "never" ? false : process.stdout.isTTY ?? false;
+  const useEmoji = args.emoji === "always" ? true : args.emoji === "never" ? false : useColors;
+  const timestamps = args.mdMode !== "off" && !process.argv.slice(2).includes("--no-timestamps") ? true : args.timestamps;
   const output = formatEvents(filtered, {
     rawMode: args.rawMode,
     width: args.width,
-    timestamps: args.timestamps,
-    colors: useColors
+    timestamps,
+    colors: useColors,
+    emoji: useEmoji,
+    mdMode: args.mdMode
   });
+  if (args.mdMode === "render") {
+    const which = Bun.spawnSync(["which", "mdp"]);
+    if (which.exitCode !== 0) {
+      console.error("Error: mdp not found. Install mdp to use --md-render.");
+      process.exit(1);
+    }
+    const proc = Bun.spawn(["mdp"], {
+      stdin: "pipe",
+      stdout: "inherit",
+      stderr: "inherit"
+    });
+    proc.stdin.write(output + `
+`);
+    proc.stdin.end();
+    await proc.exited;
+    return;
+  }
   await Bun.write(Bun.stdout, output + `
 `);
 }
@@ -706,8 +764,13 @@ Options:
   -t <types>                  Filter by type (default: UTRFWBGASQDI)
   -w <width>                  Truncation width (default: 55)
   --timestamps                Show timestamps
+  --no-timestamps             Disable timestamps (overrides md default)
   --colors[=auto|always|never] Color output (default: auto)
   --no-colors                 Disable colors
+  --emoji                     Always show emoji
+  --no-emoji                  Never show emoji
+  --md-source                 Full text output for Q/T/R/U events
+  --md-render                 Full text output piped through mdp
   --raw                       Output markers only (for get-by-marker)
   --raw2                      Output markers only (redact only)
   --help, -h                  Show this help
@@ -727,6 +790,8 @@ Examples:
   ${prog} ./path/to/session.jsonl       Show timeline from file
   ${prog} -t UR abc12345                Show only User & Response
   ${prog} --timestamps abc12345         Show with timestamps
+  ${prog} --md-source abc12345          Show with full Q/T/R/U text
+  ${prog} --no-colors --emoji abc12345  Emoji without colors
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
 main().catch((err) => {

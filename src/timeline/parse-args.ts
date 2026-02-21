@@ -36,6 +36,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     input: "",
     from: "",
     to: "",
+    mdMode: "off",
+    emoji: "auto",
     help: false,
   };
 
@@ -57,6 +59,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.width = w;
     } else if (arg === "--timestamps") {
       result.timestamps = true;
+    } else if (arg === "--no-timestamps") {
+      result.timestamps = false;
     } else if (arg === "--colors") {
       result.colors = "always";
     } else if (arg.startsWith("--colors=")) {
@@ -68,6 +72,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.colors = value as "auto" | "always" | "never";
     } else if (arg === "--no-colors") {
       result.colors = "never";
+    } else if (arg === "--md-render") {
+      result.mdMode = "render";
+    } else if (arg === "--md-source") {
+      result.mdMode = "source";
+    } else if (arg === "--emoji") {
+      result.emoji = "always";
+    } else if (arg === "--no-emoji") {
+      result.emoji = "never";
     } else if (arg === "--raw") {
       result.rawMode = 1;
     } else if (arg === "--raw2") {

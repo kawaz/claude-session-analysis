@@ -23,8 +23,21 @@ const COLOR_MAP: Record<string, { ansi: string; emoji: string }> = {
   I: { ansi: "\x1b[2m", emoji: "ℹ️" },
 };
 
+/** colorize のオプション */
+export interface ColorizeOpts {
+  colors: boolean;
+  emoji: boolean;
+}
+
 /** 行内マーカーを検出し、ANSIカラー+絵文字を付与 */
-export function colorize(line: string): string {
+export function colorize(line: string, opts?: ColorizeOpts): string {
+  // デフォルト: 後方互換のため両方true
+  const useColors = opts?.colors ?? true;
+  const useEmoji = opts?.emoji ?? true;
+
+  // 両方無効なら何もしない
+  if (!useColors && !useEmoji) return line;
+
   const m = MARKER_RE.exec(line);
   if (!m) return line;
 
@@ -48,24 +61,42 @@ export function colorize(line: string): string {
     }
   }
 
+  const emojiPrefix = useEmoji ? `${emoji} ` : "";
+  const ansiStart = useColors ? ansi : "";
+  const ansiEnd = useColors ? "\x1b[0m" : "";
+
   if (kind === "U") {
-    return `${ansi}\n\n${emoji} ${beforeMarker}${marker}${afterMarker}\x1b[0m`;
+    return `${ansiStart}\n\n${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
   }
-  return `${ansi}${emoji} ${beforeMarker}${marker}${afterMarker}\x1b[0m`;
+  return `${ansiStart}${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
 }
+
+/** QTRU タイプかどうか */
+const QTRU_KINDS = new Set(["Q", "T", "R", "U"]);
 
 /** 単一イベントをフォーマット */
 export function formatEvent(
   event: TimelineEvent,
-  opts: { rawMode: number; width: number; timestamps: boolean },
+  opts: { rawMode: number; width: number; timestamps: boolean; mdMode?: "off" | "render" | "source" },
 ): string {
   if (opts.rawMode > 0) {
     return `${event.kind}${event.ref}`;
   }
 
+  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+
+  // mdモードでQTRUの場合: マーカー行のみ（descなし）
+  if (isMd && QTRU_KINDS.has(event.kind)) {
+    if (opts.timestamps) {
+      return `${cleanTime(event.time)} ${event.kind}${event.ref}`;
+    }
+    return `${event.kind}${event.ref}`;
+  }
+
   let desc: string;
-  if (event.notrunc) {
-    desc = event.desc;
+  if (isMd || event.notrunc) {
+    // mdモードではtruncateしない
+    desc = event.notrunc ? event.desc : event.desc.replace(/\n/g, " ");
   } else {
     desc = truncate(event.desc.replace(/\n/g, " "), opts.width);
   }
@@ -76,17 +107,40 @@ export function formatEvent(
   return `${event.kind}${event.ref} ${desc}`;
 }
 
+/** formatEvents のオプション型 */
+export interface FormatEventsOpts {
+  rawMode: number;
+  width: number;
+  timestamps: boolean;
+  colors: boolean;
+  emoji: boolean;
+  mdMode: "off" | "render" | "source";
+}
+
 /** 複数イベントをフォーマットして結合 */
 export function formatEvents(
   events: TimelineEvent[],
-  opts: { rawMode: number; width: number; timestamps: boolean; colors: boolean },
+  opts: FormatEventsOpts,
 ): string {
-  const lines = events.map((e) => {
+  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  const needColorize = opts.colors || opts.emoji;
+
+  const output: string[] = [];
+  for (const e of events) {
     let line = formatEvent(e, opts);
-    if (opts.colors) {
-      line = colorize(line);
+    if (needColorize) {
+      line = colorize(line, { colors: opts.colors, emoji: opts.emoji });
     }
-    return line;
-  });
-  return lines.join("\n");
+
+    if (isMd && QTRU_KINDS.has(e.kind)) {
+      // QTRU: マーカー行 + 空行 + desc本文 + 空行
+      output.push(line);
+      output.push("");
+      output.push(e.desc);
+      output.push("");
+    } else {
+      output.push(line);
+    }
+  }
+  return output.join("\n");
 }

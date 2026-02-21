@@ -129,4 +129,46 @@ describe("parseArgs", () => {
   test("-w に非数値を渡した場合エラー", () => {
     expect(() => parseArgs(["-w", "abc", "session"])).toThrow(/-w requires a number/);
   });
+
+  // mdMode tests
+  test("デフォルトの mdMode は off", () => {
+    const args = parseArgs(["session-id"]);
+    expect(args.mdMode).toBe("off");
+  });
+
+  test("--md-render → mdMode = render", () => {
+    const args = parseArgs(["--md-render", "session-id"]);
+    expect(args.mdMode).toBe("render");
+  });
+
+  test("--md-source → mdMode = source", () => {
+    const args = parseArgs(["--md-source", "session-id"]);
+    expect(args.mdMode).toBe("source");
+  });
+
+  test("--md-render と --md-source は後勝ち", () => {
+    const args = parseArgs(["--md-render", "--md-source", "session-id"]);
+    expect(args.mdMode).toBe("source");
+  });
+
+  // emoji tests
+  test("デフォルトの emoji は auto", () => {
+    const args = parseArgs(["session-id"]);
+    expect(args.emoji).toBe("auto");
+  });
+
+  test("--emoji → emoji = always", () => {
+    const args = parseArgs(["--emoji", "session-id"]);
+    expect(args.emoji).toBe("always");
+  });
+
+  test("--no-emoji → emoji = never", () => {
+    const args = parseArgs(["--no-emoji", "session-id"]);
+    expect(args.emoji).toBe("never");
+  });
+
+  test("--emoji と --no-emoji は後勝ち", () => {
+    const args = parseArgs(["--emoji", "--no-emoji", "session-id"]);
+    expect(args.emoji).toBe("never");
+  });
 });

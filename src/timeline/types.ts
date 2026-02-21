@@ -77,5 +77,7 @@ export interface ParsedArgs {
   input: string;        // セッションID or ファイルパス
   from: string;         // 範囲開始（空文字列 = 先頭から）
   to: string;           // 範囲終了（空文字列 = 末尾まで）
+  mdMode: "off" | "render" | "source";  // default: "off"
+  emoji: "auto" | "always" | "never";   // default: "auto"
   help: boolean;        // --help
 }
