@@ -128,7 +128,7 @@ colorize() {
       else if (t == "I") { c = "\033[2m"; e = "\xE2\x84\xB9\xEF\xB8\x8F" }
       else { c = ""; e = "" }
 
-      printf "%s%s%s%s%s\033[0m\n", c, before, marker, e, after
+      printf "%s%s%s %s%s\033[0m\n", c, before, marker, e, after
     } else {
       print
     }
