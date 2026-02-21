@@ -67,7 +67,7 @@ def clean_time:
     }
   ),
   # U: User message (string content, exclude system-like messages)
-  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | (startswith("[Request interrupted") or startswith("<task-notification>")) | not)) | {
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | (startswith("[Request interrupted") or startswith("<task-notification>") or startswith("<teammate-message")) | not)) | {
     time: .timestamp,
     kind: "U",
     desc: (if ((.message.content | gsub("^\\s+|\\s+$"; "")) | startswith("<") and endswith(">") and test("<command-name>")) then
@@ -79,7 +79,7 @@ def clean_time:
   }),
   # U: User message (array content - for agent sessions, exclude system-like messages)
   ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
-    (.message.content[] | select(.type == "text" and (.text | (startswith("[Request interrupted") or startswith("<task-notification>")) | not))) as $c | {
+    (.message.content[] | select(.type == "text" and (.text | (startswith("[Request interrupted") or startswith("<task-notification>") or startswith("<teammate-message")) | not))) as $c | {
       time: .timestamp,
       kind: "U",
       desc: $c.text,
@@ -194,11 +194,13 @@ def clean_time:
       ref: .uuid[:8]
     }
   ),
-  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | (startswith("[Request interrupted") or startswith("<task-notification>")))) | {
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "string") and (.message.content | (startswith("[Request interrupted") or startswith("<task-notification>") or startswith("<teammate-message")))) | {
     time: .timestamp,
     kind: "I",
     desc: (if (.message.content | startswith("<task-notification>")) then
       "[task-notification] " + ((.message.content | capture("<summary>(?<s>[^<]+)</summary>") | .s) // "")
+    elif (.message.content | startswith("<teammate-message")) then
+      "[teammate-message] " + ((.message.content | capture("teammate_id=\"(?<s>[^\"]+)\"") | .s) // "")
     else .message.content end),
     ref: .uuid[:8]
   }),
@@ -207,6 +209,14 @@ def clean_time:
       time: .timestamp,
       kind: "I",
       desc: "[task-notification] " + (($c.text | capture("<summary>(?<s>[^<]+)</summary>") | .s) // ""),
+      ref: .uuid[:8]
+    }
+  ),
+  ($all[] | objects | select(.type=="user" and .isMeta != true and .isCompactSummary != true and (.message.content | type == "array")) |
+    (.message.content[] | select(.type == "text" and (.text | startswith("<teammate-message")))) as $c | {
+      time: .timestamp,
+      kind: "I",
+      desc: "[teammate-message] " + (($c.text | capture("teammate_id=\"(?<s>[^\"]+)\"") | .s) // ""),
       ref: .uuid[:8]
     }
   )
