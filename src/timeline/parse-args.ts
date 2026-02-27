@@ -24,7 +24,7 @@ export function parseRange(range: string): { from: string; to: string } {
 
 /**
  * CLI引数をパースする。
- * argv は process.argv.slice(2) 相当（bun/scriptパス除去済み）。
+ * argv はサブコマンド以降の引数（bun/scriptパス・サブコマンド名除去済み）。
  */
 export function parseArgs(argv: string[]): ParsedArgs {
   const result: ParsedArgs = {
@@ -38,6 +38,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     to: "",
     mdMode: "off",
     emoji: "auto",
+    grep: "",
     help: false,
   };
 
@@ -84,7 +85,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.rawMode = 1;
     } else if (arg === "--raw2") {
       result.rawMode = 2;
-    } else if (arg === "--help" || arg === "-h") {
+    } else if (arg === "--grep") {
+      i++;
+      if (i >= argv.length) throw new Error("--grep requires a value");
+      result.grep = argv[i];
+    } else if (arg === "--help") {
       result.help = true;
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown option: ${arg}`);

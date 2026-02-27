@@ -1,5 +1,21 @@
 import { stat } from "node:fs/promises";
 
+/**
+ * duration文字列を秒数に変換する。
+ * 対応形式: "5m", "1h", "30s", "2d", "1h30m" など
+ * s=秒, m=分, h=時, d=日
+ */
+export function parseDuration(spec: string): number {
+  const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  let total = 0;
+  const re = /(\d+)([smhd])/g;
+  let match;
+  while ((match = re.exec(spec)) !== null) {
+    total += parseInt(match[1]!, 10) * units[match[2]!]!;
+  }
+  return total;
+}
+
 export interface SessionInfo {
   file: string;
   mtime: number; // Unix epoch seconds
@@ -11,7 +27,7 @@ export interface SessionInfo {
 
 export interface SearchOptions {
   configDirs: string[];
-  mmin?: string; // "+N" = older than N min, "-N"/N = newer than N min
+  since?: number; // Unix epoch seconds (cutoff): sessions with mtime >= since are included
   keyword?: string;
 }
 
@@ -22,7 +38,7 @@ export interface SearchOptions {
 export async function searchSessions(
   opts: SearchOptions,
 ): Promise<SessionInfo[]> {
-  const { configDirs, mmin, keyword } = opts;
+  const { configDirs, since, keyword } = opts;
 
   // 1. projects/ ディレクトリを収集
   const projectDirs: string[] = [];
@@ -49,7 +65,6 @@ export async function searchSessions(
   }
 
   // 3. 各ファイルからメタ情報を抽出
-  const now = Math.floor(Date.now() / 1000);
   const all: SessionInfo[] = [];
 
   for (const file of allFiles) {
@@ -95,40 +110,32 @@ export async function searchSessions(
     all.push({ file, mtime, size, sessionId, cwd });
   }
 
-  // 4. mmin フィルタ
+  // 4. since フィルタ (cutoff: epoch seconds)
   let filtered = all;
-  if (mmin) {
-    filtered = all.filter((e) => {
-      const age = now - e.mtime;
-      if (mmin.startsWith("+")) {
-        // +N: N分より古い（age > N*60）
-        const n = parseInt(mmin.slice(1), 10);
-        return age > n * 60;
-      } else {
-        // -N or N: N分以内（age <= N*60）
-        const n = parseInt(mmin.replace(/^-/, ""), 10);
-        return age <= n * 60;
-      }
-    });
+  if (since != null) {
+    filtered = all.filter((e) => e.mtime >= since);
   }
 
-  // 5. キーワード検索
+  // 5. キーワード検索（正規表現対応）
   if (keyword) {
+    const re = new RegExp(keyword);
     const matched: SessionInfo[] = [];
     for (const e of filtered) {
       const text = await Bun.file(e.file).text();
       const lines = text.split("\n");
       for (const line of lines) {
-        const idx = line.indexOf(keyword);
-        if (idx !== -1) {
+        const match = re.exec(line);
+        if (match) {
           // 前後20文字のコンテキスト
+          const idx = match.index;
+          const matchLen = match[0].length;
           const preStart = Math.max(0, idx - 20);
           let pre = line.slice(preStart, idx);
           // sh版: $pre=~s/.*\n//s → 改行以降を除去（行内なので不要だが念のため）
           pre = pre.replace(/.*\n/s, "");
-          let post = line.slice(idx + keyword.length, idx + keyword.length + 20);
+          let post = line.slice(idx + matchLen, idx + matchLen + 20);
           post = post.replace(/\n.*/s, "");
-          const ctx = `${pre}${keyword}${post}`.replace(/[\r\n]/g, " ");
+          const ctx = `${pre}${match[0]}${post}`.replace(/[\r\n]/g, " ");
           matched.push({ ...e, context: ctx });
           break;
         }

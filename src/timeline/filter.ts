@@ -122,15 +122,21 @@ export function filterByRange(
   return events.slice(fromIdx, toIdx + 1);
 }
 
+/** descを正規表現でフィルタ */
+export function filterByGrep(events: TimelineEvent[], pattern: string): TimelineEvent[] {
+  const re = new RegExp(pattern);
+  return events.filter((e) => re.test(e.desc));
+}
+
 /** types文字列に含まれるkindのイベントのみフィルタ */
 export function filterByType(events: TimelineEvent[], types: string): TimelineEvent[] {
   return events.filter((e) => types.includes(e.kind));
 }
 
-/** dedup -> removeNoBackup -> sort(.time) -> filterByRange -> filterByType */
+/** dedup -> removeNoBackup -> sort(.time) -> filterByRange -> filterByType -> filterByGrep */
 export function pipeline(
   events: TimelineEvent[],
-  opts: { types: string; from: string; to: string },
+  opts: { types: string; from: string; to: string; grep?: string },
 ): TimelineEvent[] {
   let result = dedup(events);
   result = removeNoBackup(result);
@@ -143,5 +149,8 @@ export function pipeline(
   );
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
+  if (opts.grep) {
+    result = filterByGrep(result, opts.grep);
+  }
   return result;
 }

@@ -5,6 +5,7 @@ import {
   parseRangeMarker,
   filterByRange,
   filterByType,
+  filterByGrep,
   pipeline,
 } from "./filter.ts";
 import type { TimelineEvent } from "./types.ts";
@@ -257,6 +258,37 @@ describe("filterByType", () => {
   test("該当なし -> 空", () => {
     const result = filterByType(events, "W");
     expect(result).toHaveLength(0);
+  });
+});
+
+describe("filterByGrep", () => {
+  const events: TimelineEvent[] = [
+    { kind: "U", ref: "aaa11111", time: "t0", desc: "Update README.md" },
+    { kind: "R", ref: "bbb22222", time: "t1", desc: "response text" },
+    { kind: "F", ref: "ccc33333", time: "t2", desc: "src/index.ts abc@v1" },
+    { kind: "B", ref: "ddd44444", time: "t3", desc: "bun test" },
+  ];
+
+  test("正規表現でdescをフィルタ", () => {
+    const result = filterByGrep(events, "README");
+    expect(result).toHaveLength(1);
+    expect(result[0].kind).toBe("U");
+  });
+
+  test("正規表現パターンでマッチ", () => {
+    const result = filterByGrep(events, "src.*\\.ts");
+    expect(result).toHaveLength(1);
+    expect(result[0].ref).toBe("ccc33333");
+  });
+
+  test("マッチなし → 空配列", () => {
+    const result = filterByGrep(events, "nonexistent");
+    expect(result).toHaveLength(0);
+  });
+
+  test("空パターン → 全件マッチ", () => {
+    const result = filterByGrep(events, "");
+    expect(result).toHaveLength(4);
   });
 });
 

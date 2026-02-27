@@ -1,54 +1,99 @@
-#!/usr/bin/env bun
-import { searchSessions } from "./search.ts";
+import { searchSessions, parseDuration } from "./search.ts";
 import { formatSessionsOutput } from "./format.ts";
+
+const DURATION_RE = /^(\d+[smhd])+$/;
 
 function printUsage(exitCode: number = 0): never {
   const prog = process.env._PROG || "sessions";
-  console.log(`Usage: ${prog} [-g kw] [-mmin N] [-n N] [--full]
-  -g: search keyword, output session ID only
-  -mmin N: +N=older than N min, -N/N=newer than N min (default: 1440 = 1day)
-  -n N: show last N sessions (default: 10)
-  --full: show full session ID and cwd`);
+  const out = exitCode !== 0 ? console.error : console.log;
+  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>] [--full]
+
+Options:
+  --grep <pattern>  Filter sessions by content (regex)
+  --since <spec>    Time filter. Duration: 5m, 1h, 2d, 1h30m
+                    or date string: 2024-01-01, 2024-01-01T12:00:00
+                    (default: 1d)
+  --limit <N>       Show last N sessions (default: 10)
+  --full            Show full session ID and cwd
+  --help            Show this help`);
   process.exit(exitCode);
 }
 
-function parseArgs(argv: string[]) {
+/**
+ * --since の値をパースし、cutoff (Unix epoch seconds) を返す。
+ * - duration形式 (e.g. "1h30m"): now - duration
+ * - Date parseable文字列: new Date(spec)
+ * - Invalid: エラーメッセージを出して exit(1)
+ */
+function parseSince(spec: string): number {
+  if (DURATION_RE.test(spec)) {
+    const seconds = parseDuration(spec);
+    return Math.floor(Date.now() / 1000) - seconds;
+  }
+  const d = new Date(spec);
+  if (isNaN(d.getTime())) {
+    console.error(`Error: Invalid --since value: ${spec}`);
+    process.exit(1);
+  }
+  return Math.floor(d.getTime() / 1000);
+}
+
+function parseOpts(rawArgs: string[]) {
   let keyword = "";
-  let mmin = "1440";
+  let since = "1d";
   let tail = 10;
   let full = false;
 
   let i = 0;
-  while (i < argv.length) {
-    switch (argv[i]) {
+  while (i < rawArgs.length) {
+    switch (rawArgs[i]) {
       case "--help":
-      case "-h":
         printUsage(0);
         break; // unreachable
-      case "-g":
-        keyword = argv[++i] ?? "";
+      case "--grep":
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --grep requires a value");
+          printUsage(1);
+        }
+        keyword = rawArgs[i] ?? "";
         break;
-      case "-mmin":
-        mmin = argv[++i] ?? "1440";
+      case "--since":
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --since requires a value");
+          printUsage(1);
+        }
+        since = rawArgs[i] ?? "1d";
         break;
-      case "-n":
-        tail = parseInt(argv[++i] ?? "10", 10);
+      case "--limit":
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --limit requires a value");
+          printUsage(1);
+        }
+        tail = parseInt(rawArgs[i] ?? "10", 10);
         break;
       case "--full":
         full = true;
         break;
       default:
-        // 未知の引数は無視（sh版の break 相当）
+        if (rawArgs[i]!.startsWith("-")) {
+          console.error(`Unknown option: ${rawArgs[i]}`);
+          printUsage(1);
+        }
+        // 位置引数は無視
         break;
     }
     i++;
   }
 
-  return { keyword, mmin, tail, full };
+  return { keyword, since, tail, full };
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+export async function run(args: string[]) {
+  const opts = parseOpts(args);
+  const cutoff = parseSince(opts.since);
 
   // 検索ディレクトリの構築（sh版と同じロジック）
   const configDir = process.env.CLAUDE_CONFIG_DIR;
@@ -64,29 +109,32 @@ async function main() {
     configDirs.push(defaultDir);
   }
 
-  // 全セッション検索（mminなし）
+  // 全セッション検索（sinceなし）
   const allSessions = await searchSessions({ configDirs });
   allSessions.sort((a, b) => a.mtime - b.mtime);
 
   // フィルタ適用済み検索
-  const filtered = await searchSessions({
-    configDirs,
-    mmin: args.mmin,
-    keyword: args.keyword || undefined,
-  });
+  try {
+    const filtered = await searchSessions({
+      configDirs,
+      since: cutoff,
+      keyword: opts.keyword || undefined,
+    });
 
-  // 出力
-  const output = formatSessionsOutput(allSessions, filtered, {
-    full: args.full,
-    tail: args.tail,
-  });
+    // 出力
+    const output = formatSessionsOutput(allSessions, filtered, {
+      full: opts.full,
+      tail: opts.tail,
+    });
 
-  if (output) {
-    await Bun.write(Bun.stdout, output + "\n");
+    if (output) {
+      await Bun.write(Bun.stdout, output + "\n");
+    }
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);
+      process.exit(1);
+    }
+    throw e;
   }
 }
-
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});

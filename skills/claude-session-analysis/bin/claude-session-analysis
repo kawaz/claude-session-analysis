@@ -27,6 +27,7 @@ function parseArgs(argv) {
     to: "",
     mdMode: "off",
     emoji: "auto",
+    grep: "",
     help: false
   };
   const positional = [];
@@ -73,6 +74,11 @@ function parseArgs(argv) {
       result.rawMode = 1;
     } else if (arg === "--raw2") {
       result.rawMode = 2;
+    } else if (arg === "--grep") {
+      i++;
+      if (i >= argv.length)
+        throw new Error("--grep requires a value");
+      result.grep = argv[i];
     } else if (arg === "--help") {
       result.help = true;
     } else if (arg.startsWith("-")) {
@@ -546,6 +552,10 @@ function filterByRange(events, from, to) {
   toIdx = Math.max(0, Math.min(toIdx, events.length - 1));
   return events.slice(fromIdx, toIdx + 1);
 }
+function filterByGrep(events, pattern) {
+  const re = new RegExp(pattern);
+  return events.filter((e) => re.test(e.desc));
+}
 function filterByType(events, types) {
   return events.filter((e) => types.includes(e.kind));
 }
@@ -555,6 +565,9 @@ function pipeline(events, opts) {
   result = result.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : a.desc < b.desc ? -1 : a.desc > b.desc ? 1 : 0);
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
+  if (opts.grep) {
+    result = filterByGrep(result, opts.grep);
+  }
   return result;
 }
 
@@ -692,11 +705,21 @@ async function run(args) {
     } catch {}
   }
   const events = extractEvents(entries);
-  const filtered = pipeline(events, {
-    types: opts.types,
-    from: opts.from,
-    to: opts.to
-  });
+  let filtered;
+  try {
+    filtered = pipeline(events, {
+      types: opts.types,
+      from: opts.from,
+      to: opts.to,
+      grep: opts.grep
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      console.error(`Error: Invalid regex pattern: ${opts.grep} (${e.message})`);
+      process.exit(1);
+    }
+    throw e;
+  }
   if (opts.rawMode > 0) {
     const parsed = entries;
     const output2 = [];
@@ -769,6 +792,7 @@ Options:
   --no-colors                 Disable colors
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
+  --grep <pattern>            Filter events by desc (regex)
   --md-source                 Full text output for Q/T/R/U events
   --md-render                 Full text output piped through mdp
   --raw                       Output markers only (for get-by-marker)
@@ -792,6 +816,7 @@ Examples:
   ${prog} --timestamps abc12345         Show with timestamps
   ${prog} --md-source abc12345          Show with full Q/T/R/U text
   ${prog} --no-colors --emoji abc12345  Emoji without colors
+  ${prog} --grep "README" abc12345        Filter events matching pattern
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
 
@@ -1250,20 +1275,23 @@ async function searchSessions(opts) {
     filtered = all.filter((e) => e.mtime >= since);
   }
   if (keyword) {
+    const re = new RegExp(keyword);
     const matched = [];
     for (const e of filtered) {
       const text = await Bun.file(e.file).text();
       const lines = text.split(`
 `);
       for (const line of lines) {
-        const idx = line.indexOf(keyword);
-        if (idx !== -1) {
+        const match = re.exec(line);
+        if (match) {
+          const idx = match.index;
+          const matchLen = match[0].length;
           const preStart = Math.max(0, idx - 20);
           let pre = line.slice(preStart, idx);
           pre = pre.replace(/.*\n/s, "");
-          let post = line.slice(idx + keyword.length, idx + keyword.length + 20);
+          let post = line.slice(idx + matchLen, idx + matchLen + 20);
           post = post.replace(/\n.*/s, "");
-          const ctx = `${pre}${keyword}${post}`.replace(/[\r\n]/g, " ");
+          const ctx = `${pre}${match[0]}${post}`.replace(/[\r\n]/g, " ");
           matched.push({ ...e, context: ctx });
           break;
         }
@@ -1350,7 +1378,7 @@ function printUsage3(exitCode = 0) {
   out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>] [--full]
 
 Options:
-  --grep <keyword>  Search keyword, output session ID only
+  --grep <pattern>  Filter sessions by content (regex)
   --since <spec>    Time filter. Duration: 5m, 1h, 2d, 1h30m
                     or date string: 2024-01-01, 2024-01-01T12:00:00
                     (default: 1d)
@@ -1383,13 +1411,28 @@ function parseOpts(rawArgs) {
         printUsage3(0);
         break;
       case "--grep":
-        keyword = rawArgs[++i] ?? "";
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --grep requires a value");
+          printUsage3(1);
+        }
+        keyword = rawArgs[i] ?? "";
         break;
       case "--since":
-        since = rawArgs[++i] ?? "1d";
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --since requires a value");
+          printUsage3(1);
+        }
+        since = rawArgs[i] ?? "1d";
         break;
       case "--limit":
-        tail = parseInt(rawArgs[++i] ?? "10", 10);
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --limit requires a value");
+          printUsage3(1);
+        }
+        tail = parseInt(rawArgs[i] ?? "10", 10);
         break;
       case "--full":
         full = true;
@@ -1421,18 +1464,26 @@ async function run6(args) {
   }
   const allSessions = await searchSessions({ configDirs });
   allSessions.sort((a, b) => a.mtime - b.mtime);
-  const filtered = await searchSessions({
-    configDirs,
-    since: cutoff,
-    keyword: opts.keyword || undefined
-  });
-  const output = formatSessionsOutput(allSessions, filtered, {
-    full: opts.full,
-    tail: opts.tail
-  });
-  if (output) {
-    await Bun.write(Bun.stdout, output + `
+  try {
+    const filtered = await searchSessions({
+      configDirs,
+      since: cutoff,
+      keyword: opts.keyword || undefined
+    });
+    const output = formatSessionsOutput(allSessions, filtered, {
+      full: opts.full,
+      tail: opts.tail
+    });
+    if (output) {
+      await Bun.write(Bun.stdout, output + `
 `);
+    }
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);
+      process.exit(1);
+    }
+    throw e;
   }
 }
 
@@ -1485,6 +1536,17 @@ async function run7(args) {
 }
 
 // src/cli.ts
+process.on("SIGPIPE", () => process.exit(0));
+process.stdout?.on("error", (e) => {
+  if (e.code === "EPIPE")
+    process.exit(0);
+  throw e;
+});
+process.stderr?.on("error", (e) => {
+  if (e.code === "EPIPE")
+    process.exit(0);
+  throw e;
+});
 var PROG = "claude-session-analysis";
 var SUBCOMMANDS = {
   timeline: { desc: "Display session events with filtering and formatting options", run },

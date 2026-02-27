@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { parseArgs } from "./parse-args.ts";
 import { resolveSession } from "../resolve-session.ts";
 import { extractEvents } from "./extract.ts";
@@ -14,16 +13,16 @@ const OMIT_KEYS = [
 ];
 const REDACT_KEYS = ["data"];
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+export async function run(args: string[]) {
+  const opts = parseArgs(args);
 
-  if (args.help) {
+  if (opts.help) {
     printUsage();
-    process.exit(0);
+    return;
   }
 
   // セッション解決
-  const sessionFile = await resolveSession(args.input);
+  const sessionFile = await resolveSession(opts.input);
 
   // JSONL読み込み
   const text = await Bun.file(sessionFile).text();
@@ -41,14 +40,24 @@ async function main() {
   const events = extractEvents(entries);
 
   // フィルタリング
-  const filtered = pipeline(events, {
-    types: args.types,
-    from: args.from,
-    to: args.to,
-  });
+  let filtered;
+  try {
+    filtered = pipeline(events, {
+      types: opts.types,
+      from: opts.from,
+      to: opts.to,
+      grep: opts.grep,
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      console.error(`Error: Invalid regex pattern: ${opts.grep} (${e.message})`);
+      process.exit(1);
+    }
+    throw e;
+  }
 
   // --raw / --raw2: マーカーからエントリを検索して JSON 出力
-  if (args.rawMode > 0) {
+  if (opts.rawMode > 0) {
     // rawMode で使う parsed は entries をそのまま Record<string, unknown>[] として使用
     const parsed = entries as unknown as Record<string, unknown>[];
     const output: string[] = [];
@@ -70,7 +79,7 @@ async function main() {
 
       for (const entry of matches) {
         let processed: unknown;
-        if (args.rawMode === 2) {
+        if (opts.rawMode === 2) {
           // --raw2: redact with hint (no omit)
           processed = redactWithHint(entry, REDACT_KEYS);
         } else {
@@ -86,38 +95,38 @@ async function main() {
 
   // カラー判定
   const useColors =
-    args.colors === "always"
+    opts.colors === "always"
       ? true
-      : args.colors === "never"
+      : opts.colors === "never"
         ? false
         : process.stdout.isTTY ?? false;
 
   // 絵文字判定
   const useEmoji =
-    args.emoji === "always"
+    opts.emoji === "always"
       ? true
-      : args.emoji === "never"
+      : opts.emoji === "never"
         ? false
         : useColors; // auto: colors に連動（従来と同じ）
 
   // mdモード時のtimestampsデフォルト: 明示的に指定がなければ有効
   const timestamps =
-    (args.mdMode !== "off" && !process.argv.slice(2).includes("--no-timestamps"))
+    (opts.mdMode !== "off" && !args.includes("--no-timestamps"))
       ? true
-      : args.timestamps;
+      : opts.timestamps;
 
   // 出力生成
   const output = formatEvents(filtered, {
-    rawMode: args.rawMode,
-    width: args.width,
+    rawMode: opts.rawMode,
+    width: opts.width,
     timestamps,
     colors: useColors,
     emoji: useEmoji,
-    mdMode: args.mdMode,
+    mdMode: opts.mdMode,
   });
 
   // --md-render: mdp にパイプ
-  if (args.mdMode === "render") {
+  if (opts.mdMode === "render") {
     // mdp の存在確認
     const which = Bun.spawnSync(["which", "mdp"]);
     if (which.exitCode !== 0) {
@@ -153,11 +162,12 @@ Options:
   --no-colors                 Disable colors
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
+  --grep <pattern>            Filter events by desc (regex)
   --md-source                 Full text output for Q/T/R/U events
   --md-render                 Full text output piped through mdp
   --raw                       Output markers only (for get-by-marker)
   --raw2                      Output markers only (redact only)
-  --help, -h                  Show this help
+  --help                      Show this help
 
 Types:
   U=User T=Think R=Response F=File W=Web B=Bash
@@ -176,10 +186,7 @@ Examples:
   ${prog} --timestamps abc12345         Show with timestamps
   ${prog} --md-source abc12345          Show with full Q/T/R/U text
   ${prog} --no-colors --emoji abc12345  Emoji without colors
+  ${prog} --grep "README" abc12345        Filter events matching pattern
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
 
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});

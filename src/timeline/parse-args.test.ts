@@ -89,9 +89,8 @@ describe("parseArgs", () => {
     expect(args.help).toBe(true);
   });
 
-  test("-h", () => {
-    const args = parseArgs(["-h"]);
-    expect(args.help).toBe(true);
+  test("-h is unknown option", () => {
+    expect(() => parseArgs(["-h"])).toThrow("Unknown option: -h");
   });
 
   test("範囲付き: session-id from..to", () => {
@@ -170,5 +169,20 @@ describe("parseArgs", () => {
   test("--emoji と --no-emoji は後勝ち", () => {
     const args = parseArgs(["--emoji", "--no-emoji", "session-id"]);
     expect(args.emoji).toBe("never");
+  });
+
+  // grep tests
+  test("--grep でパターン指定", () => {
+    const args = parseArgs(["--grep", "README", "session-id"]);
+    expect(args.grep).toBe("README");
+  });
+
+  test("デフォルトの grep は空文字列", () => {
+    const args = parseArgs(["session-id"]);
+    expect(args.grep).toBe("");
+  });
+
+  test("--grep の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["--grep"])).toThrow(/--grep requires/);
   });
 });

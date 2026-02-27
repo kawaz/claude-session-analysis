@@ -1,8 +1,38 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { searchSessions, type SessionInfo } from "./search.ts";
+import { searchSessions, parseDuration, type SessionInfo } from "./search.ts";
 import { mkdtemp, rm, mkdir, writeFile, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+describe("parseDuration", () => {
+  test("秒のみ", () => {
+    expect(parseDuration("30s")).toBe(30);
+  });
+
+  test("分のみ", () => {
+    expect(parseDuration("5m")).toBe(300);
+  });
+
+  test("時のみ", () => {
+    expect(parseDuration("1h")).toBe(3600);
+  });
+
+  test("日のみ", () => {
+    expect(parseDuration("2d")).toBe(172800);
+  });
+
+  test("複合: 1h30m", () => {
+    expect(parseDuration("1h30m")).toBe(5400);
+  });
+
+  test("複合: 1d2h30m10s", () => {
+    expect(parseDuration("1d2h30m10s")).toBe(86400 + 7200 + 1800 + 10);
+  });
+
+  test("空文字列は0を返す", () => {
+    expect(parseDuration("")).toBe(0);
+  });
+});
 
 describe("searchSessions", () => {
   let tmpDir: string;
@@ -68,7 +98,7 @@ describe("searchSessions", () => {
     expect(results[0]!.sessionId).toBe("def67890");
   });
 
-  test("mmin フィルタ: 正の値（N分以内）", async () => {
+  test("since フィルタ: cutoff以降のセッションのみ取得", async () => {
     const now = new Date();
     const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
@@ -86,16 +116,17 @@ describe("searchSessions", () => {
       twoHoursAgo,
     );
 
-    // 10分以内 → recentのみ
+    // cutoff = 10分前 → recentのみ
+    const cutoff = Math.floor((now.getTime() - 10 * 60 * 1000) / 1000);
     const results = await searchSessions({
       configDirs: [tmpDir],
-      mmin: "10",
+      since: cutoff,
     });
     expect(results.length).toBe(1);
     expect(results[0]!.sessionId).toBe("recent111");
   });
 
-  test("mmin フィルタ: +N（N分より古い）", async () => {
+  test("since フィルタ: cutoffが古ければ全件取得", async () => {
     const now = new Date();
     const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
@@ -113,13 +144,13 @@ describe("searchSessions", () => {
       twoHoursAgo,
     );
 
-    // +10分（10分より古い） → oldのみ
+    // cutoff = 3時間前 → 両方取得
+    const cutoff = Math.floor((now.getTime() - 3 * 60 * 60 * 1000) / 1000);
     const results = await searchSessions({
       configDirs: [tmpDir],
-      mmin: "+10",
+      since: cutoff,
     });
-    expect(results.length).toBe(1);
-    expect(results[0]!.sessionId).toBe("oldold22");
+    expect(results.length).toBe(2);
   });
 
   test("キーワード検索: ファイル内容から検索しコンテキスト付き", async () => {
@@ -244,5 +275,31 @@ describe("searchSessions", () => {
       configDirs: [nonExistentDir],
     });
     expect(results.length).toBe(0);
+  });
+
+  test("キーワード検索: 正規表現パターンでマッチ", async () => {
+    await createSession("p1", "s1.jsonl", [
+      '{"sessionId":"regex123","cwd":"/a","type":"human"}',
+      '{"type":"assistant","message":"the Previous and Next items"}',
+    ]);
+
+    const results = await searchSessions({
+      configDirs: [tmpDir],
+      keyword: "Prev.*Next",
+    });
+    expect(results.length).toBe(1);
+    expect(results[0]!.sessionId).toBe("regex123");
+    expect(results[0]!.context).toContain("Previous and Next");
+  });
+
+  test("キーワード検索: 不正な正規表現でエラー", async () => {
+    await createSession("p1", "s1.jsonl", [
+      '{"sessionId":"err12345","cwd":"/a","type":"human"}',
+      '{"type":"assistant","message":"something"}',
+    ]);
+
+    await expect(
+      searchSessions({ configDirs: [tmpDir], keyword: "[invalid" })
+    ).rejects.toThrow();
   });
 });
