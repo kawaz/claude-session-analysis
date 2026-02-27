@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { resolveSession } from "../resolve-session.ts";
 import {
   getClaudeConfigDirs,
@@ -7,9 +6,7 @@ import {
   findOriginalPath,
 } from "./resolve.ts";
 
-async function main() {
-  const args = process.argv.slice(2);
-
+export async function run(args: string[]) {
   if (args[0] === "--help") {
     const prog = process.env._PROG || "file-diff";
     console.log(
@@ -74,7 +71,7 @@ async function main() {
   if (!file1) {
     console.error(`File not found: ${hashPrefix}*@v${v1}`);
     console.error(
-      "Hint: Use 'claude-session-analysis timeline <session_id> --types F' to list file operations",
+      "Hint: Use 'claude-session-analysis timeline <session_id> -t F' to list file operations",
     );
     process.exit(1);
   }
@@ -87,7 +84,7 @@ async function main() {
     if (!found) {
       console.error(`File not found: ${hashPrefix}*@v${v2}`);
       console.error(
-        "Hint: Use 'claude-session-analysis timeline <session_id> --types F' to list file operations",
+        "Hint: Use 'claude-session-analysis timeline <session_id> -t F' to list file operations",
       );
       process.exit(1);
     }
@@ -131,8 +128,3 @@ async function main() {
     process.exit(exitCode);
   }
 }
-
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});

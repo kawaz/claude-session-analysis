@@ -1,0 +1,21 @@
+{
+  "name": "claude-session-analysis",
+  "owner": {
+    "name": "kawaz"
+  },
+  "metadata": {
+    "description": "Analyze Claude Code session files (.jsonl) to view timeline, file operations, and version diffs",
+    "version": "0.4.0"
+  },
+  "plugins": [
+    {
+      "name": "claude-session-analysis",
+      "description": "Analyze Claude Code session files. Find current session ID, view timeline (tl), or search past chats.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/claude-session-analysis"
+      ]
+    }
+  ]
+}

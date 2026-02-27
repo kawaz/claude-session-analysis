@@ -11,26 +11,9 @@ Claude Code のセッションファイル（`.jsonl`）を分析し、過去の
 
 ## インストール
 
-### プラグインマーケットプレイス経由（推奨）
-
 ```
-/plugin marketplace add kawaz/claude-plugins
-/plugin install claude-session-analysis@kawaz-claude-plugins
-```
-
-### スタンドアロンスキルとして
-
-```bash
-# 個人用（ユーザーレベル）
-cd ~/.claude/skills
-git clone https://github.com/kawaz/claude-session-analysis.git
-cd claude-session-analysis
-mv skills/claude-session-analysis/* .
-rmdir skills/claude-session-analysis skills
-
-# プロジェクトレベル
-cd your-project/.claude/skills
-# （上記と同じ手順）
+claude plugin marketplace add kawaz/claude-session-analysis
+claude plugin install claude-session-analysis@claude-session-analysis
 ```
 
 ## 使い方
@@ -42,17 +25,17 @@ cd your-project/.claude/skills
 - 「このセッションで変更したファイルは？」
 - 「そのファイルの v1 と v2 の差分を見せて」
 
-## スクリプト一覧
+## サブコマンド
 
-| スクリプト | 説明 |
-|-----------|------|
-| `current-session.sh` | 現在のセッションID候補を取得 |
-| `timeline.sh` | セッションのタイムライン表示（U/T/R/W） |
-| `get-by-marker.sh` | マーカーから詳細を取得（形式: {type}{hash}） |
-| `file-ops.sh` | Read/Write 操作の一覧 |
-| `file-diff.sh` | ファイルバージョン間の差分表示 |
-| `sessions.sh` | ディレクトリのセッション一覧 |
-| `summaries.sh` | セッションタイトルの変遷 |
+| サブコマンド | 説明 |
+|------------|------|
+| `timeline` | セッションイベントの表示（フィルタリング・フォーマットオプション付き） |
+| `summaries` | セッションのサマリー情報を抽出 |
+| `file-ops` | セッションのファイル操作を抽出 |
+| `get-by-marker` | マーカーによるセッションエントリの取得（コンテキスト指定可） |
+| `file-diff` | バックアップファイルのバージョン比較、またはバックアップと現在のファイルの比較 |
+| `sessions` | 利用可能な Claude セッションの一覧（フィルタリング・検索付き） |
+| `resolve-session` | セッションIDプレフィックスからフルIDまたはファイルパスを解決 |
 
 ## なぜ使うのか？
 

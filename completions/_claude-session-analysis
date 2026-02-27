@@ -1,20 +1,89 @@
 #compdef claude-session-analysis
 
 _claude-session-analysis() {
-  local scripts_dir="${functions_source[_claude-session-analysis]:h:h}/skills/claude-session-analysis/scripts"
-  local -a subcommands
-  local f
-  for f in "${scripts_dir}"/*.sh(N); do
-    local desc=$(sed -n '/^#!/d; /^[^#]/d; s/^# *//p; q' "$f")
-    subcommands+=("${f:t:r}:${desc:-${f:t:r}}")
-  done
-
+  local -a subcommands=(
+    'timeline:Display session events with filtering and formatting options'
+    'summaries:Extract summary information from a session'
+    'file-ops:Extract file operations from a session'
+    'get-by-marker:Retrieve session entries by marker with optional context'
+    'file-diff:Compare backup file versions or backup vs current file'
+    'sessions:List available Claude sessions with filtering and search'
+    'resolve-session:Resolve session ID prefix to full ID or file path'
+  )
 
   if (( CURRENT == 2 )); then
     _describe 'subcommand' subcommands
-  else
-    _files
+    return
   fi
+
+  local subcmd="$words[2]"
+
+  case "$subcmd" in
+    timeline)
+      _arguments -s \
+        '-t[Filter by type (UTRFWBGASQDI)]:types:' \
+        '-w[Truncation width]:width:' \
+        '--timestamps[Show timestamps]' \
+        '--no-timestamps[Disable timestamps]' \
+        '--colors=-[Color output]::mode:(auto always never)' \
+        '--no-colors[Disable colors]' \
+        '--emoji[Always show emoji]' \
+        '--no-emoji[Never show emoji]' \
+        '--md-source[Full text output for Q/T/R/U events]' \
+        '--md-render[Full text output piped through mdp]' \
+        '--raw[Output markers only (for get-by-marker)]' \
+        '--raw2[Output markers only (redact only)]' \
+        '--help[Show help]' \
+        ':session:_files' \
+        '::range:'
+      ;;
+    summaries)
+      _arguments -s \
+        '--help[Show help]' \
+        ':session:_files'
+      ;;
+    file-ops)
+      _arguments -s \
+        '--help[Show help]' \
+        ':session:_files'
+      ;;
+    get-by-marker)
+      _arguments -s \
+        '--raw[Output with omit + redact]' \
+        '--raw2[Output with redact only]' \
+        '-A[Lines after match]:count:' \
+        '-B[Lines before match]:count:' \
+        '-C[Lines before and after match]:count:' \
+        '--help[Show help]' \
+        ':session:_files' \
+        ':marker:'
+      ;;
+    file-diff)
+      _arguments -s \
+        '--help[Show help]' \
+        ':session_id_prefix:' \
+        ':backup_hash_prefix:' \
+        ':v1:' \
+        '::v2:'
+      ;;
+    sessions)
+      _arguments \
+        '--grep[Search keyword]:keyword:' \
+        '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \
+        '--limit[Show last N sessions]:count:' \
+        '--full[Show full session ID and cwd]' \
+        '--help[Show help]'
+      ;;
+    resolve-session)
+      _arguments -s \
+        '--path[Output full file path instead of session ID]' \
+        '--help[Show help]' \
+        ':session_id_prefix:'
+      ;;
+    *)
+      _files
+      ;;
+  esac
 }
 
 _claude-session-analysis "$@"

@@ -1,13 +1,13 @@
-#!/usr/bin/env bun
 import { resolveSession } from "../resolve-session.ts";
 import { extractFileOpsFromJsonl } from "./extract.ts";
 
-async function main() {
-  const input = process.argv[2];
+export async function run(args: string[]) {
+  const input = args[0];
 
   if (!input || input === "--help") {
     const prog = process.env._PROG || "file-ops";
-    console.log(`Usage: ${prog} <session_id_or_file>`);
+    const out = !input ? console.error : console.log;
+    out(`Usage: ${prog} <session_id_or_file>`);
     if (!input) process.exit(1);
     return;
   }
@@ -18,8 +18,3 @@ async function main() {
 
   await Bun.write(Bun.stdout, JSON.stringify(result, null, 2) + "\n");
 }
-
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});

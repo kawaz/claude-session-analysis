@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { resolveSession } from "../resolve-session.ts";
 import { omit, redact, redactWithHint } from "../lib.ts";
 import { parseMarker, findEntries, findEntriesWithContext } from "./extract.ts";
@@ -10,17 +9,16 @@ const OMIT_KEYS = [
 ];
 const REDACT_KEYS = ["data"];
 
-async function main() {
+export async function run(args: string[]) {
   let rawMode: 0 | 1 | 2 = 0;
   let after = 0;
   let before = 0;
 
-  const argv = process.argv.slice(2);
   const positional: string[] = [];
 
   let i = 0;
-  while (i < argv.length) {
-    const arg = argv[i];
+  while (i < args.length) {
+    const arg = args[i];
     if (arg === "--help") {
       printUsage();
       return;
@@ -31,14 +29,14 @@ async function main() {
       rawMode = 2;
       i++;
     } else if (arg === "-A") {
-      after = Number(argv[i + 1]);
+      after = Number(args[i + 1]);
       i += 2;
     } else if (arg === "-B") {
-      before = Number(argv[i + 1]);
+      before = Number(args[i + 1]);
       i += 2;
     } else if (arg === "-C") {
-      after = Number(argv[i + 1]);
-      before = Number(argv[i + 1]);
+      after = Number(args[i + 1]);
+      before = Number(args[i + 1]);
       i += 2;
     } else if (arg.startsWith("-")) {
       console.error(`Unknown option: ${arg}`);
@@ -114,8 +112,3 @@ function printUsage() {
     `Usage: ${prog} [--raw] [--raw2] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>`,
   );
 }
-
-main().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
-});

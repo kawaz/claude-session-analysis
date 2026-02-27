@@ -5,18 +5,19 @@ description: Analyze Claude Code session files. Find current session ID, view ti
 
 # Claude Session Analysis
 
-This is `{SKILL_DIR}/SKILL.md`. Scripts: `{SKILL_DIR}/scripts/`
+This is `{SKILL_DIR}/SKILL.md`. CLI: `{SKILL_DIR}/bin/claude-session-analysis`
 
 My session ID: `${CLAUDE_SESSION_ID}`
 
-| Script | Description |
+| Subcommand | Description |
 |--------|-------------|
-| `sessions [--full] [-g kw] [-mmin N] [-n 10]` | Search sessions by keyword/time |
+| `sessions [--full] [--grep kw] [--since spec] [--limit N]` | Search sessions by keyword/time |
 | `timeline [-t <types>] [-w <width>] [--md-source\|--md-render] <id> [range]` | Timeline (default: all, 55 chars) |
 | `get-by-marker [--raw\|--raw2] [-A n] [-B n] [-C n] <id> <marker>` | Entry details (with context) |
 | `file-ops <id>` | Read/Write operations |
 | `file-diff <id> <hash> <v1> [v2]` | Diff versions (v2 omitted: vs current) |
 | `summaries <id>` | Session title history |
+| `resolve-session [--path] <id_prefix>` | Resolve prefix to full session ID or path |
 
 ## Timeline Options
 

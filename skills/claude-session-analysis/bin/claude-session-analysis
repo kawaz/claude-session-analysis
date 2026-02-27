@@ -73,7 +73,7 @@ function parseArgs(argv) {
       result.rawMode = 1;
     } else if (arg === "--raw2") {
       result.rawMode = 2;
-    } else if (arg === "--help" || arg === "-h") {
+    } else if (arg === "--help") {
       result.help = true;
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown option: ${arg}`);
@@ -675,13 +675,13 @@ var OMIT_KEYS = [
   "thinkingMetadata"
 ];
 var REDACT_KEYS = ["data"];
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (args.help) {
+async function run(args) {
+  const opts = parseArgs(args);
+  if (opts.help) {
     printUsage();
-    process.exit(0);
+    return;
   }
-  const sessionFile = await resolveSession(args.input);
+  const sessionFile = await resolveSession(opts.input);
   const text = await Bun.file(sessionFile).text();
   const rawLines = text.split(`
 `).filter((line) => line.trim());
@@ -693,11 +693,11 @@ async function main() {
   }
   const events = extractEvents(entries);
   const filtered = pipeline(events, {
-    types: args.types,
-    from: args.from,
-    to: args.to
+    types: opts.types,
+    from: opts.from,
+    to: opts.to
   });
-  if (args.rawMode > 0) {
+  if (opts.rawMode > 0) {
     const parsed = entries;
     const output2 = [];
     for (const event of filtered) {
@@ -712,7 +712,7 @@ async function main() {
       });
       for (const entry of matches) {
         let processed;
-        if (args.rawMode === 2) {
+        if (opts.rawMode === 2) {
           processed = redactWithHint(entry, REDACT_KEYS);
         } else {
           processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
@@ -725,18 +725,18 @@ async function main() {
 `);
     return;
   }
-  const useColors = args.colors === "always" ? true : args.colors === "never" ? false : process.stdout.isTTY ?? false;
-  const useEmoji = args.emoji === "always" ? true : args.emoji === "never" ? false : useColors;
-  const timestamps = args.mdMode !== "off" && !process.argv.slice(2).includes("--no-timestamps") ? true : args.timestamps;
+  const useColors = opts.colors === "always" ? true : opts.colors === "never" ? false : process.stdout.isTTY ?? false;
+  const useEmoji = opts.emoji === "always" ? true : opts.emoji === "never" ? false : useColors;
+  const timestamps = opts.mdMode !== "off" && !args.includes("--no-timestamps") ? true : opts.timestamps;
   const output = formatEvents(filtered, {
-    rawMode: args.rawMode,
-    width: args.width,
+    rawMode: opts.rawMode,
+    width: opts.width,
     timestamps,
     colors: useColors,
     emoji: useEmoji,
-    mdMode: args.mdMode
+    mdMode: opts.mdMode
   });
-  if (args.mdMode === "render") {
+  if (opts.mdMode === "render") {
     const which = Bun.spawnSync(["which", "mdp"]);
     if (which.exitCode !== 0) {
       console.error("Error: mdp not found. Install mdp to use --md-render.");
@@ -773,7 +773,7 @@ Options:
   --md-render                 Full text output piped through mdp
   --raw                       Output markers only (for get-by-marker)
   --raw2                      Output markers only (redact only)
-  --help, -h                  Show this help
+  --help                      Show this help
 
 Types:
   U=User T=Think R=Response F=File W=Web B=Bash
@@ -794,7 +794,738 @@ Examples:
   ${prog} --no-colors --emoji abc12345  Emoji without colors
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
-main().catch((err) => {
-  console.error(err.message);
+
+// src/summaries/extract.ts
+function extractSummaries(entries) {
+  return entries.filter((e) => e !== null && typeof e === "object" && !Array.isArray(e)).filter((e) => e.type === "summary").map((e) => e.summary);
+}
+
+// src/summaries/index.ts
+async function run2(args) {
+  const input = args[0];
+  if (!input || input === "--help") {
+    const prog = process.env._PROG || "summaries";
+    const out = !input ? console.error : console.log;
+    out(`Usage: ${prog} <session_id_or_file>`);
+    if (!input)
+      process.exit(1);
+    return;
+  }
+  const sessionFile = await resolveSession(input);
+  const text = await Bun.file(sessionFile).text();
+  const rawLines = text.split(`
+`).filter((line) => line.trim());
+  const entries = [];
+  for (const line of rawLines) {
+    try {
+      entries.push(JSON.parse(line));
+    } catch {}
+  }
+  const summaries = extractSummaries(entries);
+  await Bun.write(Bun.stdout, JSON.stringify(summaries, null, 2) + `
+`);
+}
+
+// src/file-ops/extract.ts
+var FILE_OPS_TOOLS = new Set(["Read", "Write", "Edit"]);
+function extractFileOps(entries) {
+  const readSet = new Set;
+  const writeSet = new Set;
+  for (const entry of entries) {
+    if (entry.type !== "assistant")
+      continue;
+    const message = entry.message;
+    if (!message)
+      continue;
+    const content = message.content;
+    if (!Array.isArray(content))
+      continue;
+    for (const block of content) {
+      if (block.type !== "tool_use")
+        continue;
+      const name = block.name;
+      if (!FILE_OPS_TOOLS.has(name))
+        continue;
+      const input = block.input;
+      if (!input)
+        continue;
+      const filePath = input.file_path;
+      if (!filePath)
+        continue;
+      const tool = name === "Edit" ? "Write" : name;
+      if (tool === "Read") {
+        readSet.add(filePath);
+      } else {
+        writeSet.add(filePath);
+      }
+    }
+  }
+  const result = {};
+  if (readSet.size > 0)
+    result.Read = [...readSet].sort();
+  if (writeSet.size > 0)
+    result.Write = [...writeSet].sort();
+  return result;
+}
+function extractFileOpsFromJsonl(jsonl) {
+  const entries = [];
+  for (const line of jsonl.split(`
+`)) {
+    if (!line.trim())
+      continue;
+    try {
+      entries.push(JSON.parse(line));
+    } catch {}
+  }
+  return extractFileOps(entries);
+}
+
+// src/file-ops/index.ts
+async function run3(args) {
+  const input = args[0];
+  if (!input || input === "--help") {
+    const prog = process.env._PROG || "file-ops";
+    const out = !input ? console.error : console.log;
+    out(`Usage: ${prog} <session_id_or_file>`);
+    if (!input)
+      process.exit(1);
+    return;
+  }
+  const sessionFile = await resolveSession(input);
+  const text = await Bun.file(sessionFile).text();
+  const result = extractFileOpsFromJsonl(text);
+  await Bun.write(Bun.stdout, JSON.stringify(result, null, 2) + `
+`);
+}
+
+// src/get-by-marker/extract.ts
+function parseMarker(marker) {
+  const type = marker.replace(/[a-f0-9].*$/, "");
+  const id = marker.slice(type.length);
+  return { type, id };
+}
+function matchesEntry(entry, type, id) {
+  if (type === "F") {
+    const uuid2 = (entry.uuid || "").slice(0, id.length);
+    const messageId = (entry.messageId || "").slice(0, id.length);
+    return uuid2 === id || messageId === id;
+  }
+  const uuid = (entry.uuid || "").slice(0, id.length);
+  return uuid === id;
+}
+function hasIdentifier(entry) {
+  return Boolean(entry.uuid || entry.messageId);
+}
+function findEntries(entries, type, id) {
+  return entries.filter((entry) => matchesEntry(entry, type, id));
+}
+function findEntriesWithContext(entries, type, id, before, after) {
+  const indexable = entries.filter(hasIdentifier);
+  const matchIdx = indexable.findIndex((entry) => matchesEntry(entry, type, id));
+  if (matchIdx === -1)
+    return [];
+  const start = Math.max(matchIdx - before, 0);
+  const end = Math.min(matchIdx + after, indexable.length - 1);
+  return indexable.slice(start, end + 1);
+}
+
+// src/get-by-marker/index.ts
+var OMIT_KEYS2 = [
+  "signature",
+  "isSidechain",
+  "userType",
+  "version",
+  "slug",
+  "requestId",
+  "sessionId",
+  "stop_reason",
+  "stop_sequence",
+  "usage",
+  "id",
+  "role",
+  "parentUuid",
+  "uuid",
+  "thinkingMetadata"
+];
+var REDACT_KEYS2 = ["data"];
+async function run4(args) {
+  let rawMode = 0;
+  let after = 0;
+  let before = 0;
+  const positional = [];
+  let i = 0;
+  while (i < args.length) {
+    const arg = args[i];
+    if (arg === "--help") {
+      printUsage2();
+      return;
+    } else if (arg === "--raw") {
+      rawMode = 1;
+      i++;
+    } else if (arg === "--raw2") {
+      rawMode = 2;
+      i++;
+    } else if (arg === "-A") {
+      after = Number(args[i + 1]);
+      i += 2;
+    } else if (arg === "-B") {
+      before = Number(args[i + 1]);
+      i += 2;
+    } else if (arg === "-C") {
+      after = Number(args[i + 1]);
+      before = Number(args[i + 1]);
+      i += 2;
+    } else if (arg.startsWith("-")) {
+      console.error(`Unknown option: ${arg}`);
+      process.exit(1);
+    } else {
+      positional.push(arg);
+      i++;
+    }
+  }
+  const input = positional[0];
+  const marker = positional[1];
+  if (!input || !marker) {
+    printUsage2();
+    process.exit(1);
+  }
+  const sessionFile = await resolveSession(input);
+  const text = await Bun.file(sessionFile).text();
+  const rawLines = text.split(`
+`).filter((line) => line.trim());
+  const entries = [];
+  for (const line of rawLines) {
+    try {
+      entries.push(JSON.parse(line));
+    } catch {}
+  }
+  const { type, id } = parseMarker(marker);
+  let result;
+  if (before > 0 || after > 0) {
+    result = findEntriesWithContext(entries, type, id, before, after);
+  } else {
+    result = findEntries(entries, type, id);
+  }
+  if (result.length === 0) {
+    console.error(`Not found: ${marker}`);
+    process.exit(1);
+  }
+  const output = [];
+  for (const entry of result) {
+    let processed;
+    if (rawMode === 2) {
+      processed = redactWithHint(omit(entry, OMIT_KEYS2), REDACT_KEYS2);
+    } else if (rawMode === 1) {
+      processed = redact(omit(entry, OMIT_KEYS2), REDACT_KEYS2);
+    } else {
+      processed = redact(omit(entry, OMIT_KEYS2), REDACT_KEYS2);
+    }
+    output.push(JSON.stringify(processed, null, 2));
+  }
+  await Bun.write(Bun.stdout, output.join(`
+`) + `
+`);
+}
+function printUsage2() {
+  const prog = process.env._PROG || "get-by-marker";
+  console.log(`Usage: ${prog} [--raw] [--raw2] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>`);
+}
+
+// src/file-diff/resolve.ts
+import { statSync } from "fs";
+function getClaudeConfigDirs(claudeConfigDir, home) {
+  const defaultDir = `${home}/.claude`;
+  if (!claudeConfigDir) {
+    return [defaultDir];
+  }
+  if (claudeConfigDir === defaultDir) {
+    return [defaultDir];
+  }
+  return [claudeConfigDir, defaultDir];
+}
+async function findSessionDir(sessionId, configDirs) {
+  const glob = new Bun.Glob(`${sessionId}*`);
+  for (const dir of configDirs) {
+    const fileHistoryDir = `${dir}/file-history`;
+    try {
+      for (const match of glob.scanSync({ cwd: fileHistoryDir, onlyFiles: false })) {
+        const fullPath = `${fileHistoryDir}/${match}`;
+        try {
+          if (statSync(fullPath).isDirectory()) {
+            return fullPath;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+async function findBackupFile(sessionDir, hashPrefix, version) {
+  const glob = new Bun.Glob(`${hashPrefix}*@v${version}`);
+  for (const match of glob.scanSync(sessionDir)) {
+    return `${sessionDir}/${match}`;
+  }
+  return null;
+}
+function findOriginalPath(jsonlContent, fullHash) {
+  const lines = jsonlContent.split(`
+`).filter((line) => line.trim());
+  for (const line of lines) {
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.type !== "file-history-snapshot")
+      continue;
+    const snapshot = entry.snapshot;
+    const backups = snapshot?.trackedFileBackups;
+    if (!backups)
+      continue;
+    for (const [filePath, backup] of Object.entries(backups)) {
+      const backupFileName = backup.backupFileName ?? "";
+      if (backupFileName.startsWith(`${fullHash}@`)) {
+        return filePath;
+      }
+    }
+  }
+  return null;
+}
+
+// src/file-diff/index.ts
+async function run5(args) {
+  if (args[0] === "--help") {
+    const prog = process.env._PROG || "file-diff";
+    console.log(`Usage: ${prog} <session_id_prefix> <backup_hash_prefix> <v1> [v2]`);
+    console.log("  v2 omitted: diff backup v1 vs current file");
+    return;
+  }
+  const [sessionId, hashPrefix, v1Str, v2Str] = args;
+  if (!sessionId || !hashPrefix || !v1Str) {
+    const prog = process.env._PROG || "file-diff";
+    console.error(`Usage: ${prog} <session_id_prefix> <backup_hash_prefix> <v1> [v2]`);
+    console.error("  v2 omitted: diff backup v1 vs current file");
+    process.exit(1);
+  }
+  if (!/^[a-f0-9-]+$/.test(sessionId)) {
+    console.error(`Invalid session ID: ${sessionId}`);
+    process.exit(1);
+  }
+  if (!/^[a-f0-9]+$/.test(hashPrefix)) {
+    console.error(`Invalid hash prefix: ${hashPrefix}`);
+    process.exit(1);
+  }
+  const v1 = Number(v1Str);
+  if (!/^[0-9]+$/.test(v1Str)) {
+    console.error(`Invalid version number v1: ${v1Str}`);
+    process.exit(1);
+  }
+  if (v2Str !== undefined && !/^[0-9]+$/.test(v2Str)) {
+    console.error(`Invalid version number v2: ${v2Str}`);
+    process.exit(1);
+  }
+  const v2 = v2Str !== undefined ? Number(v2Str) : undefined;
+  const configDirs = getClaudeConfigDirs(process.env.CLAUDE_CONFIG_DIR, process.env.HOME);
+  const sessionDir = await findSessionDir(sessionId, configDirs);
+  if (!sessionDir) {
+    console.error(`Session not found: ${sessionId}`);
+    console.error("Hint: Use 'claude-session-analysis sessions' to list available sessions");
+    process.exit(1);
+  }
+  const file1 = await findBackupFile(sessionDir, hashPrefix, v1);
+  if (!file1) {
+    console.error(`File not found: ${hashPrefix}*@v${v1}`);
+    console.error("Hint: Use 'claude-session-analysis timeline <session_id> -t F' to list file operations");
+    process.exit(1);
+  }
+  let file2;
+  if (v2 !== undefined) {
+    const found = await findBackupFile(sessionDir, hashPrefix, v2);
+    if (!found) {
+      console.error(`File not found: ${hashPrefix}*@v${v2}`);
+      console.error("Hint: Use 'claude-session-analysis timeline <session_id> -t F' to list file operations");
+      process.exit(1);
+    }
+    file2 = found;
+  } else {
+    const backupFilename = file1.split("/").pop();
+    const fullHash = backupFilename.replace(/@v\d+$/, "");
+    const sessionFile = await resolveSession(sessionId);
+    const jsonlContent = await Bun.file(sessionFile).text();
+    const originalPath = findOriginalPath(jsonlContent, fullHash);
+    if (!originalPath) {
+      console.error(`Could not find original file path for hash: ${fullHash}`);
+      process.exit(1);
+    }
+    if (!await Bun.file(originalPath).exists()) {
+      console.error(`Original file no longer exists: ${originalPath}`);
+      process.exit(1);
+    }
+    file2 = originalPath;
+  }
+  console.log(`# diff ${file1} ${file2}`);
+  const proc = Bun.spawn(["diff", file1, file2], {
+    stdout: "inherit",
+    stderr: "inherit"
+  });
+  const exitCode = await proc.exited;
+  if (exitCode >= 2) {
+    process.exit(exitCode);
+  }
+}
+
+// src/sessions/search.ts
+import { stat } from "fs/promises";
+function parseDuration(spec) {
+  const units = { s: 1, m: 60, h: 3600, d: 86400 };
+  let total = 0;
+  const re = /(\d+)([smhd])/g;
+  let match;
+  while ((match = re.exec(spec)) !== null) {
+    total += parseInt(match[1], 10) * units[match[2]];
+  }
+  return total;
+}
+async function searchSessions(opts) {
+  const { configDirs, since, keyword } = opts;
+  const projectDirs = [];
+  for (const dir of configDirs) {
+    const pDir = `${dir}/projects`;
+    try {
+      const s = await stat(pDir);
+      if (s.isDirectory())
+        projectDirs.push(pDir);
+    } catch {}
+  }
+  const glob = new Bun.Glob("**/*.jsonl");
+  const allFiles = [];
+  for (const pDir of projectDirs) {
+    for await (const match of glob.scan(pDir)) {
+      const filename = match.split("/").pop() ?? "";
+      if (filename.startsWith("agent-"))
+        continue;
+      allFiles.push(`${pDir}/${match}`);
+    }
+  }
+  const all = [];
+  for (const file of allFiles) {
+    let fileStat;
+    try {
+      fileStat = await stat(file);
+    } catch {
+      continue;
+    }
+    const size = fileStat.size;
+    if (size === 0)
+      continue;
+    const mtime = Math.floor(fileStat.mtimeMs / 1000);
+    const text = await Bun.file(file).text();
+    const lines = text.split(`
+`);
+    let sessionId = "?";
+    let cwd = "?";
+    for (const line of lines) {
+      if (line.includes('"cwd"')) {
+        const sidMatch = line.match(/"sessionId"\s*:\s*"([^"]+)"/);
+        if (sidMatch)
+          sessionId = sidMatch[1];
+        const cwdMatch = line.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (cwdMatch)
+          cwd = cwdMatch[1];
+        break;
+      }
+    }
+    if (cwd === "?" && sessionId === "?") {
+      continue;
+    }
+    all.push({ file, mtime, size, sessionId, cwd });
+  }
+  let filtered = all;
+  if (since != null) {
+    filtered = all.filter((e) => e.mtime >= since);
+  }
+  if (keyword) {
+    const matched = [];
+    for (const e of filtered) {
+      const text = await Bun.file(e.file).text();
+      const lines = text.split(`
+`);
+      for (const line of lines) {
+        const idx = line.indexOf(keyword);
+        if (idx !== -1) {
+          const preStart = Math.max(0, idx - 20);
+          let pre = line.slice(preStart, idx);
+          pre = pre.replace(/.*\n/s, "");
+          let post = line.slice(idx + keyword.length, idx + keyword.length + 20);
+          post = post.replace(/\n.*/s, "");
+          const ctx = `${pre}${keyword}${post}`.replace(/[\r\n]/g, " ");
+          matched.push({ ...e, context: ctx });
+          break;
+        }
+      }
+    }
+    filtered = matched;
+  }
+  filtered.sort((a, b) => a.mtime - b.mtime);
+  return filtered;
+}
+
+// src/sessions/format.ts
+function formatHumanSize(bytes) {
+  let v;
+  let u;
+  if (bytes >= 1e9) {
+    v = bytes / 1e9;
+    u = "G";
+  } else if (bytes >= 1e6) {
+    v = bytes / 1e6;
+    u = "M";
+  } else {
+    v = bytes / 1000;
+    u = "K";
+  }
+  if (v >= 100) {
+    return `${Math.floor(v).toString().padStart(3)}${u}`;
+  } else if (v >= 10) {
+    return `${Math.floor(v).toString().padStart(3)}${u}`;
+  } else {
+    return `${v.toFixed(1)}${u}`;
+  }
+}
+function formatAgo(seconds) {
+  let v;
+  let u;
+  if (seconds < 60) {
+    v = seconds;
+    u = "s";
+  } else if (seconds < 3600) {
+    v = Math.floor(seconds / 60);
+    u = "m";
+  } else if (seconds < 86400) {
+    v = Math.floor(seconds / 3600);
+    u = "h";
+  } else {
+    v = Math.floor(seconds / 86400);
+    u = "d";
+  }
+  return `${v.toString().padStart(2)}${u}`;
+}
+function formatSessionLine(session, opts) {
+  const age = opts.now - session.mtime;
+  const agoStr = formatAgo(age);
+  const sizeStr = formatHumanSize(session.size);
+  const sid = opts.full ? session.sessionId : session.sessionId.slice(0, 8);
+  const dir = opts.full ? session.cwd : lastSegments(session.cwd, 2);
+  const ctx = session.context ? `	${session.context}` : "";
+  return `${agoStr}	${sizeStr}	${sid}	${dir}${ctx}`;
+}
+function formatSessionsOutput(allSessions, filtered, opts) {
+  const now = opts.now ?? Math.floor(Date.now() / 1000);
+  const lines = [];
+  if (allSessions.length > 0) {
+    const oldest = allSessions[0];
+    const newest = allSessions[allSessions.length - 1];
+    const oldestAgo = formatAgo(now - oldest.mtime);
+    const newestAgo = formatAgo(now - newest.mtime);
+    lines.push(`# ${allSessions.length} sessions (${oldestAgo} .. ${newestAgo})`);
+  }
+  const output = opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
+  for (const session of output) {
+    lines.push(formatSessionLine(session, { full: opts.full, now }));
+  }
+  return lines.join(`
+`);
+}
+
+// src/sessions/index.ts
+var DURATION_RE = /^(\d+[smhd])+$/;
+function printUsage3(exitCode = 0) {
+  const prog = process.env._PROG || "sessions";
+  const out = exitCode !== 0 ? console.error : console.log;
+  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>] [--full]
+
+Options:
+  --grep <keyword>  Search keyword, output session ID only
+  --since <spec>    Time filter. Duration: 5m, 1h, 2d, 1h30m
+                    or date string: 2024-01-01, 2024-01-01T12:00:00
+                    (default: 1d)
+  --limit <N>       Show last N sessions (default: 10)
+  --full            Show full session ID and cwd
+  --help            Show this help`);
+  process.exit(exitCode);
+}
+function parseSince(spec) {
+  if (DURATION_RE.test(spec)) {
+    const seconds = parseDuration(spec);
+    return Math.floor(Date.now() / 1000) - seconds;
+  }
+  const d = new Date(spec);
+  if (isNaN(d.getTime())) {
+    console.error(`Error: Invalid --since value: ${spec}`);
+    process.exit(1);
+  }
+  return Math.floor(d.getTime() / 1000);
+}
+function parseOpts(rawArgs) {
+  let keyword = "";
+  let since = "1d";
+  let tail = 10;
+  let full = false;
+  let i = 0;
+  while (i < rawArgs.length) {
+    switch (rawArgs[i]) {
+      case "--help":
+        printUsage3(0);
+        break;
+      case "--grep":
+        keyword = rawArgs[++i] ?? "";
+        break;
+      case "--since":
+        since = rawArgs[++i] ?? "1d";
+        break;
+      case "--limit":
+        tail = parseInt(rawArgs[++i] ?? "10", 10);
+        break;
+      case "--full":
+        full = true;
+        break;
+      default:
+        if (rawArgs[i].startsWith("-")) {
+          console.error(`Unknown option: ${rawArgs[i]}`);
+          printUsage3(1);
+        }
+        break;
+    }
+    i++;
+  }
+  return { keyword, since, tail, full };
+}
+async function run6(args) {
+  const opts = parseOpts(args);
+  const cutoff = parseSince(opts.since);
+  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const defaultDir = `${process.env.HOME}/.claude`;
+  const configDirs = [];
+  if (configDir) {
+    configDirs.push(configDir);
+    if (configDir !== defaultDir) {
+      configDirs.push(defaultDir);
+    }
+  } else {
+    configDirs.push(defaultDir);
+  }
+  const allSessions = await searchSessions({ configDirs });
+  allSessions.sort((a, b) => a.mtime - b.mtime);
+  const filtered = await searchSessions({
+    configDirs,
+    since: cutoff,
+    keyword: opts.keyword || undefined
+  });
+  const output = formatSessionsOutput(allSessions, filtered, {
+    full: opts.full,
+    tail: opts.tail
+  });
+  if (output) {
+    await Bun.write(Bun.stdout, output + `
+`);
+  }
+}
+
+// src/resolve-session/index.ts
+import * as path from "path";
+function printUsage4(exitCode = 0) {
+  const prog = process.env._PROG || "resolve-session";
+  const out = exitCode !== 0 ? console.error : console.log;
+  out(`Usage: ${prog} [--path] <session_id_prefix>
+
+Options:
+  --path  Output full file path instead of session ID
+  --help  Show this help`);
+  process.exit(exitCode);
+}
+async function run7(args) {
+  let showPath = false;
+  let prefix = "";
+  let i = 0;
+  while (i < args.length) {
+    switch (args[i]) {
+      case "--help":
+        printUsage4(0);
+        break;
+      case "--path":
+        showPath = true;
+        break;
+      default:
+        if (args[i].startsWith("-")) {
+          console.error(`Unknown option: ${args[i]}`);
+          printUsage4(1);
+        }
+        prefix = args[i];
+        break;
+    }
+    i++;
+  }
+  if (!prefix) {
+    printUsage4(1);
+  }
+  const resolved = await resolveSession(prefix);
+  if (showPath) {
+    await Bun.write(Bun.stdout, resolved + `
+`);
+  } else {
+    const sessionId = path.basename(resolved, ".jsonl");
+    await Bun.write(Bun.stdout, sessionId + `
+`);
+  }
+}
+
+// src/cli.ts
+var PROG = "claude-session-analysis";
+var SUBCOMMANDS = {
+  timeline: { desc: "Display session events with filtering and formatting options", run },
+  summaries: { desc: "Extract summary information from a session", run: run2 },
+  "file-ops": { desc: "Extract file operations from a session", run: run3 },
+  "get-by-marker": { desc: "Retrieve session entries by marker with optional context", run: run4 },
+  "file-diff": { desc: "Compare backup file versions or backup vs current file", run: run5 },
+  sessions: { desc: "List available Claude sessions with filtering and search", run: run6 },
+  "resolve-session": { desc: "Resolve session ID prefix to full ID or file path", run: run7 }
+};
+function printUsage5(exitCode = 0) {
+  const names = Object.keys(SUBCOMMANDS);
+  const maxLen = Math.max(...names.map((n) => n.length));
+  const lines = Object.entries(SUBCOMMANDS).map(([name, { desc }]) => `  ${name.padEnd(maxLen)}  ${desc}`);
+  const out = exitCode !== 0 ? console.error : console.log;
+  out(`Usage: ${PROG} <command> [options]
+
+Commands:
+${lines.join(`
+`)}
+
+Run '${PROG} <command> --help' for more information on a command.`);
+  process.exit(exitCode);
+}
+var subcmd = process.argv[2];
+if (!subcmd) {
+  printUsage5(1);
+}
+if (subcmd === "--help") {
+  printUsage5();
+}
+var entry = SUBCOMMANDS[subcmd];
+if (!entry) {
+  console.error(`Unknown command: ${subcmd}
+`);
+  printUsage5(1);
+}
+process.env._PROG = `${PROG} ${subcmd}`;
+try {
+  await entry.run(process.argv.slice(3));
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
   process.exit(1);
-});
+}

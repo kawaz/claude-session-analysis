@@ -11,26 +11,9 @@ A Claude Code skill for analyzing session files (`.jsonl`) to review past conver
 
 ## Installation
 
-### Via Plugin Marketplace (Recommended)
-
 ```
-/plugin marketplace add kawaz/claude-plugins
-/plugin install claude-session-analysis@kawaz-claude-plugins
-```
-
-### As a Standalone Skill
-
-```bash
-# Personal (user-level)
-cd ~/.claude/skills
-git clone https://github.com/kawaz/claude-session-analysis.git
-cd claude-session-analysis
-mv skills/claude-session-analysis/* .
-rmdir skills/claude-session-analysis skills
-
-# Project-level
-cd your-project/.claude/skills
-# (same steps as above)
+claude plugin marketplace add kawaz/claude-session-analysis
+claude plugin install claude-session-analysis@claude-session-analysis
 ```
 
 ## Usage
@@ -42,17 +25,17 @@ Once installed, Claude can use this skill to analyze sessions. Example prompts:
 - "What files did we modify in this session?"
 - "Show the diff between v1 and v2 of that file"
 
-## Scripts
+## Subcommands
 
-| Script | Description |
-|--------|-------------|
-| `current-session.sh` | Get current session ID candidates |
-| `timeline.sh` | Show session timeline (U/T/R/W) |
-| `get-by-marker.sh` | Get details from marker (timeline format: {type}{hash}) |
-| `file-ops.sh` | List Read/Write operations |
-| `file-diff.sh` | Show diff between file versions |
-| `sessions.sh` | List sessions for a directory |
-| `summaries.sh` | Show session title history |
+| Subcommand | Description |
+|------------|-------------|
+| `timeline` | Display session events with filtering and formatting options |
+| `summaries` | Extract summary information from a session |
+| `file-ops` | Extract file operations from a session |
+| `get-by-marker` | Retrieve session entries by marker with optional context |
+| `file-diff` | Compare backup file versions or backup vs current file |
+| `sessions` | List available Claude sessions with filtering and search |
+| `resolve-session` | Resolve session ID prefix to full ID or file path |
 
 ## Why Use This?
 
