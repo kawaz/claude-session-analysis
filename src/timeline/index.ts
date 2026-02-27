@@ -2,7 +2,7 @@ import { parseArgs } from "./parse-args.ts";
 import { resolveSession } from "../resolve-session.ts";
 import { extractEvents } from "./extract.ts";
 import { pipeline } from "./filter.ts";
-import { formatEvents } from "./format.ts";
+import { formatEvents, mdFrontMatter } from "./format.ts";
 import { omit, redact, redactWithHint } from "../lib.ts";
 import type { SessionEntry } from "./types.ts";
 
@@ -115,8 +115,17 @@ export async function run(args: string[]) {
       ? true
       : opts.timestamps;
 
+  // mdモード用 front matter
+  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  const frontMatter = isMd
+    ? mdFrontMatter(
+        `${process.env._PROG || "timeline"} ${args.join(" ")}`,
+        new Date().toISOString(),
+      )
+    : "";
+
   // 出力生成
-  const output = formatEvents(filtered, {
+  const output = frontMatter + formatEvents(filtered, {
     rawMode: opts.rawMode,
     width: opts.width,
     timestamps,

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { cleanTime, colorize, formatEvent, formatEvents, type FormatEventsOpts } from "./format.ts";
+import { cleanTime, colorize, formatEvent, formatEvents, mdFrontMatter, type FormatEventsOpts } from "./format.ts";
 import type { TimelineEvent } from "./types.ts";
 
 describe("cleanTime", () => {
@@ -239,7 +239,7 @@ describe("formatEvents", () => {
   });
 
   // mdMode テスト
-  test("mdMode=source: QTRUはマーカー行+本文展開、それ以外は1行", () => {
+  test("mdMode=source: QTRUはマーカー行+本文展開、それ以外は1行。2番目以降のQTRUには---区切り", () => {
     const mdEvents: TimelineEvent[] = [
       { kind: "U", ref: "abc12345", time: "2024-01-01T10:00:00_00001", desc: "hello\nworld" },
       { kind: "T", ref: "bbb12345", time: "2024-01-01T10:00:01_00002", desc: "thinking\nabout it" },
@@ -254,41 +254,47 @@ describe("formatEvents", () => {
       mdMode: "source",
     });
     const lines = result.split("\n");
-    // U: marker行 + 空行 + desc (2行) + 空行 = 5行
-    // T: marker行 + 空行 + desc (2行) + 空行 = 5行
-    // R: marker行 + 空行 + desc (2行) + 空行 = 5行
+    // U(最初): marker行 + 空行 + desc (2行) + 空行 = 5行
+    // T(2番目以降): --- + 空行 + marker行 + 空行 + desc (2行) + 空行 = 7行
+    // R(2番目以降): --- + 空行 + marker行 + 空行 + desc (2行) + 空行 = 7行
     // F: 1行
     // B: 1行
-    // Q: marker行 + 空行 + desc (2行) + 空行 = 5行
-    // U marker line
-    expect(lines[0]).toBe("2024-01-01T10:00:00 Uabc12345");
-    // 空行 + body
-    expect(lines[1]).toBe("");
-    expect(lines[2]).toBe("hello");
-    expect(lines[3]).toBe("world");
-    expect(lines[4]).toBe("");
-    // T marker line
-    expect(lines[5]).toBe("2024-01-01T10:00:01 Tbbb12345");
-    expect(lines[6]).toBe("");
-    expect(lines[7]).toBe("thinking");
-    expect(lines[8]).toBe("about it");
-    expect(lines[9]).toBe("");
-    // R marker line
-    expect(lines[10]).toBe("2024-01-01T10:00:02 Rccc12345");
-    expect(lines[11]).toBe("");
-    expect(lines[12]).toBe("response");
-    expect(lines[13]).toBe("text");
-    expect(lines[14]).toBe("");
+    // Q(2番目以降): --- + 空行 + marker行 + 空行 + desc (2行) + 空行 = 7行
+    let i = 0;
+    // U marker line (最初のQTRUなので---なし)
+    expect(lines[i++]).toBe("2024-01-01T10:00:00 Uabc12345");
+    expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("hello");
+    expect(lines[i++]).toBe("world");
+    expect(lines[i++]).toBe("");
+    // T marker line (2番目以降なので---あり)
+    expect(lines[i++]).toBe("---");
+    expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("2024-01-01T10:00:01 Tbbb12345");
+    expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("thinking");
+    expect(lines[i++]).toBe("about it");
+    expect(lines[i++]).toBe("");
+    // R marker line (---あり)
+    expect(lines[i++]).toBe("---");
+    expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("2024-01-01T10:00:02 Rccc12345");
+    expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("response");
+    expect(lines[i++]).toBe("text");
+    expect(lines[i++]).toBe("");
     // F: 1行
-    expect(lines[15]).toBe("2024-01-01T10:00:03 Fddd12345 src/lib.ts hash@v1");
+    expect(lines[i++]).toBe("2024-01-01T10:00:03 Fddd12345 src/lib.ts hash@v1");
     // B: 1行
-    expect(lines[16]).toBe("2024-01-01T10:00:04 Beee12345 git status");
-    // Q marker line
-    expect(lines[17]).toBe("2024-01-01T10:00:05 Qfff12345");
-    expect(lines[18]).toBe("");
-    expect(lines[19]).toBe("question");
-    expect(lines[20]).toBe("for user");
-    expect(lines[21]).toBe("");
+    expect(lines[i++]).toBe("2024-01-01T10:00:04 Beee12345 git status");
+    // Q marker line (---あり)
+    expect(lines[i++]).toBe("---");
+    expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("2024-01-01T10:00:05 Qfff12345");
+    expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("question");
+    expect(lines[i++]).toBe("for user");
+    expect(lines[i++]).toBe("");
   });
 
   test("mdMode=source: widthは無視される（全文表示）", () => {
@@ -327,5 +333,22 @@ describe("formatEvents", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe("Uabc12345 user msg");
     expect(lines[1]).toBe("Rdef67890 response");
+  });
+});
+
+describe("mdFrontMatter", () => {
+  test("コマンドとnowを含むYAML front matterを生成", () => {
+    const result = mdFrontMatter("claude-session-analysis timeline abc --md-source", "2026-02-27T01:23:45.678Z");
+    const lines = result.split("\n");
+    expect(lines[0]).toBe("---");
+    expect(lines[1]).toBe("command: claude-session-analysis timeline abc --md-source");
+    expect(lines[2]).toBe("now: 2026-02-27T01:23:45.678Z");
+    expect(lines[3]).toBe("---");
+    expect(lines[4]).toBe("");
+  });
+
+  test("末尾に空行を含む（本文との区切り）", () => {
+    const result = mdFrontMatter("cmd", "2026-01-01T00:00:00Z");
+    expect(result).toEndWith("---\n\n");
   });
 });

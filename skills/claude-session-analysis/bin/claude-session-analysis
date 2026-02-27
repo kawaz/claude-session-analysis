@@ -647,16 +647,30 @@ function formatEvent(event, opts) {
   }
   return `${event.kind}${event.ref} ${desc}`;
 }
+function mdFrontMatter(command, now) {
+  return `---
+command: ${command}
+now: ${now}
+---
+
+`;
+}
 function formatEvents(events, opts) {
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
   const needColorize = opts.colors || opts.emoji;
   const output = [];
+  let mdQtruSeen = false;
   for (const e of events) {
     let line = formatEvent(e, opts);
     if (needColorize) {
       line = colorize(line, { colors: opts.colors, emoji: opts.emoji });
     }
     if (isMd && QTRU_KINDS.has(e.kind)) {
+      if (mdQtruSeen) {
+        output.push("---");
+        output.push("");
+      }
+      mdQtruSeen = true;
       output.push(line);
       output.push("");
       output.push(e.desc);
@@ -751,7 +765,9 @@ async function run(args) {
   const useColors = opts.colors === "always" ? true : opts.colors === "never" ? false : process.stdout.isTTY ?? false;
   const useEmoji = opts.emoji === "always" ? true : opts.emoji === "never" ? false : useColors;
   const timestamps = opts.mdMode !== "off" && !args.includes("--no-timestamps") ? true : opts.timestamps;
-  const output = formatEvents(filtered, {
+  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  const frontMatter = isMd ? mdFrontMatter(`${process.env._PROG || "timeline"} ${args.join(" ")}`, new Date().toISOString()) : "";
+  const output = frontMatter + formatEvents(filtered, {
     rawMode: opts.rawMode,
     width: opts.width,
     timestamps,

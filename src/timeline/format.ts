@@ -117,6 +117,11 @@ export interface FormatEventsOpts {
   mdMode: "off" | "render" | "source";
 }
 
+/** mdモード用 YAML front matter を生成 */
+export function mdFrontMatter(command: string, now: string): string {
+  return `---\ncommand: ${command}\nnow: ${now}\n---\n\n`;
+}
+
 /** 複数イベントをフォーマットして結合 */
 export function formatEvents(
   events: TimelineEvent[],
@@ -126,6 +131,7 @@ export function formatEvents(
   const needColorize = opts.colors || opts.emoji;
 
   const output: string[] = [];
+  let mdQtruSeen = false;
   for (const e of events) {
     let line = formatEvent(e, opts);
     if (needColorize) {
@@ -133,6 +139,12 @@ export function formatEvents(
     }
 
     if (isMd && QTRU_KINDS.has(e.kind)) {
+      // 2番目以降のQTRUには --- (thematic break) を挿入
+      if (mdQtruSeen) {
+        output.push("---");
+        output.push("");
+      }
+      mdQtruSeen = true;
       // QTRU: マーカー行 + 空行 + desc本文 + 空行
       output.push(line);
       output.push("");
