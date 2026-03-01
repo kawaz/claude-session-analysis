@@ -128,7 +128,7 @@ export async function run(args: string[]) {
     });
 
     if (output) {
-      await Bun.write(Bun.stdout, output + "\n");
+      console.log(output);
     }
   } catch (e) {
     if (e instanceof SyntaxError) {

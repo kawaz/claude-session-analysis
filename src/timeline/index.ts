@@ -89,7 +89,7 @@ export async function run(args: string[]) {
         output.push(JSON.stringify(processed, null, 2));
       }
     }
-    await Bun.write(Bun.stdout, output.join("\n") + "\n");
+    console.log(output.join("\n"));
     return;
   }
 
@@ -155,7 +155,7 @@ export async function run(args: string[]) {
   }
 
   // --md-source / 通常出力
-  await Bun.write(Bun.stdout, output + "\n");
+  console.log(output);
 }
 
 function printUsage() {

@@ -16,5 +16,5 @@ export async function run(args: string[]) {
   const text = await Bun.file(sessionFile).text();
   const result = extractFileOpsFromJsonl(text);
 
-  await Bun.write(Bun.stdout, JSON.stringify(result, null, 2) + "\n");
+  console.log(JSON.stringify(result, null, 2));
 }

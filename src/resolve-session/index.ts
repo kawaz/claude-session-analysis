@@ -43,9 +43,9 @@ export async function run(args: string[]) {
   const resolved = await resolveSession(prefix);
 
   if (showPath) {
-    await Bun.write(Bun.stdout, resolved + "\n");
+    console.log(resolved);
   } else {
     const sessionId = path.basename(resolved, ".jsonl");
-    await Bun.write(Bun.stdout, sessionId + "\n");
+    console.log(sessionId);
   }
 }

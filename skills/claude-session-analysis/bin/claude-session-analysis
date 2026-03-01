@@ -757,9 +757,8 @@ async function run(args) {
         output2.push(JSON.stringify(processed, null, 2));
       }
     }
-    await Bun.write(Bun.stdout, output2.join(`
-`) + `
-`);
+    console.log(output2.join(`
+`));
     return;
   }
   const useColors = opts.colors === "always" ? true : opts.colors === "never" ? false : process.stdout.isTTY ?? false;
@@ -792,8 +791,7 @@ async function run(args) {
     await proc.exited;
     return;
   }
-  await Bun.write(Bun.stdout, output + `
-`);
+  console.log(output);
 }
 function printUsage() {
   const prog = process.env._PROG || "timeline";
@@ -863,8 +861,7 @@ async function run2(args) {
     } catch {}
   }
   const summaries = extractSummaries(entries);
-  await Bun.write(Bun.stdout, JSON.stringify(summaries, null, 2) + `
-`);
+  console.log(JSON.stringify(summaries, null, 2));
 }
 
 // src/file-ops/extract.ts
@@ -935,8 +932,7 @@ async function run3(args) {
   const sessionFile = await resolveSession(input);
   const text = await Bun.file(sessionFile).text();
   const result = extractFileOpsFromJsonl(text);
-  await Bun.write(Bun.stdout, JSON.stringify(result, null, 2) + `
-`);
+  console.log(JSON.stringify(result, null, 2));
 }
 
 // src/get-by-marker/extract.ts
@@ -1063,9 +1059,8 @@ async function run4(args) {
     }
     output.push(JSON.stringify(processed, null, 2));
   }
-  await Bun.write(Bun.stdout, output.join(`
-`) + `
-`);
+  console.log(output.join(`
+`));
 }
 function printUsage2() {
   const prog = process.env._PROG || "get-by-marker";
@@ -1491,8 +1486,7 @@ async function run6(args) {
       tail: opts.tail
     });
     if (output) {
-      await Bun.write(Bun.stdout, output + `
-`);
+      console.log(output);
     }
   } catch (e) {
     if (e instanceof SyntaxError) {
@@ -1542,12 +1536,10 @@ async function run7(args) {
   }
   const resolved = await resolveSession(prefix);
   if (showPath) {
-    await Bun.write(Bun.stdout, resolved + `
-`);
+    console.log(resolved);
   } else {
     const sessionId = path.basename(resolved, ".jsonl");
-    await Bun.write(Bun.stdout, sessionId + `
-`);
+    console.log(sessionId);
   }
 }
 

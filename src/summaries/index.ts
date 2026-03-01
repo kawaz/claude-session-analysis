@@ -31,5 +31,5 @@ export async function run(args: string[]) {
   const summaries = extractSummaries(entries);
 
   // JSON出力（jq -sf と同じ出力）
-  await Bun.write(Bun.stdout, JSON.stringify(summaries, null, 2) + "\n");
+  console.log(JSON.stringify(summaries, null, 2));
 }
