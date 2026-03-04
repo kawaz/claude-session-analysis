@@ -11,11 +11,7 @@
     {
       "name": "claude-session-analysis",
       "description": "Analyze Claude Code session files. Find current session ID, view timeline (tl), or search past chats.",
-      "source": "./",
-      "strict": false,
-      "skills": [
-        "./skills/claude-session-analysis"
-      ]
+      "source": "./"
     }
   ]
 }
