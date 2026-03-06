@@ -76,9 +76,6 @@ export function colorize(line: string, opts?: ColorizeOpts): string {
   const ansiStart = useColors ? ansi : "";
   const ansiEnd = useColors ? "\x1b[0m" : "";
 
-  if (kind === "U") {
-    return `${ansiStart}\n\n${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
-  }
   return `${ansiStart}${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
 }
 

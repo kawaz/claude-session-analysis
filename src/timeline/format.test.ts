@@ -29,12 +29,10 @@ describe("localTime", () => {
 });
 
 describe("colorize", () => {
-  test("Uイベント → 緑 + 👤 + 空行", () => {
+  test("Uイベント → 緑 + 👤", () => {
     const result = colorize("Uabc12345 hello");
     expect(result).toContain("\x1b[32m");
     expect(result).toContain("👤");
-    // \n\n は ANSI コードの後に来る
-    expect(result).toMatch(/\x1b\[32m\n\n👤/);
     expect(result).toEndWith("\x1b[0m");
   });
   test("Tイベント → italic青 + 🧠", () => {
@@ -139,17 +137,15 @@ describe("colorize", () => {
     const result = colorize("Rabc12345 response", { colors: false, emoji: false });
     expect(result).toBe("Rabc12345 response");
   });
-  test("Uイベント emoji=false → 空行はつくがemoji無し", () => {
+  test("Uイベント emoji=false → emoji無し", () => {
     const result = colorize("Uabc12345 hello", { colors: true, emoji: false });
     expect(result).toContain("\x1b[32m");
-    expect(result).toContain("\n\n");
     expect(result).not.toContain("👤");
   });
-  test("Uイベント emoji=true, colors=false → 空行+emoji、ANSIなし", () => {
+  test("Uイベント emoji=true, colors=false → emoji、ANSIなし", () => {
     const result = colorize("Uabc12345 hello", { colors: false, emoji: true });
     expect(result).not.toContain("\x1b[");
     expect(result).toContain("👤");
-    expect(result).toContain("\n\n");
   });
   test("Fイベント emoji=false → F条件分岐の絵文字も出ない", () => {
     const result = colorize("Fabc12345 lib.ts abc12345@v1", { colors: true, emoji: false });
