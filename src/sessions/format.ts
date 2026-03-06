@@ -168,7 +168,7 @@ export function formatSessionsOutput(
   // カラムヘッダ
   const sidLabel = opts.full ? "SessionId" : "SessId8 ";
   lines.push(
-    `${"End".padEnd(25)} ${"Duration".padStart(8)} ${"Size".padStart(8)}\t${sidLabel}\tPath`,
+    `${"END".padEnd(25)} ${"DURATION".padStart(8)} ${"SIZE".padStart(8)}\t${sidLabel.toUpperCase()}\tPATH`,
   );
 
   // tail 制限
