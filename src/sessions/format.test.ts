@@ -258,6 +258,6 @@ describe("formatSessionsOutput", () => {
     const lines = output.split("\n").filter((l) => l);
     expect(lines.length).toBe(2);
     expect(lines[0]).toMatch(/^# 1 sessions/);
-    expect(lines[1]).toMatch(/^END/);
+    expect(lines[1]).toMatch(/^TIMESTAMP_END/);
   });
 });
