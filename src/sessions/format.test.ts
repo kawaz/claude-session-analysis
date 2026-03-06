@@ -71,38 +71,49 @@ describe("formatAgo", () => {
 });
 
 describe("formatDuration", () => {
-  test("under 1min: 45s -> right-aligned 45s", () => {
-    expect(formatDuration(45)).toBe("   45s");
+  test("under 1min: 45s -> 右寄せ5文字", () => {
+    expect(formatDuration(45)).toBe("  45s");
   });
-  test("minutes: 300s -> right-aligned 5m", () => {
-    expect(formatDuration(300)).toBe("    5m");
+  test("seconds小数: 5s -> 5.0s", () => {
+    expect(formatDuration(5)).toBe(" 5.0s");
   });
-  test("hours and minutes: 3661s -> 1h01m", () => {
-    expect(formatDuration(3661)).toBe(" 1h01m");
+  test("minutes: 300s -> 5.0m", () => {
+    expect(formatDuration(300)).toBe(" 5.0m");
   });
-  test("exact hours: 7200s -> 2h00m", () => {
-    expect(formatDuration(7200)).toBe(" 2h00m");
+  test("minutes 10以上: 900s -> 15m", () => {
+    expect(formatDuration(900)).toBe("  15m");
   });
-  test("13h54m", () => {
-    expect(formatDuration(50040)).toBe("13h54m");
+  test("hours: 3661s -> 1.0h", () => {
+    expect(formatDuration(3661)).toBe(" 1.0h");
   });
-  test("days: 90060s -> right-aligned 1d", () => {
-    expect(formatDuration(90060)).toBe("    1d");
+  test("hours: 5400s -> 1.5h", () => {
+    expect(formatDuration(5400)).toBe(" 1.5h");
   });
-  test("many days: 8640000s -> right-aligned 100d", () => {
-    expect(formatDuration(8640000)).toBe("  100d");
+  test("hours 10以上: 50040s -> 13h", () => {
+    expect(formatDuration(50040)).toBe("  13h");
   });
-  test("zero: right-aligned 0s", () => {
-    expect(formatDuration(0)).toBe("    0s");
+  test("days: 90060s -> 1.0d", () => {
+    expect(formatDuration(90060)).toBe(" 1.0d");
+  });
+  test("days: 216000s -> 2.5d", () => {
+    expect(formatDuration(216000)).toBe(" 2.5d");
+  });
+  test("many days: 8640000s -> 100d", () => {
+    expect(formatDuration(8640000)).toBe(" 100d");
+  });
+  test("zero: 0.0s", () => {
+    expect(formatDuration(0)).toBe(" 0.0s");
   });
 });
 
 describe("formatDateTime", () => {
-  test("formats epoch to MM/DD HH:MM", () => {
-    // 2026-03-06 10:30:00 JST = 2026-03-06T01:30:00Z
+  test("ローカルTZ付きISO8601形式", () => {
     const d = new Date(2026, 2, 6, 10, 30, 0);
     const epoch = Math.floor(d.getTime() / 1000);
-    expect(formatDateTime(epoch)).toBe("03-06T10:30");
+    const result = formatDateTime(epoch);
+    expect(result).toMatch(/^2026-03-06T10:30:00[+-]\d{2}:\d{2}$/);
+    // 変換結果が同じ瞬間を表す
+    expect(new Date(result).getTime()).toBe(d.getTime());
   });
 });
 
@@ -133,12 +144,12 @@ describe("formatSessionLine", () => {
     cwd: "/Users/kawaz/.local/share/repos/github.com/kawaz/myproject",
   };
 
-  test("default: start end (ago duration) short_sid short_path", () => {
+  test("default: dur end short_sid short_path", () => {
     const line = formatSessionLine(base, { full: false, now });
-    // contains start/end datetime
-    expect(line).toContain("03-06T");
+    // contains end datetime in ISO8601 with TZ
+    expect(line).toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
     // contains duration
-    expect(line).toContain("1h");
+    expect(line).toContain("1.0h");
     // short sid
     expect(line).toContain("abc12345");
     expect(line).not.toContain("abc12345-6789");
@@ -239,6 +250,6 @@ describe("formatSessionsOutput", () => {
     const lines = output.split("\n").filter((l) => l);
     expect(lines.length).toBe(2);
     expect(lines[0]).toMatch(/^# 1 sessions/);
-    expect(lines[1]).toMatch(/^# +Start/);
+    expect(lines[1]).toMatch(/^# +Dur/);
   });
 });

@@ -62,37 +62,42 @@ export function formatAgo(seconds: number): string {
 }
 
 /**
- * duration秒を固定6文字幅でフォーマット。
- * < 1日: HHhMMm (例: "04h32m", "00h13m")
- * >= 1日: Nd 右寄せ (例: "    1d", "  100d")
+ * duration秒を ##.#[dhms] 形式でフォーマット（右寄せ5文字幅）。
+ * 例: " 1.5h", "  45m", " 2.3d", "  30s"
  */
 export function formatDuration(seconds: number): string {
-  const WIDTH = 6;
-  const d = Math.floor(seconds / 86400);
-  if (d > 0) {
-    return `${d}d`.padStart(WIDTH);
+  const WIDTH = 5;
+  let v: number;
+  let u: string;
+  if (seconds >= 86400) {
+    v = seconds / 86400;
+    u = "d";
+  } else if (seconds >= 3600) {
+    v = seconds / 3600;
+    u = "h";
+  } else if (seconds >= 60) {
+    v = seconds / 60;
+    u = "m";
+  } else {
+    v = seconds;
+    u = "s";
   }
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) {
-    return `${h}h${String(m).padStart(2, "0")}m`.padStart(WIDTH);
-  }
-  if (m > 0) {
-    return `${m}m`.padStart(WIDTH);
-  }
-  return `${seconds}s`.padStart(WIDTH);
+  const str = v >= 10 ? `${Math.floor(v)}${u}` : `${v.toFixed(1)}${u}`;
+  return str.padStart(WIDTH);
 }
 
 /**
- * Unix epoch seconds をローカルの "MM/DD HH:MM" 形式にフォーマット。
+ * Unix epoch seconds をローカルタイムゾーン付き ISO8601 にフォーマット。
+ * 例: 2026-03-06T10:30:00+09:00
  */
 export function formatDateTime(epochSeconds: number): string {
   const d = new Date(epochSeconds * 1000);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${mm}-${dd}T${hh}:${mi}`;
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const oh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const om = String(Math.abs(off) % 60).padStart(2, "0");
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`;
 }
 
 /**
@@ -114,13 +119,12 @@ export function formatProjectPath(cwd: string, full: boolean): string {
 
 /**
  * 1セッションの出力行をフォーマット。
- * format: start end (mtime_ago duration) sid path [context]
+ * format: dur end sid path [context]
  */
 export function formatSessionLine(
   session: SessionInfo,
   opts: FormatOptions & { now: number },
 ): string {
-  const startStr = formatDateTime(session.startTime);
   const endStr = formatDateTime(session.endTime);
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
@@ -134,7 +138,7 @@ export function formatSessionLine(
 
   const ctx = session.context ? `\t${session.context}` : "";
 
-  return `${durStr}  ${endStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
+  return `${durStr} ${endStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
 }
 
 /**
@@ -162,7 +166,7 @@ export function formatSessionsOutput(
   // カラムヘッダ
   const sidLabel = opts.full ? "SessionId" : "SessId8 ";
   lines.push(
-    `# ${"Start".padStart(6)}  ${"End".padEnd(11)}\tSize\t${sidLabel}\tPath`,
+    `# ${"Dur".padStart(5)} ${"End".padEnd(25)}\tSize\t${sidLabel}\tPath`,
   );
 
   // tail 制限
