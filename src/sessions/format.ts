@@ -139,7 +139,7 @@ export function formatSessionLine(
 
   const ctx = session.context ? `\t${session.context}` : "";
 
-  return `${durStr} ${endStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
+  return `${endStr} ${durStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
 }
 
 /**
@@ -167,7 +167,7 @@ export function formatSessionsOutput(
   // カラムヘッダ
   const sidLabel = opts.full ? "SessionId" : "SessId8 ";
   lines.push(
-    `# ${"Dur".padStart(5)} ${"End".padEnd(25)}\tSize\t${sidLabel}\tPath`,
+    `# ${"End".padEnd(25)} ${"Dur".padStart(5)}\tSize\t${sidLabel}\tPath`,
   );
 
   // tail 制限
