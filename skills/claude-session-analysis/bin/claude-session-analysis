@@ -2,6 +2,14 @@
 // @bun
 
 // src/timeline/parse-args.ts
+var SESSION_ID_RE = /^[0-9a-f][0-9a-f-]*$/;
+function isInputArg(arg) {
+  if (SESSION_ID_RE.test(arg))
+    return true;
+  if (arg.includes("/") || arg.endsWith(".jsonl"))
+    return true;
+  return false;
+}
 function parseRange(range) {
   if (range === "") {
     return { from: "", to: "" };
@@ -22,7 +30,7 @@ function parseArgs(argv) {
     timestamps: false,
     colors: "auto",
     rawMode: 0,
-    input: "",
+    inputs: [],
     from: "",
     to: "",
     mdMode: "off",
@@ -88,13 +96,16 @@ function parseArgs(argv) {
     }
     i++;
   }
-  result.input = positional[0] ?? "";
-  if (positional.length >= 2) {
-    const { from, to } = parseRange(positional[1]);
-    result.from = from;
-    result.to = to;
+  for (const arg of positional) {
+    if (isInputArg(arg)) {
+      result.inputs.push(arg);
+    } else {
+      const { from, to } = parseRange(arg);
+      result.from = from;
+      result.to = to;
+    }
   }
-  if (!result.help && result.input === "") {
+  if (!result.help && result.inputs.length === 0) {
     throw new Error("Input is required (session ID or file path)");
   }
   return result;
@@ -702,13 +713,16 @@ var OMIT_KEYS = [
   "thinkingMetadata"
 ];
 var REDACT_KEYS = ["data"];
-async function run(args) {
-  const opts = parseArgs(args);
-  if (opts.help) {
-    printUsage();
-    return;
-  }
-  const sessionFile = await resolveSession(opts.input);
+async function getStartTime(sessionFile) {
+  const text = await Bun.file(sessionFile).text();
+  const firstLine = text.slice(0, text.indexOf(`
+`) || text.length);
+  const m = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
+  if (m)
+    return new Date(m[1]).getTime();
+  return Infinity;
+}
+async function loadSession(sessionFile) {
   const text = await Bun.file(sessionFile).text();
   const rawLines = text.split(`
 `).filter((line) => line.trim());
@@ -718,10 +732,31 @@ async function run(args) {
       entries.push(JSON.parse(line));
     } catch {}
   }
-  const events = extractEvents(entries);
+  return entries;
+}
+async function run(args) {
+  const opts = parseArgs(args);
+  if (opts.help) {
+    printUsage();
+    return;
+  }
+  const resolved = [];
+  for (const input of opts.inputs) {
+    const file = await resolveSession(input);
+    const startTime = await getStartTime(file);
+    resolved.push({ file, startTime });
+  }
+  resolved.sort((a, b) => a.startTime - b.startTime);
+  let allEntries = [];
+  let allEvents = [];
+  for (const { file } of resolved) {
+    const entries = await loadSession(file);
+    allEntries = allEntries.concat(entries);
+    allEvents = allEvents.concat(extractEvents(entries));
+  }
   let filtered;
   try {
-    filtered = pipeline(events, {
+    filtered = pipeline(allEvents, {
       types: opts.types,
       from: opts.from,
       to: opts.to,
@@ -735,7 +770,7 @@ async function run(args) {
     throw e;
   }
   if (opts.rawMode > 0) {
-    const parsed = entries;
+    const parsed = allEntries;
     const output2 = [];
     for (const event of filtered) {
       const marker = `${event.kind}${event.ref}`;
@@ -1265,6 +1300,27 @@ async function searchSessions(opts) {
 `);
     let sessionId = "?";
     let cwd = "?";
+    let startTime = 0;
+    let endTime = 0;
+    const firstLine = lines[0] ?? "";
+    const firstTs = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
+    if (firstTs) {
+      startTime = Math.floor(new Date(firstTs[1]).getTime() / 1000);
+    }
+    for (let j = lines.length - 1;j >= 0; j--) {
+      const line = lines[j];
+      if (line.trim() === "")
+        continue;
+      const lastTs = line.match(/"timestamp"\s*:\s*"([^"]+)"/);
+      if (lastTs) {
+        endTime = Math.floor(new Date(lastTs[1]).getTime() / 1000);
+      }
+      break;
+    }
+    if (startTime === 0)
+      startTime = mtime;
+    if (endTime === 0)
+      endTime = mtime;
     for (const line of lines) {
       if (line.includes('"cwd"')) {
         const sidMatch = line.match(/"sessionId"\s*:\s*"([^"]+)"/);
@@ -1279,7 +1335,7 @@ async function searchSessions(opts) {
     if (cwd === "?" && sessionId === "?") {
       continue;
     }
-    all.push({ file, mtime, size, sessionId, cwd });
+    all.push({ file, mtime, startTime, endTime, size, sessionId, cwd });
   }
   let filtered = all;
   if (since != null) {
@@ -1354,14 +1410,52 @@ function formatAgo(seconds) {
   }
   return `${v.toString().padStart(2)}${u}`;
 }
+function formatDuration(seconds) {
+  const WIDTH = 6;
+  const d = Math.floor(seconds / 86400);
+  if (d > 0) {
+    return `${d}d`.padStart(WIDTH);
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor(seconds % 3600 / 60);
+  if (h > 0) {
+    return `${h}h${String(m).padStart(2, "0")}m`.padStart(WIDTH);
+  }
+  if (m > 0) {
+    return `${m}m`.padStart(WIDTH);
+  }
+  return `${seconds}s`.padStart(WIDTH);
+}
+function formatDateTime(epochSeconds) {
+  const d = new Date(epochSeconds * 1000);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}-${dd}T${hh}:${mi}`;
+}
+function formatProjectPath(cwd, full) {
+  if (full)
+    return cwd;
+  const reposIdx = cwd.indexOf("/repos/");
+  if (reposIdx !== -1) {
+    return cwd.slice(reposIdx + "/repos/".length);
+  }
+  const segments = cwd.split("/").filter((s) => s !== "");
+  if (segments.length <= 2)
+    return cwd;
+  return segments.slice(-2).join("/");
+}
 function formatSessionLine(session, opts) {
-  const age = opts.now - session.mtime;
-  const agoStr = formatAgo(age);
+  const startStr = formatDateTime(session.startTime);
+  const endStr = formatDateTime(session.endTime);
+  const duration = Math.max(0, session.endTime - session.startTime);
+  const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
   const sid = opts.full ? session.sessionId : session.sessionId.slice(0, 8);
-  const dir = opts.full ? session.cwd : lastSegments(session.cwd, 2);
+  const path = formatProjectPath(session.cwd, opts.full);
   const ctx = session.context ? `	${session.context}` : "";
-  return `${agoStr}	${sizeStr}	${sid}	${dir}${ctx}`;
+  return `${endStr}  ${durStr}	${sizeStr}	${sid}	${path}${ctx}`;
 }
 function formatSessionsOutput(allSessions, filtered, opts) {
   const now = opts.now ?? Math.floor(Date.now() / 1000);

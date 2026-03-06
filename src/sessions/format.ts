@@ -1,5 +1,4 @@
 import type { SessionInfo } from "./search.ts";
-import { lastSegments } from "../lib.ts";
 
 export interface FormatOptions {
   full: boolean;
@@ -63,29 +62,79 @@ export function formatAgo(seconds: number): string {
 }
 
 /**
+ * duration秒を固定6文字幅でフォーマット。
+ * < 1日: HHhMMm (例: "04h32m", "00h13m")
+ * >= 1日: Nd 右寄せ (例: "    1d", "  100d")
+ */
+export function formatDuration(seconds: number): string {
+  const WIDTH = 6;
+  const d = Math.floor(seconds / 86400);
+  if (d > 0) {
+    return `${d}d`.padStart(WIDTH);
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) {
+    return `${h}h${String(m).padStart(2, "0")}m`.padStart(WIDTH);
+  }
+  if (m > 0) {
+    return `${m}m`.padStart(WIDTH);
+  }
+  return `${seconds}s`.padStart(WIDTH);
+}
+
+/**
+ * Unix epoch seconds をローカルの "MM/DD HH:MM" 形式にフォーマット。
+ */
+export function formatDateTime(epochSeconds: number): string {
+  const d = new Date(epochSeconds * 1000);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}-${dd}T${hh}:${mi}`;
+}
+
+/**
+ * cwdからプロジェクトパスを抽出。
+ * full=false: repos/ 以降を返す（repos/がなければ末尾2セグメント）
+ * full=true: フルパス
+ */
+export function formatProjectPath(cwd: string, full: boolean): string {
+  if (full) return cwd;
+  const reposIdx = cwd.indexOf("/repos/");
+  if (reposIdx !== -1) {
+    return cwd.slice(reposIdx + "/repos/".length);
+  }
+  // repos/ がなければ末尾2セグメント
+  const segments = cwd.split("/").filter((s) => s !== "");
+  if (segments.length <= 2) return cwd;
+  return segments.slice(-2).join("/");
+}
+
+/**
  * 1セッションの出力行をフォーマット。
- * sh版: printf"%s\t%s\t%s\t%s%s\n",ago($e->[1]),h($e->[2]),$sid,$dir,$ctx
+ * format: start end (mtime_ago duration) sid path [context]
  */
 export function formatSessionLine(
   session: SessionInfo,
   opts: FormatOptions & { now: number },
 ): string {
-  const age = opts.now - session.mtime;
-  const agoStr = formatAgo(age);
+  const startStr = formatDateTime(session.startTime);
+  const endStr = formatDateTime(session.endTime);
+  const duration = Math.max(0, session.endTime - session.startTime);
+  const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
 
   const sid = opts.full
     ? session.sessionId
     : session.sessionId.slice(0, 8);
 
-  // sh版: unless($full){$dir=~s|.*/([^/]+/[^/]+)$|$1|}
-  const dir = opts.full
-    ? session.cwd
-    : lastSegments(session.cwd, 2);
+  const path = formatProjectPath(session.cwd, opts.full);
 
   const ctx = session.context ? `\t${session.context}` : "";
 
-  return `${agoStr}\t${sizeStr}\t${sid}\t${dir}${ctx}`;
+  return `${endStr}  ${durStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
 }
 
 /**

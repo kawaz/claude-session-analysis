@@ -19,6 +19,8 @@ export function parseDuration(spec: string): number {
 export interface SessionInfo {
   file: string;
   mtime: number; // Unix epoch seconds
+  startTime: number; // Unix epoch seconds (from first JSONL line timestamp)
+  endTime: number; // Unix epoch seconds (from last JSONL line timestamp)
   size: number;
   sessionId: string;
   cwd: string;
@@ -80,20 +82,41 @@ export async function searchSessions(
 
     const mtime = Math.floor(fileStat.mtimeMs / 1000);
 
-    // 最初の "cwd" を含む行からsessionIdとcwdを抽出
-    // sh版: grep -m1 '"cwd"' で最初のcwd行を取得
     const text = await Bun.file(file).text();
     const lines = text.split("\n");
     let sessionId = "?";
     let cwd = "?";
 
+    // 最初の行と最後の非空行からtimestampを抽出
+    let startTime = 0;
+    let endTime = 0;
+
+    const firstLine = lines[0] ?? "";
+    const firstTs = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
+    if (firstTs) {
+      startTime = Math.floor(new Date(firstTs[1]!).getTime() / 1000);
+    }
+
+    for (let j = lines.length - 1; j >= 0; j--) {
+      const line = lines[j]!;
+      if (line.trim() === "") continue;
+      const lastTs = line.match(/"timestamp"\s*:\s*"([^"]+)"/);
+      if (lastTs) {
+        endTime = Math.floor(new Date(lastTs[1]!).getTime() / 1000);
+      }
+      break;
+    }
+
+    // fallback: timestampが取れなければmtimeを使用
+    if (startTime === 0) startTime = mtime;
+    if (endTime === 0) endTime = mtime;
+
+    // 最初の "cwd" を含む行からsessionIdとcwdを抽出
     for (const line of lines) {
       if (line.includes('"cwd"')) {
-        // sessionId抽出
         const sidMatch = line.match(/"sessionId"\s*:\s*"([^"]+)"/);
         if (sidMatch) sessionId = sidMatch[1]!;
 
-        // cwd抽出（エスケープ文字対応）
         const cwdMatch = line.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
         if (cwdMatch) cwd = cwdMatch[1]!;
 
@@ -101,13 +124,11 @@ export async function searchSessions(
       }
     }
 
-    // sh版: grep -rm1 '"cwd"' で "cwd" を含む行がないファイルはスキップ
     if (cwd === "?" && sessionId === "?") {
-      // cwdもsessionIdも見つからない = "cwd"行がない → スキップ
       continue;
     }
 
-    all.push({ file, mtime, size, sessionId, cwd });
+    all.push({ file, mtime, startTime, endTime, size, sessionId, cwd });
   }
 
   // 4. since フィルタ (cutoff: epoch seconds)

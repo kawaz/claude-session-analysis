@@ -74,7 +74,7 @@ export interface ParsedArgs {
   timestamps: boolean;  // default: false
   colors: "auto" | "always" | "never";  // default: "auto"
   rawMode: 0 | 1 | 2;  // default: 0
-  input: string;        // セッションID or ファイルパス
+  inputs: string[];     // セッションID or ファイルパス（複数可）
   from: string;         // 範囲開始（空文字列 = 先頭から）
   to: string;           // 範囲終了（空文字列 = 末尾まで）
   mdMode: "off" | "render" | "source";  // default: "off"

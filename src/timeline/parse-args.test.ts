@@ -25,62 +25,62 @@ describe("parseRange", () => {
 
 describe("parseArgs", () => {
   test("デフォルト値", () => {
-    const args = parseArgs(["session-id"]);
+    const args = parseArgs(["abc12345"]);
     expect(args.types).toBe("UTRFWBGASQDI");
     expect(args.width).toBe(55);
     expect(args.timestamps).toBe(false);
     expect(args.colors).toBe("auto");
     expect(args.rawMode).toBe(0);
-    expect(args.input).toBe("session-id");
+    expect(args.inputs).toEqual(["abc12345"]);
     expect(args.from).toBe("");
     expect(args.to).toBe("");
     expect(args.help).toBe(false);
   });
 
   test("-t でタイプフィルタ指定", () => {
-    const args = parseArgs(["-t", "UTR", "session-id"]);
+    const args = parseArgs(["-t", "UTR", "abc12345"]);
     expect(args.types).toBe("UTR");
-    expect(args.input).toBe("session-id");
+    expect(args.inputs).toEqual(["abc12345"]);
   });
 
   test("-w で幅指定", () => {
-    const args = parseArgs(["-w", "80", "session-id"]);
+    const args = parseArgs(["-w", "80", "abc12345"]);
     expect(args.width).toBe(80);
-    expect(args.input).toBe("session-id");
+    expect(args.inputs).toEqual(["abc12345"]);
   });
 
   test("--timestamps", () => {
-    const args = parseArgs(["--timestamps", "session-id"]);
+    const args = parseArgs(["--timestamps", "abc12345"]);
     expect(args.timestamps).toBe(true);
   });
 
   test("--colors=always", () => {
-    const args = parseArgs(["--colors=always", "session-id"]);
+    const args = parseArgs(["--colors=always", "abc12345"]);
     expect(args.colors).toBe("always");
   });
 
   test("--colors=never", () => {
-    const args = parseArgs(["--colors=never", "session-id"]);
+    const args = parseArgs(["--colors=never", "abc12345"]);
     expect(args.colors).toBe("never");
   });
 
   test("--colors (値なし) → always", () => {
-    const args = parseArgs(["--colors", "session-id"]);
+    const args = parseArgs(["--colors", "abc12345"]);
     expect(args.colors).toBe("always");
   });
 
   test("--no-colors", () => {
-    const args = parseArgs(["--no-colors", "session-id"]);
+    const args = parseArgs(["--no-colors", "abc12345"]);
     expect(args.colors).toBe("never");
   });
 
   test("--raw", () => {
-    const args = parseArgs(["--raw", "session-id"]);
+    const args = parseArgs(["--raw", "abc12345"]);
     expect(args.rawMode).toBe(1);
   });
 
   test("--raw2", () => {
-    const args = parseArgs(["--raw2", "session-id"]);
+    const args = parseArgs(["--raw2", "abc12345"]);
     expect(args.rawMode).toBe(2);
   });
 
@@ -94,8 +94,8 @@ describe("parseArgs", () => {
   });
 
   test("範囲付き: session-id from..to", () => {
-    const args = parseArgs(["session-id", "from..to"]);
-    expect(args.input).toBe("session-id");
+    const args = parseArgs(["abc12345", "from..to"]);
+    expect(args.inputs).toEqual(["abc12345"]);
     expect(args.from).toBe("from");
     expect(args.to).toBe("to");
   });
@@ -109,12 +109,12 @@ describe("parseArgs", () => {
   });
 
   test("不明オプションでエラー", () => {
-    expect(() => parseArgs(["--unknown", "session-id"])).toThrow();
-    expect(() => parseArgs(["-z", "session-id"])).toThrow();
+    expect(() => parseArgs(["--unknown", "abc12345"])).toThrow();
+    expect(() => parseArgs(["-z", "abc12345"])).toThrow();
   });
 
   test("--colors=invalid でエラー", () => {
-    expect(() => parseArgs(["--colors=invalid", "session"])).toThrow(/Invalid --colors value/);
+    expect(() => parseArgs(["--colors=invalid", "abc12345"])).toThrow(/Invalid --colors value/);
   });
 
   test("-t の後に値がない場合エラー", () => {
@@ -126,63 +126,93 @@ describe("parseArgs", () => {
   });
 
   test("-w に非数値を渡した場合エラー", () => {
-    expect(() => parseArgs(["-w", "abc", "session"])).toThrow(/-w requires a number/);
+    expect(() => parseArgs(["-w", "abc", "abc12345"])).toThrow(/-w requires a number/);
   });
 
   // mdMode tests
   test("デフォルトの mdMode は off", () => {
-    const args = parseArgs(["session-id"]);
+    const args = parseArgs(["abc12345"]);
     expect(args.mdMode).toBe("off");
   });
 
   test("--md-render → mdMode = render", () => {
-    const args = parseArgs(["--md-render", "session-id"]);
+    const args = parseArgs(["--md-render", "abc12345"]);
     expect(args.mdMode).toBe("render");
   });
 
   test("--md-source → mdMode = source", () => {
-    const args = parseArgs(["--md-source", "session-id"]);
+    const args = parseArgs(["--md-source", "abc12345"]);
     expect(args.mdMode).toBe("source");
   });
 
   test("--md-render と --md-source は後勝ち", () => {
-    const args = parseArgs(["--md-render", "--md-source", "session-id"]);
+    const args = parseArgs(["--md-render", "--md-source", "abc12345"]);
     expect(args.mdMode).toBe("source");
   });
 
   // emoji tests
   test("デフォルトの emoji は auto", () => {
-    const args = parseArgs(["session-id"]);
+    const args = parseArgs(["abc12345"]);
     expect(args.emoji).toBe("auto");
   });
 
   test("--emoji → emoji = always", () => {
-    const args = parseArgs(["--emoji", "session-id"]);
+    const args = parseArgs(["--emoji", "abc12345"]);
     expect(args.emoji).toBe("always");
   });
 
   test("--no-emoji → emoji = never", () => {
-    const args = parseArgs(["--no-emoji", "session-id"]);
+    const args = parseArgs(["--no-emoji", "abc12345"]);
     expect(args.emoji).toBe("never");
   });
 
   test("--emoji と --no-emoji は後勝ち", () => {
-    const args = parseArgs(["--emoji", "--no-emoji", "session-id"]);
+    const args = parseArgs(["--emoji", "--no-emoji", "abc12345"]);
     expect(args.emoji).toBe("never");
   });
 
   // grep tests
   test("--grep でパターン指定", () => {
-    const args = parseArgs(["--grep", "README", "session-id"]);
+    const args = parseArgs(["--grep", "README", "abc12345"]);
     expect(args.grep).toBe("README");
   });
 
   test("デフォルトの grep は空文字列", () => {
-    const args = parseArgs(["session-id"]);
+    const args = parseArgs(["abc12345"]);
     expect(args.grep).toBe("");
   });
 
   test("--grep の後に値がない場合エラー", () => {
     expect(() => parseArgs(["--grep"])).toThrow(/--grep requires/);
+  });
+
+  // 複数 sessionId テスト
+  test("複数の sessionId を受け付ける", () => {
+    const args = parseArgs(["abc12345", "def67890"]);
+    expect(args.inputs).toEqual(["abc12345", "def67890"]);
+  });
+
+  test("sessionId と range の分類", () => {
+    const args = parseArgs(["abc12345", "Uabc1234..Rabc5678"]);
+    expect(args.inputs).toEqual(["abc12345"]);
+    expect(args.from).toBe("Uabc1234");
+    expect(args.to).toBe("Rabc5678");
+  });
+
+  test("UUID形式の sessionId を認識", () => {
+    const args = parseArgs(["abc12345-6789-0123-4567-890123456789"]);
+    expect(args.inputs).toEqual(["abc12345-6789-0123-4567-890123456789"]);
+  });
+
+  test("ファイルパスを入力として認識", () => {
+    const args = parseArgs(["./path/to/session.jsonl"]);
+    expect(args.inputs).toEqual(["./path/to/session.jsonl"]);
+  });
+
+  test("単一マーカーは range として扱われる", () => {
+    const args = parseArgs(["abc12345", "Uabc1234"]);
+    expect(args.inputs).toEqual(["abc12345"]);
+    expect(args.from).toBe("Uabc1234");
+    expect(args.to).toBe("Uabc1234");
   });
 });

@@ -1,5 +1,19 @@
 import type { ParsedArgs } from "./types.ts";
 
+/** sessionId パターン: 16進数とハイフンのみ */
+const SESSION_ID_RE = /^[0-9a-f][0-9a-f-]*$/;
+
+/**
+ * positional arg が入力（sessionId or ファイルパス）かどうかを判定。
+ * - sessionId パターンにマッチ
+ * - パス区切り `/` を含む、または `.jsonl` で終わる
+ */
+function isInputArg(arg: string): boolean {
+  if (SESSION_ID_RE.test(arg)) return true;
+  if (arg.includes("/") || arg.endsWith(".jsonl")) return true;
+  return false;
+}
+
 /**
  * 範囲文字列をパースする。
  * - ""          → { from: "", to: "" }       全範囲
@@ -33,7 +47,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     timestamps: false,
     colors: "auto",
     rawMode: 0,
-    input: "",
+    inputs: [],
     from: "",
     to: "",
     mdMode: "off",
@@ -99,15 +113,19 @@ export function parseArgs(argv: string[]): ParsedArgs {
     i++;
   }
 
-  result.input = positional[0] ?? "";
-
-  if (positional.length >= 2) {
-    const { from, to } = parseRange(positional[1]);
-    result.from = from;
-    result.to = to;
+  // positional args を inputs と range に分類
+  for (const arg of positional) {
+    if (isInputArg(arg)) {
+      result.inputs.push(arg);
+    } else {
+      // range（最後に見つかったものが有効）
+      const { from, to } = parseRange(arg);
+      result.from = from;
+      result.to = to;
+    }
   }
 
-  if (!result.help && result.input === "") {
+  if (!result.help && result.inputs.length === 0) {
     throw new Error("Input is required (session ID or file path)");
   }
 

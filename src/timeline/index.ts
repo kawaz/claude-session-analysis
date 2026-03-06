@@ -13,18 +13,17 @@ const OMIT_KEYS = [
 ];
 const REDACT_KEYS = ["data"];
 
-export async function run(args: string[]) {
-  const opts = parseArgs(args);
+/** セッションファイルの先頭行から timestamp を取得（start時刻でソート用） */
+async function getStartTime(sessionFile: string): Promise<number> {
+  const text = await Bun.file(sessionFile).text();
+  const firstLine = text.slice(0, text.indexOf("\n") || text.length);
+  const m = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
+  if (m) return new Date(m[1]!).getTime();
+  return Infinity; // timestamp なしは末尾に
+}
 
-  if (opts.help) {
-    printUsage();
-    return;
-  }
-
-  // セッション解決
-  const sessionFile = await resolveSession(opts.input);
-
-  // JSONL読み込み
+/** 1つのセッションファイルを処理し、イベント・エントリを返す */
+async function loadSession(sessionFile: string) {
   const text = await Bun.file(sessionFile).text();
   const rawLines = text.split("\n").filter((line) => line.trim());
   const entries: SessionEntry[] = [];
@@ -35,14 +34,41 @@ export async function run(args: string[]) {
       // 不正なJSON行をスキップ（書き込み途中のデータ等）
     }
   }
+  return entries;
+}
 
-  // イベント抽出
-  const events = extractEvents(entries);
+export async function run(args: string[]) {
+  const opts = parseArgs(args);
+
+  if (opts.help) {
+    printUsage();
+    return;
+  }
+
+  // セッション解決（複数入力対応）
+  const resolved: { file: string; startTime: number }[] = [];
+  for (const input of opts.inputs) {
+    const file = await resolveSession(input);
+    const startTime = await getStartTime(file);
+    resolved.push({ file, startTime });
+  }
+
+  // start時刻の古い順にソート
+  resolved.sort((a, b) => a.startTime - b.startTime);
+
+  // 全セッションのエントリとイベントを結合
+  let allEntries: SessionEntry[] = [];
+  let allEvents: ReturnType<typeof extractEvents> = [];
+  for (const { file } of resolved) {
+    const entries = await loadSession(file);
+    allEntries = allEntries.concat(entries);
+    allEvents = allEvents.concat(extractEvents(entries));
+  }
 
   // フィルタリング
   let filtered;
   try {
-    filtered = pipeline(events, {
+    filtered = pipeline(allEvents, {
       types: opts.types,
       from: opts.from,
       to: opts.to,
@@ -58,8 +84,7 @@ export async function run(args: string[]) {
 
   // --raw / --raw2: マーカーからエントリを検索して JSON 出力
   if (opts.rawMode > 0) {
-    // rawMode で使う parsed は entries をそのまま Record<string, unknown>[] として使用
-    const parsed = entries as unknown as Record<string, unknown>[];
+    const parsed = allEntries as unknown as Record<string, unknown>[];
     const output: string[] = [];
     for (const event of filtered) {
       const marker = `${event.kind}${event.ref}`;
@@ -80,10 +105,8 @@ export async function run(args: string[]) {
       for (const entry of matches) {
         let processed: unknown;
         if (opts.rawMode === 2) {
-          // --raw2: redact with hint (no omit)
           processed = redactWithHint(entry, REDACT_KEYS);
         } else {
-          // --raw: omit + redact
           processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
         }
         output.push(JSON.stringify(processed, null, 2));
@@ -136,7 +159,6 @@ export async function run(args: string[]) {
 
   // --md-render: mdp にパイプ
   if (opts.mdMode === "render") {
-    // mdp の存在確認
     const which = Bun.spawnSync(["which", "mdp"]);
     if (which.exitCode !== 0) {
       console.error("Error: mdp not found. Install mdp to use --md-render.");
