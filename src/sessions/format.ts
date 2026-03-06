@@ -134,7 +134,7 @@ export function formatSessionLine(
 
   const ctx = session.context ? `\t${session.context}` : "";
 
-  return `${endStr}  ${durStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
+  return `${durStr}  ${endStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
 }
 
 /**
@@ -158,6 +158,12 @@ export function formatSessionsOutput(
       `# ${allSessions.length} sessions (${oldestAgo} .. ${newestAgo})`,
     );
   }
+
+  // カラムヘッダ
+  const sidLabel = opts.full ? "SessionId" : "SessId8 ";
+  lines.push(
+    `# ${"Start".padStart(6)}  ${"End".padEnd(11)}\tSize\t${sidLabel}\tPath`,
+  );
 
   // tail 制限
   const output = opts.tail > 0 && filtered.length > opts.tail

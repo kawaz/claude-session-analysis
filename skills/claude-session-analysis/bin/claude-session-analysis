@@ -1455,7 +1455,7 @@ function formatSessionLine(session, opts) {
   const sid = opts.full ? session.sessionId : session.sessionId.slice(0, 8);
   const path = formatProjectPath(session.cwd, opts.full);
   const ctx = session.context ? `	${session.context}` : "";
-  return `${endStr}  ${durStr}	${sizeStr}	${sid}	${path}${ctx}`;
+  return `${durStr}  ${endStr}	${sizeStr}	${sid}	${path}${ctx}`;
 }
 function formatSessionsOutput(allSessions, filtered, opts) {
   const now = opts.now ?? Math.floor(Date.now() / 1000);
@@ -1467,6 +1467,8 @@ function formatSessionsOutput(allSessions, filtered, opts) {
     const newestAgo = formatAgo(now - newest.mtime);
     lines.push(`# ${allSessions.length} sessions (${oldestAgo} .. ${newestAgo})`);
   }
+  const sidLabel = opts.full ? "SessionId" : "SessId8 ";
+  lines.push(`# ${"Start".padStart(6)}  ${"End".padEnd(11)}	Size	${sidLabel}	Path`);
   const output = opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
   for (const session of output) {
     lines.push(formatSessionLine(session, { full: opts.full, now }));
