@@ -82,7 +82,8 @@ export function formatDuration(seconds: number): string {
     v = seconds;
     u = "s";
   }
-  const str = v >= 10 ? `${Math.floor(v)}${u}` : `${v.toFixed(1)}${u}`;
+  // 100d以上: ####d、それ以外: ##.#[dhms]
+  const str = (u === "d" && v >= 100) ? `${Math.floor(v)}${u}` : `${v.toFixed(1)}${u}`;
   return str.padStart(WIDTH);
 }
 

@@ -71,38 +71,44 @@ describe("formatAgo", () => {
 });
 
 describe("formatDuration", () => {
-  test("under 1min: 45s -> 右寄せ5文字", () => {
-    expect(formatDuration(45)).toBe("  45s");
+  test("0s -> 0.0s", () => {
+    expect(formatDuration(0)).toBe(" 0.0s");
   });
-  test("seconds小数: 5s -> 5.0s", () => {
+  test("5s -> 5.0s", () => {
     expect(formatDuration(5)).toBe(" 5.0s");
   });
-  test("minutes: 300s -> 5.0m", () => {
+  test("45s -> 45.0s", () => {
+    expect(formatDuration(45)).toBe("45.0s");
+  });
+  test("300s -> 5.0m", () => {
     expect(formatDuration(300)).toBe(" 5.0m");
   });
-  test("minutes 10以上: 900s -> 15m", () => {
-    expect(formatDuration(900)).toBe("  15m");
+  test("900s -> 15.0m", () => {
+    expect(formatDuration(900)).toBe("15.0m");
   });
-  test("hours: 3661s -> 1.0h", () => {
+  test("3661s -> 1.0h", () => {
     expect(formatDuration(3661)).toBe(" 1.0h");
   });
-  test("hours: 5400s -> 1.5h", () => {
+  test("5400s -> 1.5h", () => {
     expect(formatDuration(5400)).toBe(" 1.5h");
   });
-  test("hours 10以上: 50040s -> 13h", () => {
-    expect(formatDuration(50040)).toBe("  13h");
+  test("50040s -> 13.9h", () => {
+    expect(formatDuration(50040)).toBe("13.9h");
   });
-  test("days: 90060s -> 1.0d", () => {
+  test("90060s -> 1.0d", () => {
     expect(formatDuration(90060)).toBe(" 1.0d");
   });
-  test("days: 216000s -> 2.5d", () => {
+  test("216000s -> 2.5d", () => {
     expect(formatDuration(216000)).toBe(" 2.5d");
   });
-  test("many days: 8640000s -> 100d", () => {
-    expect(formatDuration(8640000)).toBe(" 100d");
+  test("99d -> 99.0d (##.#d)", () => {
+    expect(formatDuration(99 * 86400)).toBe("99.0d");
   });
-  test("zero: 0.0s", () => {
-    expect(formatDuration(0)).toBe(" 0.0s");
+  test("100d -> 100d (####d)", () => {
+    expect(formatDuration(100 * 86400)).toBe(" 100d");
+  });
+  test("8640000s -> 100d", () => {
+    expect(formatDuration(8640000)).toBe(" 100d");
   });
 });
 
