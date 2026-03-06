@@ -6,6 +6,7 @@ export interface FormatOptions {
 
 export interface OutputOptions extends FormatOptions {
   tail: number;
+  commandLine?: string;
 }
 
 /**
@@ -136,6 +137,11 @@ export function formatSessionsOutput(
 ): string {
   const now = opts.now ?? Math.floor(Date.now() / 1000);
   const lines: string[] = [];
+
+  // コマンドライン表示
+  if (opts.commandLine) {
+    lines.push(`# ${opts.commandLine}`);
+  }
 
   // ヘッダ行: # N sessions (oldest_ago .. newest_ago)
   if (allSessions.length > 0) {

@@ -37,10 +37,16 @@ function parseSince(spec: string): number {
   return Math.floor(d.getTime() / 1000);
 }
 
+const DEFAULT_SINCE = "2d";
+const DEFAULT_LIMIT = 20;
+
 function parseOpts(rawArgs: string[]) {
   let keyword = "";
-  let since = "2d";
-  let tail = 20;
+  let since = DEFAULT_SINCE;
+  let tail = DEFAULT_LIMIT;
+  let sinceExplicit = false;
+  let limitExplicit = false;
+  let grepExplicit = false;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
@@ -54,6 +60,7 @@ function parseOpts(rawArgs: string[]) {
           printUsage(1);
         }
         keyword = rawArgs[i] ?? "";
+        grepExplicit = true;
         break;
       case "--since":
         i++;
@@ -61,7 +68,8 @@ function parseOpts(rawArgs: string[]) {
           console.error("Error: --since requires a value");
           printUsage(1);
         }
-        since = rawArgs[i] ?? "1d";
+        since = rawArgs[i] ?? DEFAULT_SINCE;
+        sinceExplicit = true;
         break;
       case "--limit":
         i++;
@@ -69,7 +77,8 @@ function parseOpts(rawArgs: string[]) {
           console.error("Error: --limit requires a value");
           printUsage(1);
         }
-        tail = parseInt(rawArgs[i] ?? "10", 10);
+        tail = parseInt(rawArgs[i] ?? String(DEFAULT_LIMIT), 10);
+        limitExplicit = true;
         break;
       default:
         if (rawArgs[i]!.startsWith("-")) {
@@ -82,7 +91,22 @@ function parseOpts(rawArgs: string[]) {
     i++;
   }
 
-  return { keyword, since, tail };
+  return { keyword, since, tail, sinceExplicit, limitExplicit, grepExplicit };
+}
+
+function buildCommandLine(opts: ReturnType<typeof parseOpts>): string {
+  const prog = process.env._PROG || "sessions";
+  const parts = [prog];
+  const since = opts.sinceExplicit ? opts.since : `${DEFAULT_SINCE}`;
+  parts.push(`${opts.sinceExplicit ? "" : "["}--since ${since}${opts.sinceExplicit ? "" : "]"}`);
+  const limit = opts.limitExplicit ? String(opts.tail) : String(DEFAULT_LIMIT);
+  parts.push(`${opts.limitExplicit ? "" : "["}--limit ${limit}${opts.limitExplicit ? "" : "]"}`);
+  if (opts.grepExplicit) {
+    parts.push(`--grep ${opts.keyword}`);
+  } else {
+    parts.push("[--grep PREGEX]");
+  }
+  return parts.join(" ");
 }
 
 export async function run(args: string[]) {
@@ -118,6 +142,7 @@ export async function run(args: string[]) {
     // 出力
     const output = formatSessionsOutput(allSessions, filtered, {
       tail: opts.tail,
+      commandLine: buildCommandLine(opts),
     });
 
     if (output) {
