@@ -28,12 +28,12 @@ function parseArgs(argv) {
     types: "UTRFWBGASQDI",
     width: 55,
     timestamps: false,
-    colors: "auto",
-    rawMode: 0,
+    color: "auto",
+    jsonlMode: "none",
     inputs: [],
     from: "",
     to: "",
-    mdMode: "off",
+    mdMode: "none",
     emoji: "auto",
     grep: "",
     help: false
@@ -47,46 +47,49 @@ function parseArgs(argv) {
       if (i >= argv.length)
         throw new Error("-t requires a value");
       result.types = argv[i];
-    } else if (arg === "-w") {
+    } else if (arg === "--width") {
       i++;
       if (i >= argv.length)
-        throw new Error("-w requires a value");
+        throw new Error("--width requires a value");
       const w = parseInt(argv[i], 10);
       if (isNaN(w))
-        throw new Error(`-w requires a number, got: ${argv[i]}`);
+        throw new Error(`--width requires a number, got: ${argv[i]}`);
       result.width = w;
     } else if (arg === "--timestamps") {
       result.timestamps = true;
     } else if (arg === "--no-timestamps") {
       result.timestamps = false;
-    } else if (arg === "--colors") {
-      result.colors = "always";
-    } else if (arg.startsWith("--colors=")) {
-      const value = arg.slice("--colors=".length);
-      const validColors = ["auto", "always", "never"];
+    } else if (arg === "--color") {
+      result.color = "always";
+    } else if (arg.startsWith("--color=")) {
+      const value = arg.slice("--color=".length);
+      const validColors = ["auto", "always", "none"];
       if (!validColors.includes(value)) {
-        throw new Error(`Invalid --colors value: ${value} (expected: auto, always, never)`);
+        throw new Error(`Invalid --color value: ${value} (expected: auto, always, none)`);
       }
-      result.colors = value;
-    } else if (arg === "--no-colors") {
-      result.colors = "never";
+      result.color = value;
     } else if (arg === "--md") {
       result.mdMode = "auto";
     } else if (arg.startsWith("--md=")) {
       const value = arg.slice("--md=".length);
-      const validMdModes = ["auto", "source", "render"];
+      const validMdModes = ["auto", "source", "render", "none"];
       if (!validMdModes.includes(value)) {
-        throw new Error(`Invalid --md value: ${value} (expected: auto, source, render)`);
+        throw new Error(`Invalid --md value: ${value} (expected: auto, source, render, none)`);
       }
       result.mdMode = value;
     } else if (arg === "--emoji") {
       result.emoji = "always";
     } else if (arg === "--no-emoji") {
       result.emoji = "never";
-    } else if (arg === "--raw") {
-      result.rawMode = 1;
-    } else if (arg === "--raw2") {
-      result.rawMode = 2;
+    } else if (arg === "--jsonl") {
+      result.jsonlMode = "redact";
+    } else if (arg.startsWith("--jsonl=")) {
+      const value = arg.slice("--jsonl=".length);
+      const validJsonl = ["none", "redact", "full"];
+      if (!validJsonl.includes(value)) {
+        throw new Error(`Invalid --jsonl value: ${value} (expected: none, redact, full)`);
+      }
+      result.jsonlMode = value;
     } else if (arg === "--grep") {
       i++;
       if (i >= argv.length)
@@ -94,7 +97,7 @@ function parseArgs(argv) {
       result.grep = argv[i];
     } else if (arg === "--help") {
       result.help = true;
-    } else if (arg.startsWith("-")) {
+    } else if (arg.startsWith("-") && arg !== "-") {
       throw new Error(`Unknown option: ${arg}`);
     } else {
       positional.push(arg);
@@ -600,6 +603,16 @@ function localTime(time) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
 }
+function localTimeMs() {
+  const d = new Date;
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm = String(Math.abs(off) % 60).padStart(2, "0");
+  const pad = (n) => String(n).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}${sign}${hh}${mm}`;
+}
 var MARKER_RE = /([UTRFWBGASQDI])([0-9a-f]{8})/;
 var COLOR_MAP = {
   U: { ansi: "\x1B[32m", emoji: "\uD83D\uDC64" },
@@ -642,16 +655,11 @@ function colorize(line, opts) {
   const emojiPrefix = useEmoji ? `${emoji} ` : "";
   const ansiStart = useColors ? ansi : "";
   const ansiEnd = useColors ? "\x1B[0m" : "";
-  if (kind === "U") {
-    return `${ansiStart}
-
-${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
-  }
   return `${ansiStart}${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
 }
 var QTRU_KINDS = new Set(["Q", "T", "R", "U"]);
 function formatEvent(event, opts) {
-  if (opts.rawMode > 0) {
+  if (opts.jsonlMode !== "none") {
     return `${event.kind}${event.ref}`;
   }
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
@@ -673,9 +681,10 @@ function formatEvent(event, opts) {
   }
   return `${event.kind}${event.ref} ${desc}`;
 }
-function mdFrontMatter(command, now) {
+function mdFrontMatter(command, commandComputed, now) {
   return `---
 command: ${command}
+command_computed: ${commandComputed}
 now: ${now}
 ---
 
@@ -749,17 +758,83 @@ async function loadSession(sessionFile) {
   }
   return entries;
 }
+async function resolveFullId(input) {
+  const file = await resolveSession(input);
+  const basename = file.split("/").pop() || "";
+  return basename.replace(/\.jsonl$/, "");
+}
+function buildCommandHeader(opts, args, isTty) {
+  const prog = process.env._PROG || "timeline";
+  const colorDefault = isTty ? "always" : "none";
+  const mdDefault = "none";
+  const mdAutoResolved = isTty ? "render" : "source";
+  const parts = [prog];
+  parts.push("<SESSION_ID ..>");
+  parts.push("[[RANGE1][..][RANGE2] ..]");
+  const widthExplicit = args.includes("--width");
+  parts.push(widthExplicit ? `--width ${opts.width}` : `[--width <55>]`);
+  const tExplicit = args.includes("-t");
+  parts.push(tExplicit ? `-t ${opts.types}` : `[-t <UTRFWBGASQDI>]`);
+  const colorExplicit = args.some((a) => a === "--color" || a.startsWith("--color="));
+  const colorResolved = opts.color === "auto" ? colorDefault : opts.color;
+  if (colorExplicit) {
+    parts.push(`--color ${colorResolved}`);
+  } else {
+    const alwaysStr = colorDefault === "always" ? "=[=always]" : "always";
+    const noneStr = colorDefault === "none" ? "=[=none]" : "none";
+    parts.push(`[--color [${alwaysStr}|${noneStr}]`);
+  }
+  const mdExplicit = args.some((a) => a === "--md" || a.startsWith("--md="));
+  if (mdExplicit) {
+    const mdResolved = opts.mdMode === "auto" ? mdAutoResolved : opts.mdMode;
+    parts.push(`--md ${mdResolved}`);
+  } else {
+    const renderStr = isTty ? "=render" : "render";
+    const sourceStr = isTty ? "source" : "=source";
+    const noneStr = `[=${mdDefault}]`;
+    parts.push(`[--md [${renderStr}|${sourceStr}|${noneStr}]`);
+  }
+  const grepExplicit = args.includes("--grep");
+  parts.push(grepExplicit ? `--grep ${opts.grep}` : `[--grep <REGEXP>]`);
+  const jsonlExplicit = args.some((a) => a === "--jsonl" || a.startsWith("--jsonl="));
+  if (jsonlExplicit) {
+    parts.push(`--jsonl ${opts.jsonlMode}`);
+  } else {
+    parts.push(`[--jsonl [=redact|full|[=none]]]`);
+  }
+  return `# ${parts.join(" ")}`;
+}
+function buildCommandComputed(opts, resolvedInputs, filtered, isTty) {
+  const prog = process.env._PROG || "timeline";
+  const parts = [prog];
+  parts.push(resolvedInputs.join(" "));
+  if (filtered.length > 0) {
+    const first = filtered[0];
+    const last = filtered[filtered.length - 1];
+    parts.push(`${first.kind}${first.ref}..${last.kind}${last.ref}`);
+  }
+  parts.push(`-t ${opts.types}`);
+  parts.push(`--width 0`);
+  const colorResolved = opts.color === "auto" ? isTty ? "always" : "none" : opts.color;
+  parts.push(`--color ${colorResolved}`);
+  const mdResolved = opts.mdMode === "auto" ? isTty ? "render" : "source" : opts.mdMode;
+  parts.push(`--md ${mdResolved}`);
+  parts.push(`--jsonl ${opts.jsonlMode}`);
+  return parts.join(" ");
+}
 async function run(args) {
   const opts = parseArgs(args);
   if (opts.help) {
     printUsage();
     return;
   }
+  const isTty = process.stdout.isTTY ?? false;
   const resolved = [];
   for (const input of opts.inputs) {
     const file = await resolveSession(input);
     const startTime = await getStartTime(file);
-    resolved.push({ file, startTime });
+    const fullId = await resolveFullId(input);
+    resolved.push({ file, startTime, fullId });
   }
   resolved.sort((a, b) => a.startTime - b.startTime);
   let allEntries = [];
@@ -784,7 +859,8 @@ async function run(args) {
     }
     throw e;
   }
-  if (opts.rawMode > 0) {
+  const mdMode = opts.mdMode === "auto" ? isTty ? "render" : "source" : opts.mdMode;
+  if (opts.jsonlMode !== "none") {
     const parsed = allEntries;
     const output2 = [];
     for (const event of filtered) {
@@ -799,7 +875,7 @@ async function run(args) {
       });
       for (const entry of matches) {
         let processed;
-        if (opts.rawMode === 2) {
+        if (opts.jsonlMode === "full") {
           processed = redactWithHint(entry, REDACT_KEYS);
         } else {
           processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
@@ -811,14 +887,16 @@ async function run(args) {
 `));
     return;
   }
-  const mdMode = opts.mdMode === "auto" ? process.stdout.isTTY ? "render" : "source" : opts.mdMode;
-  const useColors = opts.colors === "always" ? true : opts.colors === "never" ? false : process.stdout.isTTY ?? false;
+  const useColors = opts.color === "always" ? true : opts.color === "none" ? false : isTty;
   const useEmoji = opts.emoji === "always" ? true : opts.emoji === "never" ? false : useColors;
-  const timestamps = mdMode !== "off" && !args.includes("--no-timestamps") ? true : opts.timestamps;
+  const timestamps = mdMode !== "none" && !args.includes("--no-timestamps") ? true : opts.timestamps;
   const isMd = mdMode === "render" || mdMode === "source";
-  const frontMatter = isMd ? mdFrontMatter(`${process.env._PROG || "timeline"} ${args.join(" ")}`, new Date().toISOString()) : "";
-  const output = frontMatter + formatEvents(filtered, {
-    rawMode: opts.rawMode,
+  const resolvedInputs = resolved.map((r) => r.fullId);
+  const frontMatter = isMd ? mdFrontMatter(`${process.env._PROG || "timeline"} ${args.join(" ")}`, buildCommandComputed(opts, resolvedInputs, filtered, isTty), localTimeMs()) : "";
+  const header = !isMd ? buildCommandHeader(opts, args, isTty) + `
+` : "";
+  const output = header + frontMatter + formatEvents(filtered, {
+    jsonlMode: opts.jsonlMode,
     width: opts.width,
     timestamps,
     colors: useColors,
@@ -850,18 +928,17 @@ function printUsage() {
 
 Options:
   -t <types>                  Filter by type (default: UTRFWBGASQDI)
-  -w <width>                  Truncation width (default: 55)
+  --width <width>             Truncation width (default: 55)
   --timestamps                Show timestamps
   --no-timestamps             Disable timestamps (overrides md default)
-  --colors[=auto|always|never] Color output (default: auto)
-  --no-colors                 Disable colors
+  --color[=auto|always|none]  Color output (default: auto)
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
   --grep <pattern>            Filter events by desc (regex)
-  --md[=auto|source|render]   Full text for Q/T/R/U (default: auto)
+  --md[=auto|source|render|none]  Full text for Q/T/R/U (default: none)
                               auto=render if tty, source otherwise
-  --raw                       Output markers only (for get-by-marker)
-  --raw2                      Output markers only (redact only)
+  --jsonl[=none|redact|full]  JSONL output (default: none)
+                              redact: omit+redact, full: redact only
   --help                      Show this help
 
 Types:
@@ -880,8 +957,8 @@ Examples:
   ${prog} -t UR abc12345                Show only User & Response
   ${prog} --timestamps abc12345         Show with timestamps
   ${prog} --md abc12345                 Show with full Q/T/R/U text
-  ${prog} --no-colors --emoji abc12345  Emoji without colors
-  ${prog} --grep "README" abc12345        Filter events matching pattern
+  ${prog} --color=none --emoji abc12345 Emoji without colors
+  ${prog} --grep "README" abc12345      Filter events matching pattern
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
 
@@ -1388,6 +1465,7 @@ async function searchSessions(opts) {
 
 // src/sessions/format.ts
 function formatHumanSize(bytes) {
+  const WIDTH = 8;
   let v;
   let u;
   if (bytes >= 1e9) {
@@ -1400,13 +1478,15 @@ function formatHumanSize(bytes) {
     v = bytes / 1000;
     u = "K";
   }
+  let str;
   if (v >= 100) {
-    return `${Math.floor(v).toString().padStart(3)}${u}`;
+    str = `${Math.floor(v)}${u}`;
   } else if (v >= 10) {
-    return `${Math.floor(v).toString().padStart(3)}${u}`;
+    str = `${Math.floor(v)}${u}`;
   } else {
-    return `${v.toFixed(1)}${u}`;
+    str = `${v.toFixed(1)}${u}`;
   }
+  return str.padStart(WIDTH);
 }
 function formatAgo(seconds) {
   let v;
@@ -1427,55 +1507,52 @@ function formatAgo(seconds) {
   return `${v.toString().padStart(2)}${u}`;
 }
 function formatDuration(seconds) {
-  const WIDTH = 6;
-  const d = Math.floor(seconds / 86400);
-  if (d > 0) {
-    return `${d}d`.padStart(WIDTH);
+  const WIDTH = 8;
+  let v;
+  let u;
+  if (seconds >= 86400) {
+    v = seconds / 86400;
+    u = "d";
+  } else if (seconds >= 3600) {
+    v = seconds / 3600;
+    u = "h";
+  } else if (seconds >= 60) {
+    v = seconds / 60;
+    u = "m";
+  } else {
+    v = seconds;
+    u = "s";
   }
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor(seconds % 3600 / 60);
-  if (h > 0) {
-    return `${h}h${String(m).padStart(2, "0")}m`.padStart(WIDTH);
-  }
-  if (m > 0) {
-    return `${m}m`.padStart(WIDTH);
-  }
-  return `${seconds}s`.padStart(WIDTH);
+  const str = u === "d" && v >= 100 ? `${Math.floor(v)}${u}` : `${v.toFixed(1)}${u}`;
+  return str.padStart(WIDTH);
 }
 function formatDateTime(epochSeconds) {
   const d = new Date(epochSeconds * 1000);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${mm}-${dd}T${hh}:${mi}`;
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const oh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const om = String(Math.abs(off) % 60).padStart(2, "0");
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`;
 }
-function formatProjectPath(cwd, full) {
-  if (full)
-    return cwd;
-  const reposIdx = cwd.indexOf("/repos/");
-  if (reposIdx !== -1) {
-    return cwd.slice(reposIdx + "/repos/".length);
-  }
-  const segments = cwd.split("/").filter((s) => s !== "");
-  if (segments.length <= 2)
-    return cwd;
-  return segments.slice(-2).join("/");
+function formatProjectPath(cwd) {
+  return cwd;
 }
 function formatSessionLine(session, opts) {
-  const startStr = formatDateTime(session.startTime);
   const endStr = formatDateTime(session.endTime);
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
-  const sid = opts.full ? session.sessionId : session.sessionId.slice(0, 8);
-  const path = formatProjectPath(session.cwd, opts.full);
-  const ctx = session.context ? `	${session.context}` : "";
-  return `${durStr}  ${endStr}	${sizeStr}	${sid}	${path}${ctx}`;
+  const path = formatProjectPath(session.cwd);
+  const ctx = session.context ? `  ${session.context}` : "";
+  return `${endStr}  ${durStr}  ${sizeStr}  ${session.sessionId}  ${path}${ctx}`;
 }
 function formatSessionsOutput(allSessions, filtered, opts) {
   const now = opts.now ?? Math.floor(Date.now() / 1000);
   const lines = [];
+  if (opts.commandLine) {
+    lines.push(`# ${opts.commandLine}`);
+  }
   if (allSessions.length > 0) {
     const oldest = allSessions[0];
     const newest = allSessions[allSessions.length - 1];
@@ -1483,11 +1560,10 @@ function formatSessionsOutput(allSessions, filtered, opts) {
     const newestAgo = formatAgo(now - newest.mtime);
     lines.push(`# ${allSessions.length} sessions (${oldestAgo} .. ${newestAgo})`);
   }
-  const sidLabel = opts.full ? "SessionId" : "SessId8 ";
-  lines.push(`# ${"Start".padStart(6)}  ${"End".padEnd(11)}	Size	${sidLabel}	Path`);
+  lines.push(`${"TIMESTAMP_END".padEnd(25)}  ${"DURATION".padStart(8)}  ${"FILESIZE".padStart(8)}  SESSION_ID  PATH`);
   const output = opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
   for (const session of output) {
-    lines.push(formatSessionLine(session, { full: opts.full, now }));
+    lines.push(formatSessionLine(session, { now }));
   }
   return lines.join(`
 `);
@@ -1498,15 +1574,14 @@ var DURATION_RE = /^(\d+[smhd])+$/;
 function printUsage3(exitCode = 0) {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? console.error : console.log;
-  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>] [--full]
+  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>]
 
 Options:
   --grep <pattern>  Filter sessions by content (regex)
   --since <spec>    Time filter. Duration: 5m, 1h, 2d, 1h30m
                     or date string: 2024-01-01, 2024-01-01T12:00:00
-                    (default: 1d)
-  --limit <N>       Show last N sessions (default: 10)
-  --full            Show full session ID and cwd
+                    (default: 2d)
+  --limit <N>       Show last N sessions (default: 20)
   --help            Show this help`);
   process.exit(exitCode);
 }
@@ -1522,11 +1597,15 @@ function parseSince(spec) {
   }
   return Math.floor(d.getTime() / 1000);
 }
+var DEFAULT_SINCE = "2d";
+var DEFAULT_LIMIT = 20;
 function parseOpts(rawArgs) {
   let keyword = "";
-  let since = "1d";
-  let tail = 10;
-  let full = false;
+  let since = DEFAULT_SINCE;
+  let tail = DEFAULT_LIMIT;
+  let sinceExplicit = false;
+  let limitExplicit = false;
+  let grepExplicit = false;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
@@ -1540,6 +1619,7 @@ function parseOpts(rawArgs) {
           printUsage3(1);
         }
         keyword = rawArgs[i] ?? "";
+        grepExplicit = true;
         break;
       case "--since":
         i++;
@@ -1547,7 +1627,8 @@ function parseOpts(rawArgs) {
           console.error("Error: --since requires a value");
           printUsage3(1);
         }
-        since = rawArgs[i] ?? "1d";
+        since = rawArgs[i] ?? DEFAULT_SINCE;
+        sinceExplicit = true;
         break;
       case "--limit":
         i++;
@@ -1555,10 +1636,8 @@ function parseOpts(rawArgs) {
           console.error("Error: --limit requires a value");
           printUsage3(1);
         }
-        tail = parseInt(rawArgs[i] ?? "10", 10);
-        break;
-      case "--full":
-        full = true;
+        tail = parseInt(rawArgs[i] ?? String(DEFAULT_LIMIT), 10);
+        limitExplicit = true;
         break;
       default:
         if (rawArgs[i].startsWith("-")) {
@@ -1569,7 +1648,21 @@ function parseOpts(rawArgs) {
     }
     i++;
   }
-  return { keyword, since, tail, full };
+  return { keyword, since, tail, sinceExplicit, limitExplicit, grepExplicit };
+}
+function buildCommandLine(opts) {
+  const prog = process.env._PROG || "sessions";
+  const parts = [prog];
+  const since = opts.sinceExplicit ? opts.since : `${DEFAULT_SINCE}`;
+  parts.push(`${opts.sinceExplicit ? "" : "["}--since ${since}${opts.sinceExplicit ? "" : "]"}`);
+  const limit = opts.limitExplicit ? String(opts.tail) : String(DEFAULT_LIMIT);
+  parts.push(`${opts.limitExplicit ? "" : "["}--limit ${limit}${opts.limitExplicit ? "" : "]"}`);
+  if (opts.grepExplicit) {
+    parts.push(`--grep ${opts.keyword}`);
+  } else {
+    parts.push("[--grep <REGEXP>]");
+  }
+  return parts.join(" ");
 }
 async function run6(args) {
   const opts = parseOpts(args);
@@ -1594,8 +1687,8 @@ async function run6(args) {
       keyword: opts.keyword || undefined
     });
     const output = formatSessionsOutput(allSessions, filtered, {
-      full: opts.full,
-      tail: opts.tail
+      tail: opts.tail,
+      commandLine: buildCommandLine(opts)
     });
     if (output) {
       console.log(output);

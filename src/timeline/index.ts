@@ -2,9 +2,9 @@ import { parseArgs } from "./parse-args.ts";
 import { resolveSession } from "../resolve-session.ts";
 import { extractEvents } from "./extract.ts";
 import { pipeline } from "./filter.ts";
-import { formatEvents, mdFrontMatter } from "./format.ts";
+import { formatEvents, mdFrontMatter, localTimeMs } from "./format.ts";
 import { omit, redact, redactWithHint } from "../lib.ts";
-import type { SessionEntry } from "./types.ts";
+import type { SessionEntry, TimelineEvent } from "./types.ts";
 
 const OMIT_KEYS = [
   "signature", "isSidechain", "userType", "version", "slug",
@@ -37,6 +37,111 @@ async function loadSession(sessionFile: string) {
   return entries;
 }
 
+/** resolveSession で得た完全セッションIDを取得 */
+async function resolveFullId(input: string): Promise<string> {
+  const file = await resolveSession(input);
+  const basename = file.split("/").pop() || "";
+  return basename.replace(/\.jsonl$/, "");
+}
+
+/** ヘッダ用コマンドライン表示を構築 */
+function buildCommandHeader(
+  opts: ReturnType<typeof parseArgs>,
+  args: string[],
+  isTty: boolean,
+): string {
+  const prog = process.env._PROG || "timeline";
+  // デフォルト値の判定
+  const colorDefault = isTty ? "always" : "none";
+  const mdDefault = "none";
+  const mdAutoResolved = isTty ? "render" : "source";
+
+  const parts: string[] = [prog];
+  parts.push("<SESSION_ID ..>");
+  parts.push("[[RANGE1][..][RANGE2] ..]");
+
+  // --width
+  const widthExplicit = args.includes("--width");
+  parts.push(widthExplicit ? `--width ${opts.width}` : `[--width <55>]`);
+
+  // -t
+  const tExplicit = args.includes("-t");
+  parts.push(tExplicit ? `-t ${opts.types}` : `[-t <UTRFWBGASQDI>]`);
+
+  // --color
+  const colorExplicit = args.some(a => a === "--color" || a.startsWith("--color="));
+  const colorResolved = opts.color === "auto" ? colorDefault : opts.color;
+  if (colorExplicit) {
+    parts.push(`--color ${colorResolved}`);
+  } else {
+    const alwaysStr = colorDefault === "always" ? "=[=always]" : "always";
+    const noneStr = colorDefault === "none" ? "=[=none]" : "none";
+    parts.push(`[--color [${alwaysStr}|${noneStr}]`);
+  }
+
+  // --md
+  const mdExplicit = args.some(a => a === "--md" || a.startsWith("--md="));
+  if (mdExplicit) {
+    const mdResolved = opts.mdMode === "auto" ? mdAutoResolved : opts.mdMode;
+    parts.push(`--md ${mdResolved}`);
+  } else {
+    const renderStr = isTty ? "=render" : "render";
+    const sourceStr = isTty ? "source" : "=source";
+    const noneStr = `[=${mdDefault}]`;
+    parts.push(`[--md [${renderStr}|${sourceStr}|${noneStr}]`);
+  }
+
+  // --grep
+  const grepExplicit = args.includes("--grep");
+  parts.push(grepExplicit ? `--grep ${opts.grep}` : `[--grep <REGEXP>]`);
+
+  // --jsonl
+  const jsonlExplicit = args.some(a => a === "--jsonl" || a.startsWith("--jsonl="));
+  if (jsonlExplicit) {
+    parts.push(`--jsonl ${opts.jsonlMode}`);
+  } else {
+    parts.push(`[--jsonl [=redact|full|[=none]]]`);
+  }
+
+  return `# ${parts.join(" ")}`;
+}
+
+/** md front matter 用 command_computed を構築 */
+function buildCommandComputed(
+  opts: ReturnType<typeof parseArgs>,
+  resolvedInputs: string[],
+  filtered: TimelineEvent[],
+  isTty: boolean,
+): string {
+  const prog = process.env._PROG || "timeline";
+  const parts: string[] = [prog];
+
+  // 解決済みセッションID
+  parts.push(resolvedInputs.join(" "));
+
+  // 実際のイベント範囲
+  if (filtered.length > 0) {
+    const first = filtered[0];
+    const last = filtered[filtered.length - 1];
+    parts.push(`${first.kind}${first.ref}..${last.kind}${last.ref}`);
+  }
+
+  parts.push(`-t ${opts.types}`);
+  parts.push(`--width 0`); // md mode では width 無視
+
+  // color 解決
+  const colorResolved = opts.color === "auto" ? (isTty ? "always" : "none") : opts.color;
+  parts.push(`--color ${colorResolved}`);
+
+  // md 解決
+  const mdResolved = opts.mdMode === "auto" ? (isTty ? "render" : "source") : opts.mdMode;
+  parts.push(`--md ${mdResolved}`);
+
+  parts.push(`--jsonl ${opts.jsonlMode}`);
+
+  return parts.join(" ");
+}
+
 export async function run(args: string[]) {
   const opts = parseArgs(args);
 
@@ -45,12 +150,15 @@ export async function run(args: string[]) {
     return;
   }
 
+  const isTty = process.stdout.isTTY ?? false;
+
   // セッション解決（複数入力対応）
-  const resolved: { file: string; startTime: number }[] = [];
+  const resolved: { file: string; startTime: number; fullId: string }[] = [];
   for (const input of opts.inputs) {
     const file = await resolveSession(input);
     const startTime = await getStartTime(file);
-    resolved.push({ file, startTime });
+    const fullId = await resolveFullId(input);
+    resolved.push({ file, startTime, fullId });
   }
 
   // start時刻の古い順にソート
@@ -82,8 +190,14 @@ export async function run(args: string[]) {
     throw e;
   }
 
-  // --raw / --raw2: マーカーからエントリを検索して JSON 出力
-  if (opts.rawMode > 0) {
+  // mdMode auto 解決: tty なら render、それ以外なら source
+  const mdMode: "none" | "render" | "source" =
+    opts.mdMode === "auto"
+      ? (isTty ? "render" : "source")
+      : opts.mdMode;
+
+  // --jsonl: マーカーからエントリを検索して JSON 出力
+  if (opts.jsonlMode !== "none") {
     const parsed = allEntries as unknown as Record<string, unknown>[];
     const output: string[] = [];
     for (const event of filtered) {
@@ -104,7 +218,7 @@ export async function run(args: string[]) {
 
       for (const entry of matches) {
         let processed: unknown;
-        if (opts.rawMode === 2) {
+        if (opts.jsonlMode === "full") {
           processed = redactWithHint(entry, REDACT_KEYS);
         } else {
           processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
@@ -116,19 +230,13 @@ export async function run(args: string[]) {
     return;
   }
 
-  // mdMode auto 解決: tty なら render、それ以外なら source
-  const mdMode: "off" | "render" | "source" =
-    opts.mdMode === "auto"
-      ? (process.stdout.isTTY ? "render" : "source")
-      : opts.mdMode;
-
   // カラー判定
   const useColors =
-    opts.colors === "always"
+    opts.color === "always"
       ? true
-      : opts.colors === "never"
+      : opts.color === "none"
         ? false
-        : process.stdout.isTTY ?? false;
+        : isTty;
 
   // 絵文字判定
   const useEmoji =
@@ -136,26 +244,31 @@ export async function run(args: string[]) {
       ? true
       : opts.emoji === "never"
         ? false
-        : useColors; // auto: colors に連動（従来と同じ）
+        : useColors; // auto: colors に連動
 
   // mdモード時のtimestampsデフォルト: 明示的に指定がなければ有効
   const timestamps =
-    (mdMode !== "off" && !args.includes("--no-timestamps"))
+    (mdMode !== "none" && !args.includes("--no-timestamps"))
       ? true
       : opts.timestamps;
 
   // mdモード用 front matter
   const isMd = mdMode === "render" || mdMode === "source";
+  const resolvedInputs = resolved.map(r => r.fullId);
   const frontMatter = isMd
     ? mdFrontMatter(
         `${process.env._PROG || "timeline"} ${args.join(" ")}`,
-        new Date().toISOString(),
+        buildCommandComputed(opts, resolvedInputs, filtered, isTty),
+        localTimeMs(),
       )
     : "";
 
+  // ヘッダ行（非md時）
+  const header = !isMd ? buildCommandHeader(opts, args, isTty) + "\n" : "";
+
   // 出力生成
-  const output = frontMatter + formatEvents(filtered, {
-    rawMode: opts.rawMode,
+  const output = header + frontMatter + formatEvents(filtered, {
+    jsonlMode: opts.jsonlMode,
     width: opts.width,
     timestamps,
     colors: useColors,
@@ -192,18 +305,17 @@ function printUsage() {
 
 Options:
   -t <types>                  Filter by type (default: UTRFWBGASQDI)
-  -w <width>                  Truncation width (default: 55)
+  --width <width>             Truncation width (default: 55)
   --timestamps                Show timestamps
   --no-timestamps             Disable timestamps (overrides md default)
-  --colors[=auto|always|never] Color output (default: auto)
-  --no-colors                 Disable colors
+  --color[=auto|always|none]  Color output (default: auto)
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
   --grep <pattern>            Filter events by desc (regex)
-  --md[=auto|source|render]   Full text for Q/T/R/U (default: auto)
+  --md[=auto|source|render|none]  Full text for Q/T/R/U (default: none)
                               auto=render if tty, source otherwise
-  --raw                       Output markers only (for get-by-marker)
-  --raw2                      Output markers only (redact only)
+  --jsonl[=none|redact|full]  JSONL output (default: none)
+                              redact: omit+redact, full: redact only
   --help                      Show this help
 
 Types:
@@ -222,8 +334,7 @@ Examples:
   ${prog} -t UR abc12345                Show only User & Response
   ${prog} --timestamps abc12345         Show with timestamps
   ${prog} --md abc12345                 Show with full Q/T/R/U text
-  ${prog} --no-colors --emoji abc12345  Emoji without colors
-  ${prog} --grep "README" abc12345        Filter events matching pattern
+  ${prog} --color=none --emoji abc12345 Emoji without colors
+  ${prog} --grep "README" abc12345      Filter events matching pattern
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
-

@@ -29,11 +29,12 @@ describe("parseArgs", () => {
     expect(args.types).toBe("UTRFWBGASQDI");
     expect(args.width).toBe(55);
     expect(args.timestamps).toBe(false);
-    expect(args.colors).toBe("auto");
-    expect(args.rawMode).toBe(0);
+    expect(args.color).toBe("auto");
+    expect(args.jsonlMode).toBe("none");
     expect(args.inputs).toEqual(["abc12345"]);
     expect(args.from).toBe("");
     expect(args.to).toBe("");
+    expect(args.mdMode).toBe("none");
     expect(args.help).toBe(false);
   });
 
@@ -43,8 +44,8 @@ describe("parseArgs", () => {
     expect(args.inputs).toEqual(["abc12345"]);
   });
 
-  test("-w で幅指定", () => {
-    const args = parseArgs(["-w", "80", "abc12345"]);
+  test("--width で幅指定", () => {
+    const args = parseArgs(["--width", "80", "abc12345"]);
     expect(args.width).toBe(80);
     expect(args.inputs).toEqual(["abc12345"]);
   });
@@ -54,34 +55,54 @@ describe("parseArgs", () => {
     expect(args.timestamps).toBe(true);
   });
 
-  test("--colors=always", () => {
-    const args = parseArgs(["--colors=always", "abc12345"]);
-    expect(args.colors).toBe("always");
+  // --color tests
+  test("--color=always", () => {
+    const args = parseArgs(["--color=always", "abc12345"]);
+    expect(args.color).toBe("always");
   });
 
-  test("--colors=never", () => {
-    const args = parseArgs(["--colors=never", "abc12345"]);
-    expect(args.colors).toBe("never");
+  test("--color=none", () => {
+    const args = parseArgs(["--color=none", "abc12345"]);
+    expect(args.color).toBe("none");
   });
 
-  test("--colors (値なし) → always", () => {
-    const args = parseArgs(["--colors", "abc12345"]);
-    expect(args.colors).toBe("always");
+  test("--color (値なし) → always", () => {
+    const args = parseArgs(["--color", "abc12345"]);
+    expect(args.color).toBe("always");
   });
 
-  test("--no-colors", () => {
-    const args = parseArgs(["--no-colors", "abc12345"]);
-    expect(args.colors).toBe("never");
+  test("--color=auto", () => {
+    const args = parseArgs(["--color=auto", "abc12345"]);
+    expect(args.color).toBe("auto");
   });
 
-  test("--raw", () => {
-    const args = parseArgs(["--raw", "abc12345"]);
-    expect(args.rawMode).toBe(1);
+  test("--color=invalid でエラー", () => {
+    expect(() => parseArgs(["--color=invalid", "abc12345"])).toThrow(/Invalid --color value/);
   });
 
-  test("--raw2", () => {
-    const args = parseArgs(["--raw2", "abc12345"]);
-    expect(args.rawMode).toBe(2);
+  // --jsonl tests
+  test("--jsonl (値なし) → redact", () => {
+    const args = parseArgs(["--jsonl", "abc12345"]);
+    expect(args.jsonlMode).toBe("redact");
+  });
+
+  test("--jsonl=full", () => {
+    const args = parseArgs(["--jsonl=full", "abc12345"]);
+    expect(args.jsonlMode).toBe("full");
+  });
+
+  test("--jsonl=redact", () => {
+    const args = parseArgs(["--jsonl=redact", "abc12345"]);
+    expect(args.jsonlMode).toBe("redact");
+  });
+
+  test("--jsonl=none", () => {
+    const args = parseArgs(["--jsonl=none", "abc12345"]);
+    expect(args.jsonlMode).toBe("none");
+  });
+
+  test("--jsonl=invalid でエラー", () => {
+    expect(() => parseArgs(["--jsonl=invalid", "abc12345"])).toThrow(/Invalid --jsonl value/);
   });
 
   test("--help", () => {
@@ -113,26 +134,18 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["-z", "abc12345"])).toThrow();
   });
 
-  test("--colors=invalid でエラー", () => {
-    expect(() => parseArgs(["--colors=invalid", "abc12345"])).toThrow(/Invalid --colors value/);
+  test("--width の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["--width"])).toThrow(/--width requires/);
   });
 
-  test("-t の後に値がない場合エラー", () => {
-    expect(() => parseArgs(["-t"])).toThrow(/-t requires/);
-  });
-
-  test("-w の後に値がない場合エラー", () => {
-    expect(() => parseArgs(["-w"])).toThrow(/-w requires/);
-  });
-
-  test("-w に非数値を渡した場合エラー", () => {
-    expect(() => parseArgs(["-w", "abc", "abc12345"])).toThrow(/-w requires a number/);
+  test("--width に非数値を渡した場合エラー", () => {
+    expect(() => parseArgs(["--width", "abc", "abc12345"])).toThrow(/--width requires a number/);
   });
 
   // mdMode tests
-  test("デフォルトの mdMode は off", () => {
+  test("デフォルトの mdMode は none", () => {
     const args = parseArgs(["abc12345"]);
-    expect(args.mdMode).toBe("off");
+    expect(args.mdMode).toBe("none");
   });
 
   test("--md → mdMode = auto", () => {
@@ -153,6 +166,11 @@ describe("parseArgs", () => {
   test("--md=auto → mdMode = auto", () => {
     const args = parseArgs(["--md=auto", "abc12345"]);
     expect(args.mdMode).toBe("auto");
+  });
+
+  test("--md=none → mdMode = none", () => {
+    const args = parseArgs(["--md=none", "abc12345"]);
+    expect(args.mdMode).toBe("none");
   });
 
   test("--md=invalid でエラー", () => {

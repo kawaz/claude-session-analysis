@@ -45,12 +45,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
     types: "UTRFWBGASQDI",
     width: 55,
     timestamps: false,
-    colors: "auto",
-    rawMode: 0,
+    color: "auto",
+    jsonlMode: "none",
     inputs: [],
     from: "",
     to: "",
-    mdMode: "off",
+    mdMode: "none",
     emoji: "auto",
     grep: "",
     help: false,
@@ -66,51 +66,54 @@ export function parseArgs(argv: string[]): ParsedArgs {
       i++;
       if (i >= argv.length) throw new Error("-t requires a value");
       result.types = argv[i];
-    } else if (arg === "-w") {
+    } else if (arg === "--width") {
       i++;
-      if (i >= argv.length) throw new Error("-w requires a value");
+      if (i >= argv.length) throw new Error("--width requires a value");
       const w = parseInt(argv[i], 10);
-      if (isNaN(w)) throw new Error(`-w requires a number, got: ${argv[i]}`);
+      if (isNaN(w)) throw new Error(`--width requires a number, got: ${argv[i]}`);
       result.width = w;
     } else if (arg === "--timestamps") {
       result.timestamps = true;
     } else if (arg === "--no-timestamps") {
       result.timestamps = false;
-    } else if (arg === "--colors") {
-      result.colors = "always";
-    } else if (arg.startsWith("--colors=")) {
-      const value = arg.slice("--colors=".length);
-      const validColors = ["auto", "always", "never"];
+    } else if (arg === "--color") {
+      result.color = "always";
+    } else if (arg.startsWith("--color=")) {
+      const value = arg.slice("--color=".length);
+      const validColors = ["auto", "always", "none"];
       if (!validColors.includes(value)) {
-        throw new Error(`Invalid --colors value: ${value} (expected: auto, always, never)`);
+        throw new Error(`Invalid --color value: ${value} (expected: auto, always, none)`);
       }
-      result.colors = value as "auto" | "always" | "never";
-    } else if (arg === "--no-colors") {
-      result.colors = "never";
+      result.color = value as "auto" | "always" | "none";
     } else if (arg === "--md") {
       result.mdMode = "auto";
     } else if (arg.startsWith("--md=")) {
       const value = arg.slice("--md=".length);
-      const validMdModes = ["auto", "source", "render"];
+      const validMdModes = ["auto", "source", "render", "none"];
       if (!validMdModes.includes(value)) {
-        throw new Error(`Invalid --md value: ${value} (expected: auto, source, render)`);
+        throw new Error(`Invalid --md value: ${value} (expected: auto, source, render, none)`);
       }
-      result.mdMode = value as "auto" | "source" | "render";
+      result.mdMode = value as "auto" | "source" | "render" | "none";
     } else if (arg === "--emoji") {
       result.emoji = "always";
     } else if (arg === "--no-emoji") {
       result.emoji = "never";
-    } else if (arg === "--raw") {
-      result.rawMode = 1;
-    } else if (arg === "--raw2") {
-      result.rawMode = 2;
+    } else if (arg === "--jsonl") {
+      result.jsonlMode = "redact";
+    } else if (arg.startsWith("--jsonl=")) {
+      const value = arg.slice("--jsonl=".length);
+      const validJsonl = ["none", "redact", "full"];
+      if (!validJsonl.includes(value)) {
+        throw new Error(`Invalid --jsonl value: ${value} (expected: none, redact, full)`);
+      }
+      result.jsonlMode = value as "none" | "redact" | "full";
     } else if (arg === "--grep") {
       i++;
       if (i >= argv.length) throw new Error("--grep requires a value");
       result.grep = argv[i];
     } else if (arg === "--help") {
       result.help = true;
-    } else if (arg.startsWith("-")) {
+    } else if (arg.startsWith("-") && arg !== "-") {
       throw new Error(`Unknown option: ${arg}`);
     } else {
       positional.push(arg);

@@ -72,12 +72,12 @@ export interface ParsedArgs {
   types: string;        // default: "UTRFWBGASQDI"
   width: number;        // default: 55
   timestamps: boolean;  // default: false
-  colors: "auto" | "always" | "never";  // default: "auto"
-  rawMode: 0 | 1 | 2;  // default: 0
+  color: "auto" | "always" | "none";  // default: "auto"
+  jsonlMode: "none" | "redact" | "full";  // default: "none"
   inputs: string[];     // セッションID or ファイルパス（複数可）
   from: string;         // 範囲開始（空文字列 = 先頭から）
   to: string;           // 範囲終了（空文字列 = 末尾まで）
-  mdMode: "off" | "auto" | "render" | "source";  // default: "off"
+  mdMode: "none" | "auto" | "render" | "source";  // default: "none"
   emoji: "auto" | "always" | "never";   // default: "auto"
   grep: string;         // --grep pattern (default: "")
   help: boolean;        // --help

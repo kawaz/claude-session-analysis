@@ -22,19 +22,17 @@ _claude-session-analysis() {
     timeline)
       _arguments -s \
         '-t[Filter by type (UTRFWBGASQDI)]:types:' \
-        '-w[Truncation width]:width:' \
+        '--width[Truncation width]:width:' \
         '--timestamps[Show timestamps]' \
         '--no-timestamps[Disable timestamps]' \
-        '--colors=-[Color output]::mode:(auto always never)' \
-        '--no-colors[Disable colors]' \
+        '--color=-[Color output]::mode:(auto always none)' \
         '--emoji[Always show emoji]' \
         '--no-emoji[Never show emoji]' \
-        '--md=-[Full text for Q/T/R/U events]::mode:(auto source render)' \
-        '--raw[Output markers only (for get-by-marker)]' \
-        '--raw2[Output markers only (redact only)]' \
+        '--grep[Filter events by desc (regex)]:pattern:' \
+        '--md=-[Full text for Q/T/R/U events]::mode:(auto source render none)' \
+        '--jsonl=-[JSONL output]::mode:(none redact full)' \
         '--help[Show help]' \
-        ':session:_files' \
-        '::range:'
+        '*:session:_files'
       ;;
     summaries)
       _arguments -s \

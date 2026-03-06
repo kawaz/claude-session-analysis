@@ -17,6 +17,18 @@ export function localTime(time: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
 }
 
+/** ローカルタイムゾーン付き ISO8601 (ミリ秒精度, now用) */
+export function localTimeMs(): string {
+  const d = new Date();
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm = String(Math.abs(off) % 60).padStart(2, "0");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}${sign}${hh}${mm}`;
+}
+
 const MARKER_RE = /([UTRFWBGASQDI])([0-9a-f]{8})/;
 
 const COLOR_MAP: Record<string, { ansi: string; emoji: string }> = {
@@ -25,7 +37,7 @@ const COLOR_MAP: Record<string, { ansi: string; emoji: string }> = {
   R: { ansi: "\x1b[34m", emoji: "🤖" },
   Q: { ansi: "\x1b[34m", emoji: "🤖" },
   B: { ansi: "\x1b[2m", emoji: "▶️" },
-  F: { ansi: "\x1b[2m", emoji: "👀" }, // default for F; overridden dynamically
+  F: { ansi: "\x1b[2m", emoji: "👀" },
   W: { ansi: "\x1b[2m", emoji: "🛜" },
   S: { ansi: "\x1b[2m", emoji: "⚡️" },
   G: { ansi: "\x1b[2m", emoji: "🔍" },
@@ -42,11 +54,9 @@ export interface ColorizeOpts {
 
 /** 行内マーカーを検出し、ANSIカラー+絵文字を付与 */
 export function colorize(line: string, opts?: ColorizeOpts): string {
-  // デフォルト: 後方互換のため両方true
   const useColors = opts?.colors ?? true;
   const useEmoji = opts?.emoji ?? true;
 
-  // 両方無効なら何もしない
   if (!useColors && !useEmoji) return line;
 
   const m = MARKER_RE.exec(line);
@@ -63,7 +73,6 @@ export function colorize(line: string, opts?: ColorizeOpts): string {
 
   let { ansi, emoji } = color;
 
-  // F の絵文字は条件分岐
   if (kind === "F") {
     if (afterMarker.includes("no-backup-") || /@v/.test(afterMarker)) {
       emoji = "📝";
@@ -85,17 +94,15 @@ const QTRU_KINDS = new Set(["Q", "T", "R", "U"]);
 /** 単一イベントをフォーマット */
 export function formatEvent(
   event: TimelineEvent,
-  opts: { rawMode: number; width: number; timestamps: boolean; mdMode?: "off" | "render" | "source" },
+  opts: { jsonlMode: string; width: number; timestamps: boolean; mdMode?: "none" | "render" | "source" },
 ): string {
-  if (opts.rawMode > 0) {
+  if (opts.jsonlMode !== "none") {
     return `${event.kind}${event.ref}`;
   }
 
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
-
   const fmtTime = isMd ? localTime : cleanTime;
 
-  // mdモードでQTRUの場合: マーカー行のみ（descなし）
   if (isMd && QTRU_KINDS.has(event.kind)) {
     if (opts.timestamps) {
       return `${fmtTime(event.time)} ${event.kind}${event.ref}`;
@@ -105,7 +112,6 @@ export function formatEvent(
 
   let desc: string;
   if (isMd || event.notrunc) {
-    // mdモードではtruncateしない
     desc = event.notrunc ? event.desc : event.desc.replace(/\n/g, " ");
   } else {
     desc = truncate(event.desc.replace(/\n/g, " "), opts.width);
@@ -119,17 +125,17 @@ export function formatEvent(
 
 /** formatEvents のオプション型 */
 export interface FormatEventsOpts {
-  rawMode: number;
+  jsonlMode: string;
   width: number;
   timestamps: boolean;
   colors: boolean;
   emoji: boolean;
-  mdMode: "off" | "render" | "source";
+  mdMode: "none" | "render" | "source";
 }
 
 /** mdモード用 YAML front matter を生成 */
-export function mdFrontMatter(command: string, now: string): string {
-  return `---\ncommand: ${command}\nnow: ${now}\n---\n\n`;
+export function mdFrontMatter(command: string, commandComputed: string, now: string): string {
+  return `---\ncommand: ${command}\ncommand_computed: ${commandComputed}\nnow: ${now}\n---\n\n`;
 }
 
 /** 複数イベントをフォーマットして結合 */
@@ -149,13 +155,11 @@ export function formatEvents(
     }
 
     if (isMd && QTRU_KINDS.has(e.kind)) {
-      // 2番目以降のQTRUには --- (thematic break) を挿入
       if (mdQtruSeen) {
         output.push("---");
         output.push("");
       }
       mdQtruSeen = true;
-      // QTRU: マーカー行 + 空行 + desc本文 + 空行
       output.push(line);
       output.push("");
       output.push(e.desc);

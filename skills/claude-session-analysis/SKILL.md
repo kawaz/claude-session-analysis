@@ -12,8 +12,8 @@ My session ID: `${CLAUDE_SESSION_ID}`
 | Subcommand | Description |
 |--------|-------------|
 | `sessions [--grep kw] [--since spec] [--limit N]` | Search sessions by keyword/time |
-| `timeline [-t <types>] [-w <width>] [--md[=auto\|source\|render]] <id> [range]` | Timeline (default: all, 55 chars) |
-| `get-by-marker [--raw\|--raw2] [-A n] [-B n] [-C n] <id> <marker>` | Entry details (with context) |
+| `timeline [-t <types>] [--width <n>] [--md[=auto\|source\|render\|none]] <id> [range]` | Timeline (default: all, 55 chars) |
+| `get-by-marker [--jsonl[=redact\|full]\|--raw\|--raw2] [-A n] [-B n] [-C n] <id> <marker>` | Entry details (with context) |
 | `file-ops <id>` | Read/Write operations |
 | `file-diff <id> <hash> <v1> [v2]` | Diff versions (v2 omitted: vs current) |
 | `summaries <id>` | Session title history |
@@ -22,12 +22,13 @@ My session ID: `${CLAUDE_SESSION_ID}`
 ## Timeline Options
 
 - `-t <types>`: Filter by type (default: all)
-- `-w <width>`: Truncation width (default: 55)
+- `--width <n>`: Truncation width (default: 55)
 - `--timestamps` / `--no-timestamps`: Show timestamps
-- `--colors[=auto|always|never]` / `--no-colors`: Color output
-- `--emoji` / `--no-emoji`: Emoji display (independent of colors)
-- `--md[=auto|source|render]`: Show QTRU full text (auto: render if tty, source otherwise)
-- `--raw` / `--raw2`: Output markers for get-by-marker
+- `--color[=auto|always|none]`: Color output (default: auto)
+- `--emoji` / `--no-emoji`: Emoji display (default: auto, follows color)
+- `--grep <pattern>`: Filter events by desc (regex)
+- `--md[=auto|source|render|none]`: Show QTRU full text (default: none; auto: render if tty, source otherwise)
+- `--jsonl[=none|redact|full]`: JSONL output (default: none; redact: omit+redact, full: redact only)
 - Range: `..m` (start to m), `m..` (m to end), `from..to`, `m` (single)
 
 ## Timeline Markers
