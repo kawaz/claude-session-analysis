@@ -173,7 +173,7 @@ describe("formatSessionLine", () => {
   test("with context: appends tab + context", () => {
     const session = { ...base, context: "found keyword here" };
     const line = formatSessionLine(session, { full: false, now });
-    expect(line).toContain("\tfound keyword here");
+    expect(line).toContain("  found keyword here");
   });
 });
 

@@ -138,9 +138,9 @@ export function formatSessionLine(
 
   const path = formatProjectPath(session.cwd, opts.full);
 
-  const ctx = session.context ? `\t${session.context}` : "";
+  const ctx = session.context ? `  ${session.context}` : "";
 
-  return `${endStr} ${durStr} ${sizeStr}\t${sid}\t${path}${ctx}`;
+  return `${endStr} ${durStr} ${sizeStr} ${sid} ${path}${ctx}`;
 }
 
 /**
@@ -166,9 +166,10 @@ export function formatSessionsOutput(
   }
 
   // カラムヘッダ
-  const sidLabel = opts.full ? "SESSION_ID" : "SESSION8";
+  const sidWidth = opts.full ? 36 : 8;
+  const sidLabel = (opts.full ? "SESSION_ID" : "SESSION8").padEnd(sidWidth);
   lines.push(
-    `${"END".padEnd(25)} ${"DURATION".padStart(8)} ${"SIZE".padStart(8)}\t${sidLabel}\tPATH`,
+    `${"END".padEnd(25)} ${"DURATION".padStart(8)} ${"SIZE".padStart(8)} ${sidLabel} PATH`,
   );
 
   // tail 制限
