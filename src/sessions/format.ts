@@ -12,10 +12,10 @@ export interface OutputOptions extends FormatOptions {
 /**
  * sh版の h() 相当: ファイルサイズを人間可読形式にフォーマット。
  * 1e9ベースの単位系（K=1e3, M=1e6, G=1e9）。
- * 100以上 → "%3d", 10以上 → "%3d", それ以下 → "%3.1f"
- * 全体4文字幅。
+ * 右寄せ8文字幅。
  */
 export function formatHumanSize(bytes: number): string {
+  const WIDTH = 8;
   let v: number;
   let u: string;
   if (bytes >= 1e9) {
@@ -29,13 +29,15 @@ export function formatHumanSize(bytes: number): string {
     u = "K";
   }
 
+  let str: string;
   if (v >= 100) {
-    return `${Math.floor(v).toString().padStart(3)}${u}`;
+    str = `${Math.floor(v)}${u}`;
   } else if (v >= 10) {
-    return `${Math.floor(v).toString().padStart(3)}${u}`;
+    str = `${Math.floor(v)}${u}`;
   } else {
-    return `${v.toFixed(1)}${u}`;
+    str = `${v.toFixed(1)}${u}`;
   }
+  return str.padStart(WIDTH);
 }
 
 /**
@@ -62,11 +64,10 @@ export function formatAgo(seconds: number): string {
 }
 
 /**
- * duration秒を ##.#[dhms] 形式でフォーマット（右寄せ5文字幅）。
- * 例: " 1.5h", "  45m", " 2.3d", "  30s"
+ * duration秒を ##.#[dhms] 形式でフォーマット（右寄せ8文字幅）。
  */
 export function formatDuration(seconds: number): string {
-  const WIDTH = 5;
+  const WIDTH = 8;
   let v: number;
   let u: string;
   if (seconds >= 86400) {
@@ -139,7 +140,7 @@ export function formatSessionLine(
 
   const ctx = session.context ? `\t${session.context}` : "";
 
-  return `${endStr} ${durStr}\t${sizeStr}\t${sid}\t${path}${ctx}`;
+  return `${endStr} ${durStr} ${sizeStr}\t${sid}\t${path}${ctx}`;
 }
 
 /**
@@ -167,7 +168,7 @@ export function formatSessionsOutput(
   // カラムヘッダ
   const sidLabel = opts.full ? "SessionId" : "SessId8 ";
   lines.push(
-    `# ${"End".padEnd(25)} ${"Dur".padStart(5)}\tSize\t${sidLabel}\tPath`,
+    `${"End".padEnd(25)} ${"Dur".padStart(8)} ${"Size".padStart(8)}\t${sidLabel}\tPath`,
   );
 
   // tail 制限
