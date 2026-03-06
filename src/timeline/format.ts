@@ -6,6 +6,17 @@ export function cleanTime(time: string): string {
   return time.split("_")[0];
 }
 
+/** ローカルタイムゾーン付き ISO8601 (秒精度) に変換 */
+export function localTime(time: string): string {
+  const d = new Date(time.split("_")[0]);
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm = String(Math.abs(off) % 60).padStart(2, "0");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
+}
+
 const MARKER_RE = /([UTRFWBGASQDI])([0-9a-f]{8})/;
 
 const COLOR_MAP: Record<string, { ansi: string; emoji: string }> = {
@@ -85,10 +96,12 @@ export function formatEvent(
 
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
 
+  const fmtTime = isMd ? localTime : cleanTime;
+
   // mdモードでQTRUの場合: マーカー行のみ（descなし）
   if (isMd && QTRU_KINDS.has(event.kind)) {
     if (opts.timestamps) {
-      return `${cleanTime(event.time)} ${event.kind}${event.ref}`;
+      return `${fmtTime(event.time)} ${event.kind}${event.ref}`;
     }
     return `${event.kind}${event.ref}`;
   }
@@ -102,7 +115,7 @@ export function formatEvent(
   }
 
   if (opts.timestamps) {
-    return `${cleanTime(event.time)} ${event.kind}${event.ref} ${desc}`;
+    return `${fmtTime(event.time)} ${event.kind}${event.ref} ${desc}`;
   }
   return `${event.kind}${event.ref} ${desc}`;
 }

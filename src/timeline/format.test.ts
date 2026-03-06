@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { cleanTime, colorize, formatEvent, formatEvents, mdFrontMatter, type FormatEventsOpts } from "./format.ts";
+import { cleanTime, localTime, colorize, formatEvent, formatEvents, mdFrontMatter, type FormatEventsOpts } from "./format.ts";
 import type { TimelineEvent } from "./types.ts";
 
 describe("cleanTime", () => {
@@ -8,6 +8,23 @@ describe("cleanTime", () => {
   });
   test("サフィックスなし", () => {
     expect(cleanTime("2024-01-01T10:00:00")).toBe("2024-01-01T10:00:00");
+  });
+});
+
+describe("localTime", () => {
+  test("UTC時刻をローカルタイムゾーン付きISO8601に変換", () => {
+    const result = localTime("2024-01-01T10:00:00Z");
+    // ローカルTZに依存するので形式のみ検証
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  });
+  test("サフィックス付きも処理", () => {
+    const result = localTime("2024-01-01T10:00:00_00003");
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+  });
+  test("変換結果が同じ瞬間を表す", () => {
+    const input = "2024-06-15T12:30:45Z";
+    const result = localTime(input);
+    expect(new Date(result).getTime()).toBe(new Date(input).getTime());
   });
 });
 
@@ -260,9 +277,10 @@ describe("formatEvents", () => {
     // F: 1行
     // B: 1行
     // Q(2番目以降): --- + 空行 + marker行 + 空行 + desc (2行) + 空行 = 7行
+    const lt = (t: string) => localTime(t);
     let i = 0;
     // U marker line (最初のQTRUなので---なし)
-    expect(lines[i++]).toBe("2024-01-01T10:00:00 Uabc12345");
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:00")} Uabc12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("hello");
     expect(lines[i++]).toBe("world");
@@ -270,7 +288,7 @@ describe("formatEvents", () => {
     // T marker line (2番目以降なので---あり)
     expect(lines[i++]).toBe("---");
     expect(lines[i++]).toBe("");
-    expect(lines[i++]).toBe("2024-01-01T10:00:01 Tbbb12345");
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:01")} Tbbb12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("thinking");
     expect(lines[i++]).toBe("about it");
@@ -278,19 +296,19 @@ describe("formatEvents", () => {
     // R marker line (---あり)
     expect(lines[i++]).toBe("---");
     expect(lines[i++]).toBe("");
-    expect(lines[i++]).toBe("2024-01-01T10:00:02 Rccc12345");
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:02")} Rccc12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("response");
     expect(lines[i++]).toBe("text");
     expect(lines[i++]).toBe("");
-    // F: 1行
-    expect(lines[i++]).toBe("2024-01-01T10:00:03 Fddd12345 src/lib.ts hash@v1");
+    // F: 1行 (mdモードでもlocalTime)
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:03")} Fddd12345 src/lib.ts hash@v1`);
     // B: 1行
-    expect(lines[i++]).toBe("2024-01-01T10:00:04 Beee12345 git status");
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:04")} Beee12345 git status`);
     // Q marker line (---あり)
     expect(lines[i++]).toBe("---");
     expect(lines[i++]).toBe("");
-    expect(lines[i++]).toBe("2024-01-01T10:00:05 Qfff12345");
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:05")} Qfff12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("question");
     expect(lines[i++]).toBe("for user");
@@ -325,6 +343,8 @@ describe("formatEvents", () => {
     });
     const lines = result.split("\n");
     expect(lines).toHaveLength(3);
+    // localTime形式であること
+    expect(lines[0]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} Faaa12345/);
   });
 
   test("mdMode=off: 既存と同じ動作（後方互換）", () => {
@@ -338,10 +358,10 @@ describe("formatEvents", () => {
 
 describe("mdFrontMatter", () => {
   test("コマンドとnowを含むYAML front matterを生成", () => {
-    const result = mdFrontMatter("claude-session-analysis timeline abc --md-source", "2026-02-27T01:23:45.678Z");
+    const result = mdFrontMatter("claude-session-analysis timeline abc --md=source", "2026-02-27T01:23:45.678Z");
     const lines = result.split("\n");
     expect(lines[0]).toBe("---");
-    expect(lines[1]).toBe("command: claude-session-analysis timeline abc --md-source");
+    expect(lines[1]).toBe("command: claude-session-analysis timeline abc --md=source");
     expect(lines[2]).toBe("now: 2026-02-27T01:23:45.678Z");
     expect(lines[3]).toBe("---");
     expect(lines[4]).toBe("");
