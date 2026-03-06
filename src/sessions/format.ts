@@ -166,7 +166,7 @@ export function formatSessionsOutput(
   }
 
   // カラムヘッダ
-  const sidLabel = opts.full ? "SESSION" : "SESSION8";
+  const sidLabel = opts.full ? "SESSION_ID" : "SESSION8";
   lines.push(
     `${"END".padEnd(25)} ${"DURATION".padStart(8)} ${"SIZE".padStart(8)}\t${sidLabel}\tPATH`,
   );
