@@ -29,8 +29,7 @@ _claude-session-analysis() {
         '--no-colors[Disable colors]' \
         '--emoji[Always show emoji]' \
         '--no-emoji[Never show emoji]' \
-        '--md-source[Full text output for Q/T/R/U events]' \
-        '--md-render[Full text output piped through mdp]' \
+        '--md=-[Full text for Q/T/R/U events]::mode:(auto source render)' \
         '--raw[Output markers only (for get-by-marker)]' \
         '--raw2[Output markers only (redact only)]' \
         '--help[Show help]' \

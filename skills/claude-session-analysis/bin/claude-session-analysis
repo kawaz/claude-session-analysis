@@ -70,10 +70,15 @@ function parseArgs(argv) {
       result.colors = value;
     } else if (arg === "--no-colors") {
       result.colors = "never";
-    } else if (arg === "--md-render") {
-      result.mdMode = "render";
-    } else if (arg === "--md-source") {
-      result.mdMode = "source";
+    } else if (arg === "--md") {
+      result.mdMode = "auto";
+    } else if (arg.startsWith("--md=")) {
+      const value = arg.slice("--md=".length);
+      const validMdModes = ["auto", "source", "render"];
+      if (!validMdModes.includes(value)) {
+        throw new Error(`Invalid --md value: ${value} (expected: auto, source, render)`);
+      }
+      result.mdMode = value;
     } else if (arg === "--emoji") {
       result.emoji = "always";
     } else if (arg === "--no-emoji") {
@@ -586,6 +591,15 @@ function pipeline(events, opts) {
 function cleanTime(time) {
   return time.split("_")[0];
 }
+function localTime(time) {
+  const d = new Date(time.split("_")[0]);
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm = String(Math.abs(off) % 60).padStart(2, "0");
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
+}
 var MARKER_RE = /([UTRFWBGASQDI])([0-9a-f]{8})/;
 var COLOR_MAP = {
   U: { ansi: "\x1B[32m", emoji: "\uD83D\uDC64" },
@@ -641,9 +655,10 @@ function formatEvent(event, opts) {
     return `${event.kind}${event.ref}`;
   }
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  const fmtTime = isMd ? localTime : cleanTime;
   if (isMd && QTRU_KINDS.has(event.kind)) {
     if (opts.timestamps) {
-      return `${cleanTime(event.time)} ${event.kind}${event.ref}`;
+      return `${fmtTime(event.time)} ${event.kind}${event.ref}`;
     }
     return `${event.kind}${event.ref}`;
   }
@@ -654,7 +669,7 @@ function formatEvent(event, opts) {
     desc = truncate(event.desc.replace(/\n/g, " "), opts.width);
   }
   if (opts.timestamps) {
-    return `${cleanTime(event.time)} ${event.kind}${event.ref} ${desc}`;
+    return `${fmtTime(event.time)} ${event.kind}${event.ref} ${desc}`;
   }
   return `${event.kind}${event.ref} ${desc}`;
 }
@@ -796,10 +811,11 @@ async function run(args) {
 `));
     return;
   }
+  const mdMode = opts.mdMode === "auto" ? process.stdout.isTTY ? "render" : "source" : opts.mdMode;
   const useColors = opts.colors === "always" ? true : opts.colors === "never" ? false : process.stdout.isTTY ?? false;
   const useEmoji = opts.emoji === "always" ? true : opts.emoji === "never" ? false : useColors;
-  const timestamps = opts.mdMode !== "off" && !args.includes("--no-timestamps") ? true : opts.timestamps;
-  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  const timestamps = mdMode !== "off" && !args.includes("--no-timestamps") ? true : opts.timestamps;
+  const isMd = mdMode === "render" || mdMode === "source";
   const frontMatter = isMd ? mdFrontMatter(`${process.env._PROG || "timeline"} ${args.join(" ")}`, new Date().toISOString()) : "";
   const output = frontMatter + formatEvents(filtered, {
     rawMode: opts.rawMode,
@@ -807,12 +823,12 @@ async function run(args) {
     timestamps,
     colors: useColors,
     emoji: useEmoji,
-    mdMode: opts.mdMode
+    mdMode
   });
-  if (opts.mdMode === "render") {
+  if (mdMode === "render") {
     const which = Bun.spawnSync(["which", "mdp"]);
     if (which.exitCode !== 0) {
-      console.error("Error: mdp not found. Install mdp to use --md-render.");
+      console.error("Error: mdp not found. Install mdp to use --md=render.");
       process.exit(1);
     }
     const proc = Bun.spawn(["mdp"], {
@@ -842,8 +858,8 @@ Options:
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
   --grep <pattern>            Filter events by desc (regex)
-  --md-source                 Full text output for Q/T/R/U events
-  --md-render                 Full text output piped through mdp
+  --md[=auto|source|render]   Full text for Q/T/R/U (default: auto)
+                              auto=render if tty, source otherwise
   --raw                       Output markers only (for get-by-marker)
   --raw2                      Output markers only (redact only)
   --help                      Show this help
@@ -863,7 +879,7 @@ Examples:
   ${prog} ./path/to/session.jsonl       Show timeline from file
   ${prog} -t UR abc12345                Show only User & Response
   ${prog} --timestamps abc12345         Show with timestamps
-  ${prog} --md-source abc12345          Show with full Q/T/R/U text
+  ${prog} --md abc12345                 Show with full Q/T/R/U text
   ${prog} --no-colors --emoji abc12345  Emoji without colors
   ${prog} --grep "README" abc12345        Filter events matching pattern
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);

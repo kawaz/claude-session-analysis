@@ -116,6 +116,12 @@ export async function run(args: string[]) {
     return;
   }
 
+  // mdMode auto 解決: tty なら render、それ以外なら source
+  const mdMode: "off" | "render" | "source" =
+    opts.mdMode === "auto"
+      ? (process.stdout.isTTY ? "render" : "source")
+      : opts.mdMode;
+
   // カラー判定
   const useColors =
     opts.colors === "always"
@@ -134,12 +140,12 @@ export async function run(args: string[]) {
 
   // mdモード時のtimestampsデフォルト: 明示的に指定がなければ有効
   const timestamps =
-    (opts.mdMode !== "off" && !args.includes("--no-timestamps"))
+    (mdMode !== "off" && !args.includes("--no-timestamps"))
       ? true
       : opts.timestamps;
 
   // mdモード用 front matter
-  const isMd = opts.mdMode === "render" || opts.mdMode === "source";
+  const isMd = mdMode === "render" || mdMode === "source";
   const frontMatter = isMd
     ? mdFrontMatter(
         `${process.env._PROG || "timeline"} ${args.join(" ")}`,
@@ -154,14 +160,14 @@ export async function run(args: string[]) {
     timestamps,
     colors: useColors,
     emoji: useEmoji,
-    mdMode: opts.mdMode,
+    mdMode,
   });
 
-  // --md-render: mdp にパイプ
-  if (opts.mdMode === "render") {
+  // --md render: mdp にパイプ
+  if (mdMode === "render") {
     const which = Bun.spawnSync(["which", "mdp"]);
     if (which.exitCode !== 0) {
-      console.error("Error: mdp not found. Install mdp to use --md-render.");
+      console.error("Error: mdp not found. Install mdp to use --md=render.");
       process.exit(1);
     }
 
@@ -176,7 +182,7 @@ export async function run(args: string[]) {
     return;
   }
 
-  // --md-source / 通常出力
+  // --md=source / 通常出力
   console.log(output);
 }
 
@@ -194,8 +200,8 @@ Options:
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
   --grep <pattern>            Filter events by desc (regex)
-  --md-source                 Full text output for Q/T/R/U events
-  --md-render                 Full text output piped through mdp
+  --md[=auto|source|render]   Full text for Q/T/R/U (default: auto)
+                              auto=render if tty, source otherwise
   --raw                       Output markers only (for get-by-marker)
   --raw2                      Output markers only (redact only)
   --help                      Show this help
@@ -215,7 +221,7 @@ Examples:
   ${prog} ./path/to/session.jsonl       Show timeline from file
   ${prog} -t UR abc12345                Show only User & Response
   ${prog} --timestamps abc12345         Show with timestamps
-  ${prog} --md-source abc12345          Show with full Q/T/R/U text
+  ${prog} --md abc12345                 Show with full Q/T/R/U text
   ${prog} --no-colors --emoji abc12345  Emoji without colors
   ${prog} --grep "README" abc12345        Filter events matching pattern
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);

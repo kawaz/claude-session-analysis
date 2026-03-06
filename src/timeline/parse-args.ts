@@ -87,10 +87,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.colors = value as "auto" | "always" | "never";
     } else if (arg === "--no-colors") {
       result.colors = "never";
-    } else if (arg === "--md-render") {
-      result.mdMode = "render";
-    } else if (arg === "--md-source") {
-      result.mdMode = "source";
+    } else if (arg === "--md") {
+      result.mdMode = "auto";
+    } else if (arg.startsWith("--md=")) {
+      const value = arg.slice("--md=".length);
+      const validMdModes = ["auto", "source", "render"];
+      if (!validMdModes.includes(value)) {
+        throw new Error(`Invalid --md value: ${value} (expected: auto, source, render)`);
+      }
+      result.mdMode = value as "auto" | "source" | "render";
     } else if (arg === "--emoji") {
       result.emoji = "always";
     } else if (arg === "--no-emoji") {

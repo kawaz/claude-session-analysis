@@ -12,7 +12,7 @@ My session ID: `${CLAUDE_SESSION_ID}`
 | Subcommand | Description |
 |--------|-------------|
 | `sessions [--full] [--grep kw] [--since spec] [--limit N]` | Search sessions by keyword/time |
-| `timeline [-t <types>] [-w <width>] [--md-source\|--md-render] <id> [range]` | Timeline (default: all, 55 chars) |
+| `timeline [-t <types>] [-w <width>] [--md[=auto\|source\|render]] <id> [range]` | Timeline (default: all, 55 chars) |
 | `get-by-marker [--raw\|--raw2] [-A n] [-B n] [-C n] <id> <marker>` | Entry details (with context) |
 | `file-ops <id>` | Read/Write operations |
 | `file-diff <id> <hash> <v1> [v2]` | Diff versions (v2 omitted: vs current) |
@@ -26,8 +26,7 @@ My session ID: `${CLAUDE_SESSION_ID}`
 - `--timestamps` / `--no-timestamps`: Show timestamps
 - `--colors[=auto|always|never]` / `--no-colors`: Color output
 - `--emoji` / `--no-emoji`: Emoji display (independent of colors)
-- `--md-source`: Show QTRU full text (markdown source)
-- `--md-render`: Show QTRU full text via `mdp`
+- `--md[=auto|source|render]`: Show QTRU full text (auto: render if tty, source otherwise)
 - `--raw` / `--raw2`: Output markers for get-by-marker
 - Range: `..m` (start to m), `m..` (m to end), `from..to`, `m` (single)
 
@@ -49,6 +48,6 @@ Types (all by default, filter with `-t`):
 
 1. **Start with full timeline** (default width is enough for overview)
 2. **Dive deeper** with `get-by-marker` or `-w` for specific entries
-3. **Read full context** with `--md-source` for QTRU entries
+3. **Read full context** with `--md` for QTRU entries
 
 ⚠️ **Sandbox**: Pipes (`|`) don't work. Use `dangerouslyDisableSandbox: true` when piping output.

@@ -77,7 +77,7 @@ export interface ParsedArgs {
   inputs: string[];     // セッションID or ファイルパス（複数可）
   from: string;         // 範囲開始（空文字列 = 先頭から）
   to: string;           // 範囲終了（空文字列 = 末尾まで）
-  mdMode: "off" | "render" | "source";  // default: "off"
+  mdMode: "off" | "auto" | "render" | "source";  // default: "off"
   emoji: "auto" | "always" | "never";   // default: "auto"
   grep: string;         // --grep pattern (default: "")
   help: boolean;        // --help

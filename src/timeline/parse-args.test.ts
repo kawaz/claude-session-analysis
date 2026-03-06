@@ -135,19 +135,28 @@ describe("parseArgs", () => {
     expect(args.mdMode).toBe("off");
   });
 
-  test("--md-render → mdMode = render", () => {
-    const args = parseArgs(["--md-render", "abc12345"]);
+  test("--md → mdMode = auto", () => {
+    const args = parseArgs(["--md", "abc12345"]);
+    expect(args.mdMode).toBe("auto");
+  });
+
+  test("--md=source → mdMode = source", () => {
+    const args = parseArgs(["--md=source", "abc12345"]);
+    expect(args.mdMode).toBe("source");
+  });
+
+  test("--md=render → mdMode = render", () => {
+    const args = parseArgs(["--md=render", "abc12345"]);
     expect(args.mdMode).toBe("render");
   });
 
-  test("--md-source → mdMode = source", () => {
-    const args = parseArgs(["--md-source", "abc12345"]);
-    expect(args.mdMode).toBe("source");
+  test("--md=auto → mdMode = auto", () => {
+    const args = parseArgs(["--md=auto", "abc12345"]);
+    expect(args.mdMode).toBe("auto");
   });
 
-  test("--md-render と --md-source は後勝ち", () => {
-    const args = parseArgs(["--md-render", "--md-source", "abc12345"]);
-    expect(args.mdMode).toBe("source");
+  test("--md=invalid でエラー", () => {
+    expect(() => parseArgs(["--md=invalid", "abc12345"])).toThrow(/Invalid --md value/);
   });
 
   // emoji tests
