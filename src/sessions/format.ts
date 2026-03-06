@@ -140,7 +140,7 @@ export function formatSessionLine(
 
   const ctx = session.context ? `  ${session.context}` : "";
 
-  return `${endStr} ${durStr} ${sizeStr} ${sid} ${path}${ctx}`;
+  return `${endStr}  ${durStr}  ${sizeStr}  ${sid}  ${path}${ctx}`;
 }
 
 /**
@@ -169,7 +169,7 @@ export function formatSessionsOutput(
   const sidWidth = opts.full ? 36 : 8;
   const sidLabel = (opts.full ? "SESSION_ID" : "SESSION8").padEnd(sidWidth);
   lines.push(
-    `${"END".padEnd(25)} ${"DURATION".padStart(8)} ${"FILESIZE".padStart(8)} ${sidLabel} PATH`,
+    `${"END".padEnd(25)}  ${"DURATION".padStart(8)}  ${"FILESIZE".padStart(8)}  ${sidLabel}  PATH`,
   );
 
   // tail 制限
