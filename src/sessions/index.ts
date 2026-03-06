@@ -12,8 +12,8 @@ Options:
   --grep <pattern>  Filter sessions by content (regex)
   --since <spec>    Time filter. Duration: 5m, 1h, 2d, 1h30m
                     or date string: 2024-01-01, 2024-01-01T12:00:00
-                    (default: 1d)
-  --limit <N>       Show last N sessions (default: 10)
+                    (default: 2d)
+  --limit <N>       Show last N sessions (default: 20)
   --help            Show this help`);
   process.exit(exitCode);
 }
@@ -39,8 +39,8 @@ function parseSince(spec: string): number {
 
 function parseOpts(rawArgs: string[]) {
   let keyword = "";
-  let since = "1d";
-  let tail = 10;
+  let since = "2d";
+  let tail = 20;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
