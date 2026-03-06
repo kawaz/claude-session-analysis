@@ -6,7 +6,7 @@ const DURATION_RE = /^(\d+[smhd])+$/;
 function printUsage(exitCode: number = 0): never {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? console.error : console.log;
-  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>] [--full]
+  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>]
 
 Options:
   --grep <pattern>  Filter sessions by content (regex)
@@ -14,7 +14,6 @@ Options:
                     or date string: 2024-01-01, 2024-01-01T12:00:00
                     (default: 1d)
   --limit <N>       Show last N sessions (default: 10)
-  --full            Show full session ID and cwd
   --help            Show this help`);
   process.exit(exitCode);
 }
@@ -42,8 +41,6 @@ function parseOpts(rawArgs: string[]) {
   let keyword = "";
   let since = "1d";
   let tail = 10;
-  let full = false;
-
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
@@ -74,9 +71,6 @@ function parseOpts(rawArgs: string[]) {
         }
         tail = parseInt(rawArgs[i] ?? "10", 10);
         break;
-      case "--full":
-        full = true;
-        break;
       default:
         if (rawArgs[i]!.startsWith("-")) {
           console.error(`Unknown option: ${rawArgs[i]}`);
@@ -88,7 +82,7 @@ function parseOpts(rawArgs: string[]) {
     i++;
   }
 
-  return { keyword, since, tail, full };
+  return { keyword, since, tail };
 }
 
 export async function run(args: string[]) {
@@ -123,7 +117,6 @@ export async function run(args: string[]) {
 
     // 出力
     const output = formatSessionsOutput(allSessions, filtered, {
-      full: opts.full,
       tail: opts.tail,
     });
 

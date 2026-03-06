@@ -1,7 +1,6 @@
 import type { SessionInfo } from "./search.ts";
 
 export interface FormatOptions {
-  full: boolean;
   now?: number; // テスト用に固定可能なUnix epoch seconds
 }
 
@@ -103,25 +102,15 @@ export function formatDateTime(epochSeconds: number): string {
 }
 
 /**
- * cwdからプロジェクトパスを抽出。
- * full=false: repos/ 以降を返す（repos/がなければ末尾2セグメント）
- * full=true: フルパス
+ * cwdからプロジェクトパスを抽出（フルパス）。
  */
-export function formatProjectPath(cwd: string, full: boolean): string {
-  if (full) return cwd;
-  const reposIdx = cwd.indexOf("/repos/");
-  if (reposIdx !== -1) {
-    return cwd.slice(reposIdx + "/repos/".length);
-  }
-  // repos/ がなければ末尾2セグメント
-  const segments = cwd.split("/").filter((s) => s !== "");
-  if (segments.length <= 2) return cwd;
-  return segments.slice(-2).join("/");
+export function formatProjectPath(cwd: string): string {
+  return cwd;
 }
 
 /**
  * 1セッションの出力行をフォーマット。
- * format: dur end sid path [context]
+ * format: end dur size sid path [context]
  */
 export function formatSessionLine(
   session: SessionInfo,
@@ -131,16 +120,10 @@ export function formatSessionLine(
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
-
-  const sid = opts.full
-    ? session.sessionId
-    : session.sessionId.slice(0, 8);
-
-  const path = formatProjectPath(session.cwd, opts.full);
-
+  const path = formatProjectPath(session.cwd);
   const ctx = session.context ? `  ${session.context}` : "";
 
-  return `${endStr}  ${durStr}  ${sizeStr}  ${sid}  ${path}${ctx}`;
+  return `${endStr}  ${durStr}  ${sizeStr}  ${session.sessionId}  ${path}${ctx}`;
 }
 
 /**
@@ -166,10 +149,8 @@ export function formatSessionsOutput(
   }
 
   // カラムヘッダ
-  const sidWidth = opts.full ? 36 : 8;
-  const sidLabel = (opts.full ? "SESSION_ID" : "SESSION8").padEnd(sidWidth);
   lines.push(
-    `${"TIMESTAMP_END".padEnd(25)}  ${"DURATION".padStart(8)}  ${"FILESIZE".padStart(8)}  ${sidLabel}  PATH`,
+    `${"TIMESTAMP_END".padEnd(25)}  ${"DURATION".padStart(8)}  ${"FILESIZE".padStart(8)}  SESSION_ID  PATH`,
   );
 
   // tail 制限
@@ -178,7 +159,7 @@ export function formatSessionsOutput(
     : filtered;
 
   for (const session of output) {
-    lines.push(formatSessionLine(session, { full: opts.full, now }));
+    lines.push(formatSessionLine(session, { now }));
   }
 
   return lines.join("\n");

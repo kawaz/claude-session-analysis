@@ -11,7 +11,7 @@ My session ID: `${CLAUDE_SESSION_ID}`
 
 | Subcommand | Description |
 |--------|-------------|
-| `sessions [--full] [--grep kw] [--since spec] [--limit N]` | Search sessions by keyword/time |
+| `sessions [--grep kw] [--since spec] [--limit N]` | Search sessions by keyword/time |
 | `timeline [-t <types>] [-w <width>] [--md[=auto\|source\|render]] <id> [range]` | Timeline (default: all, 55 chars) |
 | `get-by-marker [--raw\|--raw2] [-A n] [-B n] [-C n] <id> <marker>` | Entry details (with context) |
 | `file-ops <id>` | Read/Write operations |

@@ -70,7 +70,6 @@ _claude-session-analysis() {
         '--grep[Search keyword]:keyword:' \
         '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \
         '--limit[Show last N sessions]:count:' \
-        '--full[Show full session ID and cwd]' \
         '--help[Show help]'
       ;;
     resolve-session)

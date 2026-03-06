@@ -124,16 +124,8 @@ describe("formatDateTime", () => {
 });
 
 describe("formatProjectPath", () => {
-  test("repos/ 以降を返す", () => {
-    expect(formatProjectPath("/Users/kawaz/.local/share/repos/github.com/kawaz/project", false))
-      .toBe("github.com/kawaz/project");
-  });
-  test("repos/ がなければ末尾2セグメント", () => {
-    expect(formatProjectPath("/home/user/some/project", false))
-      .toBe("some/project");
-  });
-  test("full=true はフルパス", () => {
-    expect(formatProjectPath("/Users/kawaz/.local/share/repos/github.com/kawaz/project", true))
+  test("フルパスを返す", () => {
+    expect(formatProjectPath("/Users/kawaz/.local/share/repos/github.com/kawaz/project"))
       .toBe("/Users/kawaz/.local/share/repos/github.com/kawaz/project");
   });
 });
@@ -150,29 +142,17 @@ describe("formatSessionLine", () => {
     cwd: "/Users/kawaz/.local/share/repos/github.com/kawaz/myproject",
   };
 
-  test("default: dur end short_sid short_path", () => {
-    const line = formatSessionLine(base, { full: false, now });
-    // contains end datetime in ISO8601 with TZ
+  test("end, duration, full sessionId, full path を含む", () => {
+    const line = formatSessionLine(base, { now });
     expect(line).toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
-    // contains duration
     expect(line).toContain("1.0h");
-    // short sid
-    expect(line).toContain("abc12345");
-    expect(line).not.toContain("abc12345-6789");
-    // short path (repos/ 以降)
-    expect(line).toContain("github.com/kawaz/myproject");
-    expect(line).not.toContain("/Users/kawaz");
-  });
-
-  test("full: full sessionId and full cwd", () => {
-    const line = formatSessionLine(base, { full: true, now });
     expect(line).toContain("abc12345-6789-0123-4567-890123456789");
     expect(line).toContain("/Users/kawaz/.local/share/repos/github.com/kawaz/myproject");
   });
 
-  test("with context: appends tab + context", () => {
+  test("with context: appends context", () => {
     const session = { ...base, context: "found keyword here" };
-    const line = formatSessionLine(session, { full: false, now });
+    const line = formatSessionLine(session, { now });
     expect(line).toContain("  found keyword here");
   });
 });
@@ -202,7 +182,6 @@ describe("formatSessionsOutput", () => {
       },
     ];
     const output = formatSessionsOutput(allSessions, allSessions, {
-      full: false,
       tail: 10,
       now,
     });
@@ -226,7 +205,6 @@ describe("formatSessionsOutput", () => {
       });
     }
     const output = formatSessionsOutput(sessions, sessions, {
-      full: false,
       tail: 2,
       now,
     });
@@ -251,7 +229,6 @@ describe("formatSessionsOutput", () => {
       },
     ];
     const output = formatSessionsOutput(allSessions, [], {
-      full: false,
       tail: 10,
       now,
     });
