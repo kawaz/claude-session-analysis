@@ -169,7 +169,7 @@ export function formatSessionsOutput(
   const sidWidth = opts.full ? 36 : 8;
   const sidLabel = (opts.full ? "SESSION_ID" : "SESSION8").padEnd(sidWidth);
   lines.push(
-    `${"END".padEnd(25)} ${"DURATION".padStart(8)} ${"SIZE".padStart(8)} ${sidLabel} PATH`,
+    `${"END".padEnd(25)} ${"DURATION".padStart(8)} ${"FILESIZE".padStart(8)} ${sidLabel} PATH`,
   );
 
   // tail 制限
