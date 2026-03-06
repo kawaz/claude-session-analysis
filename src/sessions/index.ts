@@ -104,7 +104,7 @@ function buildCommandLine(opts: ReturnType<typeof parseOpts>): string {
   if (opts.grepExplicit) {
     parts.push(`--grep ${opts.keyword}`);
   } else {
-    parts.push("[--grep RegExp]");
+    parts.push("[--grep REGEXP]");
   }
   return parts.join(" ");
 }
