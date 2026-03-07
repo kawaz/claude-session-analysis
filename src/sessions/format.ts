@@ -1,5 +1,5 @@
 import type { SessionInfo, SessionStats } from "./search.ts";
-
+// hook test
 export interface FormatOptions {
   now?: number; // テスト用に固定可能なUnix epoch seconds
 }
