@@ -12,31 +12,31 @@ import type { SessionInfo } from "./search.ts";
 
 describe("formatHumanSize", () => {
   test("KB range: 1500 -> 1.5K", () => {
-    expect(formatHumanSize(1500)).toBe("    1.5K");
+    expect(formatHumanSize(1500)).toBe(" 1.5K");
   });
   test("KB range: 10000 -> 10K (integer)", () => {
-    expect(formatHumanSize(10000)).toBe("     10K");
+    expect(formatHumanSize(10000)).toBe("  10K");
   });
   test("KB range: 150000 -> 150K", () => {
-    expect(formatHumanSize(150000)).toBe("    150K");
+    expect(formatHumanSize(150000)).toBe(" 150K");
   });
   test("MB range: 1500000 -> 1.5M", () => {
-    expect(formatHumanSize(1500000)).toBe("    1.5M");
+    expect(formatHumanSize(1500000)).toBe(" 1.5M");
   });
   test("MB range: 15000000 -> 15M", () => {
-    expect(formatHumanSize(15000000)).toBe("     15M");
+    expect(formatHumanSize(15000000)).toBe("  15M");
   });
   test("MB range: 150000000 -> 150M", () => {
-    expect(formatHumanSize(150000000)).toBe("    150M");
+    expect(formatHumanSize(150000000)).toBe(" 150M");
   });
   test("GB range: 1500000000 -> 1.5G", () => {
-    expect(formatHumanSize(1500000000)).toBe("    1.5G");
+    expect(formatHumanSize(1500000000)).toBe(" 1.5G");
   });
   test("small: 500 -> 0.5K", () => {
-    expect(formatHumanSize(500)).toBe("    0.5K");
+    expect(formatHumanSize(500)).toBe(" 0.5K");
   });
   test("zero: 0 -> 0.0K", () => {
-    expect(formatHumanSize(0)).toBe("    0.0K");
+    expect(formatHumanSize(0)).toBe(" 0.0K");
   });
 });
 
@@ -72,43 +72,43 @@ describe("formatAgo", () => {
 
 describe("formatDuration", () => {
   test("0s -> 0.0s", () => {
-    expect(formatDuration(0)).toBe("    0.0s");
+    expect(formatDuration(0)).toBe(" 0.0s");
   });
   test("5s -> 5.0s", () => {
-    expect(formatDuration(5)).toBe("    5.0s");
+    expect(formatDuration(5)).toBe(" 5.0s");
   });
   test("45s -> 45.0s", () => {
-    expect(formatDuration(45)).toBe("   45.0s");
+    expect(formatDuration(45)).toBe("45.0s");
   });
   test("300s -> 5.0m", () => {
-    expect(formatDuration(300)).toBe("    5.0m");
+    expect(formatDuration(300)).toBe(" 5.0m");
   });
   test("900s -> 15.0m", () => {
-    expect(formatDuration(900)).toBe("   15.0m");
+    expect(formatDuration(900)).toBe("15.0m");
   });
   test("3661s -> 1.0h", () => {
-    expect(formatDuration(3661)).toBe("    1.0h");
+    expect(formatDuration(3661)).toBe(" 1.0h");
   });
   test("5400s -> 1.5h", () => {
-    expect(formatDuration(5400)).toBe("    1.5h");
+    expect(formatDuration(5400)).toBe(" 1.5h");
   });
   test("50040s -> 13.9h", () => {
-    expect(formatDuration(50040)).toBe("   13.9h");
+    expect(formatDuration(50040)).toBe("13.9h");
   });
   test("90060s -> 1.0d", () => {
-    expect(formatDuration(90060)).toBe("    1.0d");
+    expect(formatDuration(90060)).toBe(" 1.0d");
   });
   test("216000s -> 2.5d", () => {
-    expect(formatDuration(216000)).toBe("    2.5d");
+    expect(formatDuration(216000)).toBe(" 2.5d");
   });
   test("99d -> 99.0d (##.#d)", () => {
-    expect(formatDuration(99 * 86400)).toBe("   99.0d");
+    expect(formatDuration(99 * 86400)).toBe("99.0d");
   });
   test("100d -> 100d (####d)", () => {
-    expect(formatDuration(100 * 86400)).toBe("    100d");
+    expect(formatDuration(100 * 86400)).toBe(" 100d");
   });
   test("8640000s -> 100d", () => {
-    expect(formatDuration(8640000)).toBe("    100d");
+    expect(formatDuration(8640000)).toBe(" 100d");
   });
 });
 
@@ -140,12 +140,14 @@ describe("formatSessionLine", () => {
     size: 15000,
     sessionId: "abc12345-6789-0123-4567-890123456789",
     cwd: "/Users/kawaz/.local/share/repos/github.com/kawaz/myproject",
+    turns: 42,
   };
 
-  test("end, duration, full sessionId, full path を含む", () => {
+  test("end, duration, full sessionId, turns, full path を含む", () => {
     const line = formatSessionLine(base, { now });
     expect(line).toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
     expect(line).toContain("1.0h");
+    expect(line).toContain("  42");
     expect(line).toContain("abc12345-6789-0123-4567-890123456789");
     expect(line).toContain("/Users/kawaz/.local/share/repos/github.com/kawaz/myproject");
   });
@@ -170,6 +172,7 @@ describe("formatSessionsOutput", () => {
         size: 5000,
         sessionId: "aaaaaaaa",
         cwd: "/x/y",
+        turns: 5,
       },
       {
         file: "/a/c.jsonl",
@@ -179,6 +182,7 @@ describe("formatSessionsOutput", () => {
         size: 10000,
         sessionId: "bbbbbbbb",
         cwd: "/x/z",
+        turns: 10,
       },
     ];
     const output = formatSessionsOutput(allSessions, allSessions, {
@@ -202,6 +206,7 @@ describe("formatSessionsOutput", () => {
         size: 1000,
         sessionId: `sess${i}000`,
         cwd: "/x/y",
+        turns: i + 1,
       });
     }
     const output = formatSessionsOutput(sessions, sessions, {
@@ -226,6 +231,7 @@ describe("formatSessionsOutput", () => {
         size: 5000,
         sessionId: "aaaaaaaa",
         cwd: "/x/y",
+        turns: 3,
       },
     ];
     const output = formatSessionsOutput(allSessions, [], {
@@ -235,6 +241,6 @@ describe("formatSessionsOutput", () => {
     const lines = output.split("\n").filter((l) => l);
     expect(lines.length).toBe(2);
     expect(lines[0]).toMatch(/^# 1 sessions/);
-    expect(lines[1]).toMatch(/^TIMESTAMP_END/);
+    expect(lines[1]).toMatch(/^DURAT/);
   });
 });

@@ -15,7 +15,7 @@ export interface OutputOptions extends FormatOptions {
  * 右寄せ8文字幅。
  */
 export function formatHumanSize(bytes: number): string {
-  const WIDTH = 8;
+  const WIDTH = 5;
   let v: number;
   let u: string;
   if (bytes >= 1e9) {
@@ -67,7 +67,7 @@ export function formatAgo(seconds: number): string {
  * duration秒を ##.#[dhms] 形式でフォーマット（右寄せ8文字幅）。
  */
 export function formatDuration(seconds: number): string {
-  const WIDTH = 8;
+  const WIDTH = 5;
   let v: number;
   let u: string;
   if (seconds >= 86400) {
@@ -121,10 +121,11 @@ export function formatSessionLine(
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
+  const turnStr = String(session.turns).padStart(4);
   const path = formatProjectPath(session.cwd);
   const ctx = session.context ? `  ${session.context}` : "";
 
-  return `${endStr}  ${durStr}  ${sizeStr}  ${session.sessionId}  ${path}${ctx}`;
+  return `${durStr}  ${endStr}  ${session.sessionId}  ${sizeStr}  ${turnStr}  ${path}${ctx}`;
 }
 
 /**
@@ -156,7 +157,7 @@ export function formatSessionsOutput(
 
   // カラムヘッダ
   lines.push(
-    `${"TIMESTAMP_END".padEnd(25)}  ${"DURATION".padStart(8)}  ${"FILESIZE".padStart(8)}  SESSION_ID  PATH`,
+    `${"DURAT".padStart(5)}  ${"TIMESTAMP_END".padEnd(25)}  SESSION_ID  ${"FSIZE".padStart(5)}  TURN  PATH`,
   );
 
   // tail 制限

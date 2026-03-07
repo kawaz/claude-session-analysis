@@ -24,6 +24,7 @@ export interface SessionInfo {
   size: number;
   sessionId: string;
   cwd: string;
+  turns: number; // Uイベント（ユーザーターン）の数
   context?: string; // keyword search context
 }
 
@@ -112,16 +113,19 @@ export async function searchSessions(
     if (startTime === 0) startTime = mtime;
     if (endTime === 0) endTime = mtime;
 
-    // 最初の "cwd" を含む行からsessionIdとcwdを抽出
+    // 最初の "cwd" を含む行からsessionIdとcwdを抽出 + ターン数カウント
+    let turns = 0;
     for (const line of lines) {
-      if (line.includes('"cwd"')) {
+      if (cwd === "?" && line.includes('"cwd"')) {
         const sidMatch = line.match(/"sessionId"\s*:\s*"([^"]+)"/);
         if (sidMatch) sessionId = sidMatch[1]!;
 
         const cwdMatch = line.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
         if (cwdMatch) cwd = cwdMatch[1]!;
-
-        break;
+      }
+      // "type":"user" の行をターンとしてカウント（isMeta/isCompactSummary除外）
+      if (line.includes('"type":"user"') && !line.includes('"isMeta"') && !line.includes('"isCompactSummary"')) {
+        turns++;
       }
     }
 
@@ -129,7 +133,7 @@ export async function searchSessions(
       continue;
     }
 
-    all.push({ file, mtime, startTime, endTime, size, sessionId, cwd });
+    all.push({ file, mtime, startTime, endTime, size, sessionId, cwd, turns });
   }
 
   // 4. since フィルタ (cutoff: epoch seconds)
