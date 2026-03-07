@@ -47,7 +47,7 @@ async function resolveFullId(input: string): Promise<string> {
 /** 静的なコマンドヘルプ文字列を構築 */
 function buildCommandHelp(): string {
   const prog = process.env._PROG || "timeline";
-  return `${prog} <SESSION_ID ..> [[RANGE1][..][RANGE2] ..] [--width <55>] [-t <UTRFWBGASQDI>] [--color [always|=[=none]] [--md [render|=source|[=none]] [--grep <REGEXP>] [--since <DURATION|DATE>] [--jsonl [=redact|full|[=none]]] [--help]`;
+  return `${prog} <SESSION_ID ..> [[RANGE1][..][RANGE2] ..] [--width <55>] [-t <UTRFWBGASQDI>] [--color [always|=[=none]] [--md [render|=source|[=none]] [--grep <REGEXP>] [-B <N>] [-A <N>] [-C <N>] [--since <DURATION|DATE>] [--last-since <DURATION>] [--last-turn <N>] [--jsonl [=redact|full|[=none]]] [--help]`;
 }
 
 /** md front matter 用 command_computed を構築 */
@@ -126,6 +126,10 @@ export async function run(args: string[]) {
       to: opts.to,
       grep: opts.grep,
       since: opts.since,
+      lastTurn: opts.lastTurn,
+      lastSince: opts.lastSince,
+      before: opts.before,
+      after: opts.after,
     });
   } catch (e) {
     if (e instanceof SyntaxError) {
@@ -256,7 +260,12 @@ Options:
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
   --grep <pattern>            Filter events by desc (regex)
+  -A N, --after N             Show N turns after grep match
+  -B N, --before N            Show N turns before grep match
+  -C N, --context N           Show N turns before and after grep match
   --since <spec>              Show events since (duration: 1h,30m,2d or date)
+  --last-since <duration>     Show events since duration before session end
+  --last-turn <N>             Show last N turns (U starts a turn)
   --md[=auto|source|render|none]  Full text for Q/T/R/U (default: none)
                               auto=render if tty, source otherwise
   --jsonl[=none|redact|full]  JSONL output (default: none)
@@ -282,5 +291,8 @@ Examples:
   ${prog} --color=none --emoji abc12345 Emoji without colors
   ${prog} --grep "README" abc12345      Filter events matching pattern
   ${prog} --since 1h abc12345           Show events from last 1 hour
+  ${prog} --last-turn 3 abc12345       Show last 3 turns
+  ${prog} --last-since 30m abc12345    Show events from last 30m of session
+  ${prog} --grep README -C 1 abc12345  Grep with 1 turn context
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }

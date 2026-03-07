@@ -160,15 +160,92 @@ export function filterBySince(events: TimelineEvent[], since: string): TimelineE
   });
 }
 
-/** dedup -> removeNoBackup -> sort(.time) -> filterBySince -> filterByRange -> filterByType -> filterByGrep */
+/** イベント列をU区切りでターンに分割 */
+export function splitTurns(events: TimelineEvent[]): TimelineEvent[][] {
+  if (events.length === 0) return [];
+  const turns: TimelineEvent[][] = [];
+  let current: TimelineEvent[] = [];
+  for (const e of events) {
+    if (e.kind === "U" && current.length > 0) {
+      turns.push(current);
+      current = [];
+    }
+    current.push(e);
+  }
+  if (current.length > 0) turns.push(current);
+  return turns;
+}
+
+/** 末尾Nターンを返す。N=0 は全件返す */
+export function filterByLastTurn(events: TimelineEvent[], n: number): TimelineEvent[] {
+  if (n <= 0) return events;
+  const turns = splitTurns(events);
+  const start = Math.max(0, turns.length - n);
+  return turns.slice(start).flat();
+}
+
+/** セッション末尾時刻から逆算した since フィルタ */
+export function filterByLastSince(events: TimelineEvent[], spec: string): TimelineEvent[] {
+  if (spec === "" || events.length === 0) return events;
+  // 末尾イベントの時刻を基準にする
+  const lastTime = events[events.length - 1].time.split("_")[0];
+  const lastMs = new Date(lastTime).getTime();
+  if (!DURATION_RE.test(spec)) {
+    throw new Error(`Invalid --last-since value: ${spec} (expected duration like 1h, 30m, 2d)`);
+  }
+  const seconds = parseDuration(spec);
+  const cutoff = new Date(lastMs - seconds * 1000).toISOString();
+  return events.filter((e) => {
+    const time = e.time.split("_")[0];
+    return time >= cutoff;
+  });
+}
+
+/** grep + ターン単位前後コンテキスト */
+export function filterByGrepContext(
+  events: TimelineEvent[],
+  pattern: string,
+  before: number,
+  after: number,
+): TimelineEvent[] {
+  const turns = splitTurns(events);
+  const re = new RegExp(pattern);
+
+  // マッチするターンのインデックスを特定
+  const matchIndices = new Set<number>();
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i].some((e) => re.test(e.desc))) {
+      matchIndices.add(i);
+    }
+  }
+
+  if (matchIndices.size === 0) return [];
+
+  // 前後コンテキスト展開
+  const includeIndices = new Set<number>();
+  for (const idx of matchIndices) {
+    for (let j = Math.max(0, idx - before); j <= Math.min(turns.length - 1, idx + after); j++) {
+      includeIndices.add(j);
+    }
+  }
+
+  // ソート済みインデックス順にflatten
+  const sorted = [...includeIndices].sort((a, b) => a - b);
+  return sorted.flatMap((i) => turns[i]);
+}
+
+/** pipeline */
 export function pipeline(
   events: TimelineEvent[],
-  opts: { types: string; from: string; to: string; grep?: string; since?: string },
+  opts: {
+    types: string; from: string; to: string;
+    grep?: string; since?: string;
+    lastTurn?: number; lastSince?: string;
+    before?: number; after?: number;
+  },
 ): TimelineEvent[] {
   let result = dedup(events);
   result = removeNoBackup(result);
-  // jq の group_by(.ref) | flatten | sort_by(.time) + unique_by に合わせ、
-  // 同一 time のイベントは ref, desc の辞書順で安定させる
   result = result.sort((a, b) =>
     a.time < b.time ? -1 : a.time > b.time ? 1 :
     a.ref < b.ref ? -1 : a.ref > b.ref ? 1 :
@@ -177,10 +254,22 @@ export function pipeline(
   if (opts.since) {
     result = filterBySince(result, opts.since);
   }
+  if (opts.lastSince) {
+    result = filterByLastSince(result, opts.lastSince);
+  }
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
+  if (opts.lastTurn && opts.lastTurn > 0) {
+    result = filterByLastTurn(result, opts.lastTurn);
+  }
+  // grep: A/B/C が指定されていればターン単位コンテキスト、なければ行フィルタ
   if (opts.grep) {
-    result = filterByGrep(result, opts.grep);
+    const hasContext = (opts.before && opts.before > 0) || (opts.after && opts.after > 0);
+    if (hasContext) {
+      result = filterByGrepContext(result, opts.grep, opts.before ?? 0, opts.after ?? 0);
+    } else {
+      result = filterByGrep(result, opts.grep);
+    }
   }
   return result;
 }

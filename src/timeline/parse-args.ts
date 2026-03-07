@@ -54,6 +54,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
     emoji: "auto",
     grep: "",
     since: "",
+    lastTurn: 0,
+    lastSince: "",
+    after: 0,
+    before: 0,
     help: false,
   };
 
@@ -116,6 +120,35 @@ export function parseArgs(argv: string[]): ParsedArgs {
       i++;
       if (i >= argv.length) throw new Error("--since requires a value");
       result.since = argv[i];
+    } else if (arg === "--last-turn") {
+      i++;
+      if (i >= argv.length) throw new Error("--last-turn requires a value");
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n)) throw new Error(`--last-turn requires a number, got: ${argv[i]}`);
+      result.lastTurn = n;
+    } else if (arg === "--last-since") {
+      i++;
+      if (i >= argv.length) throw new Error("--last-since requires a value");
+      result.lastSince = argv[i];
+    } else if (arg === "-A" || arg === "--after") {
+      i++;
+      if (i >= argv.length) throw new Error(`${arg} requires a value`);
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n)) throw new Error(`${arg} requires a number, got: ${argv[i]}`);
+      result.after = n;
+    } else if (arg === "-B" || arg === "--before") {
+      i++;
+      if (i >= argv.length) throw new Error(`${arg} requires a value`);
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n)) throw new Error(`${arg} requires a number, got: ${argv[i]}`);
+      result.before = n;
+    } else if (arg === "-C" || arg === "--context") {
+      i++;
+      if (i >= argv.length) throw new Error(`${arg} requires a value`);
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n)) throw new Error(`${arg} requires a number, got: ${argv[i]}`);
+      result.before = n;
+      result.after = n;
     } else if (arg === "--help") {
       result.help = true;
     } else if (arg.startsWith("-") && arg !== "-") {

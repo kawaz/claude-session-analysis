@@ -7,6 +7,10 @@ import {
   filterByType,
   filterByGrep,
   filterBySince,
+  splitTurns,
+  filterByLastTurn,
+  filterByLastSince,
+  filterByGrepContext,
   pipeline,
 } from "./filter.ts";
 import type { TimelineEvent } from "./types.ts";
@@ -336,6 +340,156 @@ describe("filterBySince", () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].ref).toBe("bbb22222");
+  });
+});
+
+describe("splitTurns", () => {
+  test("U区切りでターン分割", () => {
+    const events: TimelineEvent[] = [
+      { kind: "U", ref: "aaa11111", time: "t1", desc: "user1" },
+      { kind: "R", ref: "bbb22222", time: "t2", desc: "resp1" },
+      { kind: "B", ref: "ccc33333", time: "t3", desc: "bash1" },
+      { kind: "U", ref: "ddd44444", time: "t4", desc: "user2" },
+      { kind: "R", ref: "eee55555", time: "t5", desc: "resp2" },
+    ];
+    const turns = splitTurns(events);
+    expect(turns).toHaveLength(2);
+    expect(turns[0]).toHaveLength(3); // U, R, B
+    expect(turns[1]).toHaveLength(2); // U, R
+  });
+
+  test("先頭にUがない場合はプレターンとして扱う", () => {
+    const events: TimelineEvent[] = [
+      { kind: "I", ref: "aaa11111", time: "t1", desc: "info" },
+      { kind: "U", ref: "bbb22222", time: "t2", desc: "user1" },
+      { kind: "R", ref: "ccc33333", time: "t3", desc: "resp1" },
+    ];
+    const turns = splitTurns(events);
+    expect(turns).toHaveLength(2); // [I], [U, R]
+    expect(turns[0]).toHaveLength(1);
+    expect(turns[0][0].kind).toBe("I");
+    expect(turns[1]).toHaveLength(2);
+  });
+
+  test("Uがない場合は全体が1ターン", () => {
+    const events: TimelineEvent[] = [
+      { kind: "R", ref: "aaa11111", time: "t1", desc: "resp1" },
+      { kind: "B", ref: "bbb22222", time: "t2", desc: "bash1" },
+    ];
+    const turns = splitTurns(events);
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toHaveLength(2);
+  });
+
+  test("空配列", () => {
+    expect(splitTurns([])).toEqual([]);
+  });
+});
+
+describe("filterByLastTurn", () => {
+  const events: TimelineEvent[] = [
+    { kind: "U", ref: "aaa11111", time: "t1", desc: "user1" },
+    { kind: "R", ref: "bbb22222", time: "t2", desc: "resp1" },
+    { kind: "U", ref: "ccc33333", time: "t3", desc: "user2" },
+    { kind: "R", ref: "ddd44444", time: "t4", desc: "resp2" },
+    { kind: "U", ref: "eee55555", time: "t5", desc: "user3" },
+    { kind: "R", ref: "fff66666", time: "t6", desc: "resp3" },
+  ];
+
+  test("末尾1ターン", () => {
+    const result = filterByLastTurn(events, 1);
+    expect(result).toHaveLength(2); // U3, R3
+    expect(result[0].desc).toBe("user3");
+  });
+
+  test("末尾2ターン", () => {
+    const result = filterByLastTurn(events, 2);
+    expect(result).toHaveLength(4); // U2, R2, U3, R3
+    expect(result[0].desc).toBe("user2");
+  });
+
+  test("N=0 は全件返す", () => {
+    const result = filterByLastTurn(events, 0);
+    expect(result).toHaveLength(6);
+  });
+
+  test("Nがターン数を超える場合は全件", () => {
+    const result = filterByLastTurn(events, 100);
+    expect(result).toHaveLength(6);
+  });
+});
+
+describe("filterByLastSince", () => {
+  const events: TimelineEvent[] = [
+    { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00Z", desc: "old" },
+    { kind: "R", ref: "bbb22222", time: "2024-01-01T01:00:00Z", desc: "mid" },
+    { kind: "U", ref: "ccc33333", time: "2024-01-01T02:00:00Z", desc: "new" },
+  ];
+
+  test("空文字列は全件返す", () => {
+    expect(filterByLastSince(events, "")).toHaveLength(3);
+  });
+
+  test("1h30m → 末尾から1.5時間以内", () => {
+    // 末尾は 02:00:00, 1h30m前 = 00:30:00
+    // mid(01:00) と new(02:00) が残る
+    const result = filterByLastSince(events, "1h30m");
+    expect(result).toHaveLength(2);
+    expect(result[0].desc).toBe("mid");
+    expect(result[1].desc).toBe("new");
+  });
+
+  test("30m → 末尾から30分以内", () => {
+    // 末尾は 02:00:00, 30m前 = 01:30:00
+    // new(02:00) のみ残る
+    const result = filterByLastSince(events, "30m");
+    expect(result).toHaveLength(1);
+    expect(result[0].desc).toBe("new");
+  });
+
+  test("空イベントでエラーにならない", () => {
+    expect(filterByLastSince([], "1h")).toEqual([]);
+  });
+});
+
+describe("filterByGrepContext", () => {
+  const events: TimelineEvent[] = [
+    { kind: "U", ref: "aaa11111", time: "t1", desc: "user1" },
+    { kind: "R", ref: "bbb22222", time: "t2", desc: "resp1" },
+    { kind: "U", ref: "ccc33333", time: "t3", desc: "target" },
+    { kind: "R", ref: "ddd44444", time: "t4", desc: "resp2" },
+    { kind: "U", ref: "eee55555", time: "t5", desc: "user3" },
+    { kind: "R", ref: "fff66666", time: "t6", desc: "resp3" },
+    { kind: "U", ref: "ggg77777", time: "t7", desc: "user4" },
+    { kind: "R", ref: "hhh88888", time: "t8", desc: "resp4" },
+  ];
+
+  test("grep マッチターン + 前後1ターン", () => {
+    const result = filterByGrepContext(events, "target", 1, 1);
+    // ターン: [U1,R1] [U-target,R2] [U3,R3] [U4,R4]
+    // target はターン1(0-indexed), before=1 → ターン0, after=1 → ターン2
+    // → ターン0,1,2 = 6イベント
+    expect(result).toHaveLength(6);
+    expect(result[0].desc).toBe("user1");
+    expect(result[5].desc).toBe("resp3");
+  });
+
+  test("grep マッチターンのみ (A=0, B=0)", () => {
+    const result = filterByGrepContext(events, "target", 0, 0);
+    expect(result).toHaveLength(2); // U-target, R2
+    expect(result[0].desc).toBe("target");
+  });
+
+  test("マッチなしは空配列", () => {
+    const result = filterByGrepContext(events, "nonexistent", 1, 1);
+    expect(result).toEqual([]);
+  });
+
+  test("before が先頭を超えてもクランプ", () => {
+    const result = filterByGrepContext(events, "target", 10, 0);
+    // target はターン1, before=10 → ターン0まで
+    expect(result).toHaveLength(4); // ターン0,1
+    expect(result[0].desc).toBe("user1");
   });
 });
 

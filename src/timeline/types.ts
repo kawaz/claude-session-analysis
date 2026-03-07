@@ -81,5 +81,9 @@ export interface ParsedArgs {
   emoji: "auto" | "always" | "never";   // default: "auto"
   grep: string;         // --grep pattern (default: "")
   since: string;        // --since spec (default: "")
+  lastTurn: number;     // --last-turn N (default: 0 = disabled)
+  lastSince: string;    // --last-since spec (default: "")
+  after: number;        // -A/--after N (default: 0)
+  before: number;       // -B/--before N (default: 0)
   help: boolean;        // --help
 }

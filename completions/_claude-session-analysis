@@ -29,7 +29,15 @@ _claude-session-analysis() {
         '--emoji[Always show emoji]' \
         '--no-emoji[Never show emoji]' \
         '--grep[Filter events by desc (regex)]:pattern:' \
+        '-A[Show N turns after grep match]:count:' \
+        '--after[Show N turns after grep match]:count:' \
+        '-B[Show N turns before grep match]:count:' \
+        '--before[Show N turns before grep match]:count:' \
+        '-C[Show N turns before and after grep match]:count:' \
+        '--context[Show N turns before and after grep match]:count:' \
         '--since[Show events since (duration or date)]:spec:' \
+        '--last-since[Show events since duration before session end]:duration:' \
+        '--last-turn[Show last N turns]:count:' \
         '--md=-[Full text for Q/T/R/U events]::mode:(auto source render none)' \
         '--jsonl=-[JSONL output]::mode:(none redact full)' \
         '--help[Show help]' \

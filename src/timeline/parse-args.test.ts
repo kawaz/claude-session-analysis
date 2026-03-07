@@ -257,4 +257,82 @@ describe("parseArgs", () => {
   test("--since の後に値がない場合エラー", () => {
     expect(() => parseArgs(["--since"])).toThrow(/--since requires/);
   });
+
+  // last-turn tests
+  test("デフォルトの lastTurn は 0", () => {
+    const args = parseArgs(["abc12345"]);
+    expect(args.lastTurn).toBe(0);
+  });
+
+  test("--last-turn で値指定", () => {
+    const args = parseArgs(["--last-turn", "3", "abc12345"]);
+    expect(args.lastTurn).toBe(3);
+  });
+
+  test("--last-turn の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["--last-turn"])).toThrow(/--last-turn requires/);
+  });
+
+  test("--last-turn に非数値を渡した場合エラー", () => {
+    expect(() => parseArgs(["--last-turn", "abc", "abc12345"])).toThrow(/--last-turn requires a number/);
+  });
+
+  // last-since tests
+  test("デフォルトの lastSince は空文字列", () => {
+    const args = parseArgs(["abc12345"]);
+    expect(args.lastSince).toBe("");
+  });
+
+  test("--last-since で値指定", () => {
+    const args = parseArgs(["--last-since", "1h", "abc12345"]);
+    expect(args.lastSince).toBe("1h");
+  });
+
+  test("--last-since の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["--last-since"])).toThrow(/--last-since requires/);
+  });
+
+  // -A/--after tests
+  test("デフォルトの after は 0", () => {
+    const args = parseArgs(["abc12345"]);
+    expect(args.after).toBe(0);
+  });
+
+  test("-A で値指定", () => {
+    const args = parseArgs(["-A", "2", "abc12345"]);
+    expect(args.after).toBe(2);
+  });
+
+  test("--after で値指定", () => {
+    const args = parseArgs(["--after", "2", "abc12345"]);
+    expect(args.after).toBe(2);
+  });
+
+  // -B/--before tests
+  test("-B で値指定", () => {
+    const args = parseArgs(["-B", "2", "abc12345"]);
+    expect(args.before).toBe(2);
+  });
+
+  test("--before で値指定", () => {
+    const args = parseArgs(["--before", "2", "abc12345"]);
+    expect(args.before).toBe(2);
+  });
+
+  // -C/--context tests
+  test("-C で before と after 両方設定", () => {
+    const args = parseArgs(["-C", "3", "abc12345"]);
+    expect(args.before).toBe(3);
+    expect(args.after).toBe(3);
+  });
+
+  test("--context で before と after 両方設定", () => {
+    const args = parseArgs(["--context", "3", "abc12345"]);
+    expect(args.before).toBe(3);
+    expect(args.after).toBe(3);
+  });
+
+  test("-A の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["-A"])).toThrow(/-A requires/);
+  });
 });
