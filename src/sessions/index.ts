@@ -1,4 +1,4 @@
-import { searchSessions, parseDuration } from "./search.ts";
+import { searchSessions, parseDuration, type SessionInfo } from "./search.ts";
 import { formatSessionsOutput } from "./format.ts";
 
 const DURATION_RE = /^(\d+[smhd])+$/;
@@ -6,11 +6,13 @@ const DURATION_RE = /^(\d+[smhd])+$/;
 function printUsage(exitCode: number = 0): never {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? console.error : console.log;
-  out(`Usage: ${prog} [--grep <pattern>] [--project <pattern>] [--since <spec>] [--limit <N>]
+  out(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
 
 Options:
   --grep <pattern>     Filter sessions by content (regex)
-  --project <pattern>  Filter sessions by project path (regex, matches cwd)
+  --path <pattern>   Filter sessions by path (regex, matches cwd)
+                       Default: auto-detect from git root / cwd
+  --all                Show all projects (disable auto-detect)
   --since <spec>       Time filter. Duration: 5m, 1h, 2d, 1h30m
                        or date string: 2024-01-01, 2024-01-01T12:00:00
                        (default: 2d)
@@ -43,13 +45,14 @@ const DEFAULT_LIMIT = 20;
 
 function parseOpts(rawArgs: string[]) {
   let keyword = "";
-  let project = "";
+  let pathFilter = "";
   let since = DEFAULT_SINCE;
   let tail = DEFAULT_LIMIT;
   let sinceExplicit = false;
   let limitExplicit = false;
   let grepExplicit = false;
-  let projectExplicit = false;
+  let pathExplicit = false;
+  let all = false;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
@@ -65,14 +68,18 @@ function parseOpts(rawArgs: string[]) {
         keyword = rawArgs[i] ?? "";
         grepExplicit = true;
         break;
-      case "--project":
+      case "--all":
+        all = true;
+        pathExplicit = true;
+        break;
+      case "--path":
         i++;
         if (i >= rawArgs.length) {
-          console.error("Error: --project requires a value");
+          console.error("Error: --path requires a value");
           printUsage(1);
         }
-        project = rawArgs[i] ?? "";
-        projectExplicit = true;
+        pathFilter = rawArgs[i] ?? "";
+        pathExplicit = true;
         break;
       case "--since":
         i++;
@@ -103,27 +110,64 @@ function parseOpts(rawArgs: string[]) {
     i++;
   }
 
-  return { keyword, project, since, tail, sinceExplicit, limitExplicit, grepExplicit, projectExplicit };
+  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit, pathExplicit, all };
 }
 
-function buildCommandLine(opts: ReturnType<typeof parseOpts>): string {
+function buildCommandHelp(): string {
+  const prog = process.env._PROG || "sessions";
+  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP,=CURRENT_PROJECT>] [--all] [--grep <REGEXP>] [--help]`;
+}
+
+function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
   const prog = process.env._PROG || "sessions";
   const parts = [prog];
-  const since = opts.sinceExplicit ? opts.since : `${DEFAULT_SINCE}`;
-  parts.push(`${opts.sinceExplicit ? "" : "["}--since ${since}${opts.sinceExplicit ? "" : "]"}`);
-  const limit = opts.limitExplicit ? String(opts.tail) : String(DEFAULT_LIMIT);
-  parts.push(`${opts.limitExplicit ? "" : "["}--limit ${limit}${opts.limitExplicit ? "" : "]"}`);
-  if (opts.projectExplicit) {
-    parts.push(`--project ${opts.project}`);
-  } else {
-    parts.push("[--project <REGEXP>]");
+  parts.push(`--since ${opts.since}`);
+  parts.push(`--limit ${opts.tail}`);
+  if (opts.all) {
+    parts.push("--all");
+  } else if (opts.pathFilter) {
+    parts.push(`--path ${opts.pathFilter}`);
   }
-  if (opts.grepExplicit) {
+  if (opts.keyword) {
     parts.push(`--grep ${opts.keyword}`);
-  } else {
-    parts.push("[--grep <REGEXP>]");
   }
   return parts.join(" ");
+}
+
+// パスから /repos/ より前を除去
+export function stripReposPrefix(p: string): string | null {
+  const m = p.match(/\/repos\/(.+)/);
+  return m ? m[1]! : null;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function getDefaultPathCandidates(): Promise<string[]> {
+  const candidates: string[] = [];
+  // 1. git root
+  try {
+    const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const gitRoot = (await new Response(proc.stdout).text()).trim();
+    await proc.exited;
+    if (gitRoot) {
+      const stripped = stripReposPrefix(gitRoot);
+      if (stripped) candidates.push(stripped);
+    }
+  } catch {
+    // git not available
+  }
+  // 2. PWD
+  const pwd = process.cwd();
+  const strippedPwd = stripReposPrefix(pwd);
+  if (strippedPwd && !candidates.includes(strippedPwd)) {
+    candidates.push(strippedPwd);
+  }
+  return candidates;
 }
 
 export async function run(args: string[]) {
@@ -144,27 +188,55 @@ export async function run(args: string[]) {
     configDirs.push(defaultDir);
   }
 
-  // 全セッション検索（sinceなし）
-  const allSessions = await searchSessions({ configDirs });
-  allSessions.sort((a, b) => a.mtime - b.mtime);
+  const prog = process.env._PROG || "sessions";
+  const command = `${prog} ${args.join(" ")}`;
+  const commandHelp = buildCommandHelp();
 
-  // フィルタ適用済み検索
   try {
-    const filtered = await searchSessions({
-      configDirs,
-      since: cutoff,
-      keyword: opts.keyword || undefined,
-      project: opts.project || undefined,
-    });
-
-    // 出力
-    const output = formatSessionsOutput(allSessions, filtered, {
-      tail: opts.tail,
-      commandLine: buildCommandLine(opts),
-    });
-
-    if (output) {
-      console.log(output);
+    if (opts.pathExplicit) {
+      // 明示指定: そのまま渡す
+      const { sessions: filtered, stats } = await searchSessions({
+        configDirs,
+        since: cutoff,
+        keyword: opts.keyword || undefined,
+        path: opts.pathFilter || undefined,
+      });
+      const output = formatSessionsOutput(stats, filtered, {
+        tail: opts.tail,
+        command,
+        commandComputed: buildCommandComputed(opts),
+        commandHelp,
+      });
+      if (output) console.log(output);
+    } else {
+      // デフォルトpath: pathなしで検索し、候補で順にフィルタ
+      const { sessions: allFiltered, stats } = await searchSessions({
+        configDirs,
+        since: cutoff,
+        keyword: opts.keyword || undefined,
+      });
+      const candidates = await getDefaultPathCandidates();
+      let filtered: SessionInfo[] | null = null;
+      let usedPath = "";
+      for (const candidate of candidates) {
+        const re = new RegExp(escapeRegExp(candidate));
+        const matched = allFiltered.filter((s) => re.test(s.cwd));
+        if (matched.length > 0) {
+          filtered = matched;
+          usedPath = candidate;
+          break;
+        }
+      }
+      const effectiveOpts = usedPath
+        ? { ...opts, pathFilter: usedPath }
+        : opts;
+      const output = formatSessionsOutput(stats, filtered ?? allFiltered, {
+        tail: opts.tail,
+        command,
+        commandComputed: buildCommandComputed(effectiveOpts),
+        commandHelp,
+      });
+      if (output) console.log(output);
     }
   } catch (e) {
     if (e instanceof SyntaxError) {

@@ -28,11 +28,22 @@ export interface SessionInfo {
   context?: string; // keyword search context
 }
 
+export interface SessionStats {
+  total: number;       // stat取得できた有効ファイル総数
+  oldestMtime: number; // 最古のmtime (Unix epoch seconds)
+  newestMtime: number; // 最新のmtime (Unix epoch seconds)
+}
+
+export interface SearchResult {
+  sessions: SessionInfo[];
+  stats: SessionStats;
+}
+
 export interface SearchOptions {
   configDirs: string[];
   since?: number; // Unix epoch seconds (cutoff): sessions with mtime >= since are included
   keyword?: string;
-  project?: string; // cwd を正規表現でフィルタ
+  path?: string; // cwd を正規表現でフィルタ
 }
 
 /**
@@ -41,8 +52,8 @@ export interface SearchOptions {
  */
 export async function searchSessions(
   opts: SearchOptions,
-): Promise<SessionInfo[]> {
-  const { configDirs, since, keyword, project } = opts;
+): Promise<SearchResult> {
+  const { configDirs, since, keyword, path } = opts;
 
   // 1. projects/ ディレクトリを収集
   const projectDirs: string[] = [];
@@ -68,116 +79,134 @@ export async function searchSessions(
     }
   }
 
-  // 3. 各ファイルからメタ情報を抽出
-  const all: SessionInfo[] = [];
+  // 3. stat を並列取得
+  const statResults = await Promise.all(
+    allFiles.map(async (file) => {
+      try {
+        const s = await stat(file);
+        if (s.size === 0) return null;
+        const mtime = Math.floor(s.mtimeMs / 1000);
+        return { file, size: s.size, mtime };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const allValidFiles = statResults.filter((r) => r != null);
 
-  for (const file of allFiles) {
-    let fileStat;
-    try {
-      fileStat = await stat(file);
-    } catch {
-      continue;
-    }
+  // 3.5. stats を計算（フィルタ前の全ファイル統計、高速）
+  const stats: SessionStats = {
+    total: allValidFiles.length,
+    oldestMtime: allValidFiles.length > 0
+      ? Math.min(...allValidFiles.map((f) => f.mtime))
+      : 0,
+    newestMtime: allValidFiles.length > 0
+      ? Math.max(...allValidFiles.map((f) => f.mtime))
+      : 0,
+  };
 
-    const size = fileStat.size;
-    if (size === 0) continue;
+  // 3.6. since で早期フィルタ
+  const validFiles = since != null
+    ? allValidFiles.filter((f) => f.mtime >= since)
+    : allValidFiles;
 
-    const mtime = Math.floor(fileStat.mtimeMs / 1000);
-
-    const text = await Bun.file(file).text();
+  // 4. ファイル内容を並列読み込み + メタ情報抽出（JSON.parseベース）
+  const parseFile = async (entry: { file: string; size: number; mtime: number }): Promise<SessionInfo | null> => {
+    const text = await Bun.file(entry.file).text();
     const lines = text.split("\n");
     let sessionId = "?";
     let cwd = "?";
-
-    // 最初の行と最後の非空行からtimestampを抽出
     let startTime = 0;
     let endTime = 0;
-
-    const firstLine = lines[0] ?? "";
-    const firstTs = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
-    if (firstTs) {
-      startTime = Math.floor(new Date(firstTs[1]!).getTime() / 1000);
-    }
-
-    for (let j = lines.length - 1; j >= 0; j--) {
-      const line = lines[j]!;
-      if (line.trim() === "") continue;
-      const lastTs = line.match(/"timestamp"\s*:\s*"([^"]+)"/);
-      if (lastTs) {
-        endTime = Math.floor(new Date(lastTs[1]!).getTime() / 1000);
-      }
-      break;
-    }
-
-    // fallback: timestampが取れなければmtimeを使用
-    if (startTime === 0) startTime = mtime;
-    if (endTime === 0) endTime = mtime;
-
-    // 最初の "cwd" を含む行からsessionIdとcwdを抽出 + ターン数カウント
     let turns = 0;
-    for (const line of lines) {
-      if (cwd === "?" && line.includes('"cwd"')) {
-        const sidMatch = line.match(/"sessionId"\s*:\s*"([^"]+)"/);
-        if (sidMatch) sessionId = sidMatch[1]!;
 
-        const cwdMatch = line.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-        if (cwdMatch) cwd = cwdMatch[1]!;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (line.trim() === "") continue;
+      let obj: any;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
       }
-      // "type":"user" の行をターンとしてカウント（isMeta/isCompactSummary除外）
-      if (line.includes('"type":"user"') && !line.includes('"isMeta"') && !line.includes('"isCompactSummary"')) {
-        turns++;
+
+      // timestamp: 最初と最後
+      if (obj.timestamp) {
+        const ts = Math.floor(new Date(obj.timestamp).getTime() / 1000);
+        if (startTime === 0) startTime = ts;
+        endTime = ts;
       }
-    }
 
-    if (cwd === "?" && sessionId === "?") {
-      continue;
-    }
+      // sessionId / cwd: 最初に見つかったもの
+      if (cwd === "?" && obj.cwd) {
+        if (obj.sessionId) sessionId = obj.sessionId;
+        cwd = obj.cwd;
+      }
 
-    all.push({ file, mtime, startTime, endTime, size, sessionId, cwd, turns });
-  }
-
-  // 4. since フィルタ (cutoff: epoch seconds)
-  let filtered = all;
-  if (since != null) {
-    filtered = all.filter((e) => e.mtime >= since);
-  }
-
-  // 5. project フィルタ（cwd を正規表現でマッチ）
-  if (project) {
-    const re = new RegExp(project);
-    filtered = filtered.filter((e) => re.test(e.cwd));
-  }
-
-  // 6. キーワード検索（正規表現対応）
-  if (keyword) {
-    const re = new RegExp(keyword);
-    const matched: SessionInfo[] = [];
-    for (const e of filtered) {
-      const text = await Bun.file(e.file).text();
-      const lines = text.split("\n");
-      for (const line of lines) {
-        const match = re.exec(line);
-        if (match) {
-          // 前後20文字のコンテキスト
-          const idx = match.index;
-          const matchLen = match[0].length;
-          const preStart = Math.max(0, idx - 20);
-          let pre = line.slice(preStart, idx);
-          // sh版: $pre=~s/.*\n//s → 改行以降を除去（行内なので不要だが念のため）
-          pre = pre.replace(/.*\n/s, "");
-          let post = line.slice(idx + matchLen, idx + matchLen + 20);
-          post = post.replace(/\n.*/s, "");
-          const ctx = `${pre}${match[0]}${post}`.replace(/[\r\n]/g, " ");
-          matched.push({ ...e, context: ctx });
-          break;
+      // ターンカウント: type=user, isMeta/isCompactSummary除外
+      // message.contentがarrayの場合、type=textブロックを含むもののみカウント
+      if (obj.type === "user" && !obj.isMeta && !obj.isCompactSummary) {
+        const content = obj.message?.content;
+        if (typeof content === "string") {
+          turns++;
+        } else if (Array.isArray(content)) {
+          if (content.some((b: any) => b.type === "text" && !b.text?.startsWith("[Request interrupted"))) {
+            turns++;
+          }
         }
       }
     }
-    filtered = matched;
+
+    if (startTime === 0) startTime = entry.mtime;
+    if (endTime === 0) endTime = entry.mtime;
+    if (cwd === "?" && sessionId === "?") return null;
+    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns };
+  };
+
+  const parseResults = await Promise.all(validFiles.map(parseFile));
+  const all = parseResults.filter((r) => r != null);
+
+  // 5. path フィルタ（cwd を正規表現でマッチ）
+  let filtered = all;
+  if (path) {
+    const re = new RegExp(path);
+    filtered = filtered.filter((e) => re.test(e.cwd));
+  }
+
+  // 6. キーワード検索（正規表現対応、並列、全マッチ行を収集）
+  if (keyword) {
+    const re = new RegExp(keyword);
+    const searchFile = async (e: SessionInfo): Promise<SessionInfo | null> => {
+      const text = await Bun.file(e.file).text();
+      const lines = text.split("\n");
+      let firstCtx = "";
+      let matchCount = 0;
+      for (const line of lines) {
+        const m = re.exec(line);
+        if (m) {
+          matchCount++;
+          if (matchCount === 1) {
+            const idx = m.index;
+            const matchLen = m[0].length;
+            const preStart = Math.max(0, idx - 20);
+            let pre = line.slice(preStart, idx);
+            pre = pre.replace(/.*\n/s, "");
+            let post = line.slice(idx + matchLen, idx + matchLen + 50);
+            post = post.replace(/\n.*/s, "");
+            firstCtx = `${pre}${m[0]}${post}`.replace(/[\r\n]/g, " ");
+          }
+        }
+      }
+      if (matchCount === 0) return null;
+      const ctx = `[${matchCount} hit${matchCount > 1 ? "s" : ""}] ${firstCtx}`;
+      return { ...e, context: ctx };
+    };
+    const matchResults = await Promise.all(filtered.map(searchFile));
+    filtered = matchResults.filter((r) => r != null);
   }
 
   // 7. mtime昇順ソート
   filtered.sort((a, b) => a.mtime - b.mtime);
 
-  return filtered;
+  return { sessions: filtered, stats };
 }

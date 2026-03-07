@@ -8,35 +8,35 @@ import {
   formatSessionLine,
   formatSessionsOutput,
 } from "./format.ts";
-import type { SessionInfo } from "./search.ts";
+import type { SessionInfo, SessionStats } from "./search.ts";
 
 describe("formatHumanSize", () => {
   test("KB range: 1500 -> 1.5K", () => {
-    expect(formatHumanSize(1500)).toBe(" 1.5K");
+    expect(formatHumanSize(1500)).toBe("1.5K");
   });
   test("KB range: 10000 -> 10K (integer)", () => {
-    expect(formatHumanSize(10000)).toBe("  10K");
+    expect(formatHumanSize(10000)).toBe(" 10K");
   });
   test("KB range: 150000 -> 150K", () => {
-    expect(formatHumanSize(150000)).toBe(" 150K");
+    expect(formatHumanSize(150000)).toBe("150K");
   });
   test("MB range: 1500000 -> 1.5M", () => {
-    expect(formatHumanSize(1500000)).toBe(" 1.5M");
+    expect(formatHumanSize(1500000)).toBe("1.5M");
   });
   test("MB range: 15000000 -> 15M", () => {
-    expect(formatHumanSize(15000000)).toBe("  15M");
+    expect(formatHumanSize(15000000)).toBe(" 15M");
   });
   test("MB range: 150000000 -> 150M", () => {
-    expect(formatHumanSize(150000000)).toBe(" 150M");
+    expect(formatHumanSize(150000000)).toBe("150M");
   });
   test("GB range: 1500000000 -> 1.5G", () => {
-    expect(formatHumanSize(1500000000)).toBe(" 1.5G");
+    expect(formatHumanSize(1500000000)).toBe("1.5G");
   });
   test("small: 500 -> 0.5K", () => {
-    expect(formatHumanSize(500)).toBe(" 0.5K");
+    expect(formatHumanSize(500)).toBe("0.5K");
   });
   test("zero: 0 -> 0.0K", () => {
-    expect(formatHumanSize(0)).toBe(" 0.0K");
+    expect(formatHumanSize(0)).toBe("0.0K");
   });
 });
 
@@ -71,44 +71,44 @@ describe("formatAgo", () => {
 });
 
 describe("formatDuration", () => {
-  test("0s -> 0.0s", () => {
-    expect(formatDuration(0)).toBe(" 0.0s");
+  test("0s -> 0s", () => {
+    expect(formatDuration(0)).toBe(" 0s");
   });
-  test("5s -> 5.0s", () => {
-    expect(formatDuration(5)).toBe(" 5.0s");
+  test("5s -> 5s", () => {
+    expect(formatDuration(5)).toBe(" 5s");
   });
-  test("45s -> 45.0s", () => {
-    expect(formatDuration(45)).toBe("45.0s");
+  test("45s -> 45s", () => {
+    expect(formatDuration(45)).toBe("45s");
   });
-  test("300s -> 5.0m", () => {
-    expect(formatDuration(300)).toBe(" 5.0m");
+  test("300s -> 5m", () => {
+    expect(formatDuration(300)).toBe(" 5m");
   });
-  test("900s -> 15.0m", () => {
-    expect(formatDuration(900)).toBe("15.0m");
+  test("900s -> 15m", () => {
+    expect(formatDuration(900)).toBe("15m");
   });
-  test("3661s -> 1.0h", () => {
-    expect(formatDuration(3661)).toBe(" 1.0h");
+  test("3661s -> 1h", () => {
+    expect(formatDuration(3661)).toBe(" 1h");
   });
-  test("5400s -> 1.5h", () => {
-    expect(formatDuration(5400)).toBe(" 1.5h");
+  test("5400s -> 1h", () => {
+    expect(formatDuration(5400)).toBe(" 1h");
   });
-  test("50040s -> 13.9h", () => {
-    expect(formatDuration(50040)).toBe("13.9h");
+  test("50040s -> 13h", () => {
+    expect(formatDuration(50040)).toBe("13h");
   });
-  test("90060s -> 1.0d", () => {
-    expect(formatDuration(90060)).toBe(" 1.0d");
+  test("90060s -> 1d", () => {
+    expect(formatDuration(90060)).toBe(" 1d");
   });
-  test("216000s -> 2.5d", () => {
-    expect(formatDuration(216000)).toBe(" 2.5d");
+  test("216000s -> 2d", () => {
+    expect(formatDuration(216000)).toBe(" 2d");
   });
-  test("99d -> 99.0d (##.#d)", () => {
-    expect(formatDuration(99 * 86400)).toBe("99.0d");
+  test("99d -> 99d", () => {
+    expect(formatDuration(99 * 86400)).toBe("99d");
   });
-  test("100d -> 100d (####d)", () => {
-    expect(formatDuration(100 * 86400)).toBe(" 100d");
+  test("100d -> 100d", () => {
+    expect(formatDuration(100 * 86400)).toBe("100d");
   });
   test("8640000s -> 100d", () => {
-    expect(formatDuration(8640000)).toBe(" 100d");
+    expect(formatDuration(8640000)).toBe("100d");
   });
 });
 
@@ -145,10 +145,12 @@ describe("formatSessionLine", () => {
 
   test("end, duration, full sessionId, turns, full path を含む", () => {
     const line = formatSessionLine(base, { now });
-    expect(line).toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
-    expect(line).toContain("1.0h");
+    expect(line).toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}/);
+    expect(line).not.toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}[+-]/);
+    expect(line).toContain(" 1h");
     expect(line).toContain("  42");
-    expect(line).toContain("abc12345-6789-0123-4567-890123456789");
+    expect(line).toContain("abc12345");
+    expect(line).not.toContain("abc12345-");
     expect(line).toContain("/Users/kawaz/.local/share/repos/github.com/kawaz/myproject");
   });
 
@@ -163,7 +165,12 @@ describe("formatSessionsOutput", () => {
   const now = Math.floor(new Date(2026, 2, 6, 12, 0, 0).getTime() / 1000);
 
   test("ヘッダ行 + セッション行を出力", () => {
-    const allSessions: SessionInfo[] = [
+    const stats: SessionStats = {
+      total: 2,
+      oldestMtime: now - 7200,
+      newestMtime: now - 300,
+    };
+    const filtered: SessionInfo[] = [
       {
         file: "/a/b.jsonl",
         mtime: now - 7200,
@@ -185,13 +192,15 @@ describe("formatSessionsOutput", () => {
         turns: 10,
       },
     ];
-    const output = formatSessionsOutput(allSessions, allSessions, {
+    const output = formatSessionsOutput(stats, filtered, {
       tail: 10,
       now,
     });
     const lines = output.split("\n");
-    expect(lines[0]).toMatch(/^# 2 sessions \(/);
-    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(output).toContain("# now:");
+    expect(output).toMatch(/# 2 sessions \(/);
+    // now + sessions summary + column header + 2 data lines
+    expect(lines.length).toBeGreaterThanOrEqual(5);
   });
 
   test("tail制限: 最後のN件のみ表示", () => {
@@ -209,38 +218,55 @@ describe("formatSessionsOutput", () => {
         turns: i + 1,
       });
     }
-    const output = formatSessionsOutput(sessions, sessions, {
+    const stats: SessionStats = {
+      total: 5,
+      oldestMtime: sessions[0]!.mtime,
+      newestMtime: sessions[4]!.mtime,
+    };
+    const output = formatSessionsOutput(stats, sessions, {
       tail: 2,
       now,
     });
     const lines = output.split("\n");
-    // ヘッダ2行(サマリ + カラム) + データ2行
-    const dataLines = lines.slice(2);
+    // データ行は末尾2行
+    const dataLines = lines.filter((l) => !l.startsWith("#") && !l.startsWith("TIMESTAMP") && l.trim());
     expect(dataLines.length).toBe(2);
     expect(dataLines[0]).toContain("sess3000");
     expect(dataLines[1]).toContain("sess4000");
   });
 
-  test("filteredが空でもallが空でなければヘッダは出る", () => {
-    const allSessions: SessionInfo[] = [
-      {
-        file: "/a/b.jsonl",
-        mtime: now - 300,
-        startTime: now - 600,
-        endTime: now - 300,
-        size: 5000,
-        sessionId: "aaaaaaaa",
-        cwd: "/x/y",
-        turns: 3,
-      },
-    ];
-    const output = formatSessionsOutput(allSessions, [], {
+  test("filteredが空でもstatsが空でなければヘッダは出る", () => {
+    const stats: SessionStats = {
+      total: 1,
+      oldestMtime: now - 300,
+      newestMtime: now - 300,
+    };
+    const output = formatSessionsOutput(stats, [], {
       tail: 10,
       now,
     });
     const lines = output.split("\n").filter((l) => l);
-    expect(lines.length).toBe(2);
-    expect(lines[0]).toMatch(/^# 1 sessions/);
-    expect(lines[1]).toMatch(/^DURAT/);
+    expect(lines.length).toBe(3); // now + sessions summary + column header
+    expect(output).toContain("# now:");
+    expect(output).toMatch(/# 1 sessions/);
+    expect(output).toMatch(/TIMESTAMP_END[+-]\d{2}:\d{2}\s+DUR\b/);
+  });
+});
+
+// stripReposPrefix は index.ts からエクスポートされている
+import { stripReposPrefix } from "./index.ts";
+
+describe("stripReposPrefix", () => {
+
+  test("repos/以降を返す", () => {
+    expect(stripReposPrefix("/Users/kawaz/.local/share/repos/github.com/kawaz/project"))
+      .toBe("github.com/kawaz/project");
+  });
+  test("repos/がなければnull", () => {
+    expect(stripReposPrefix("/Users/kawaz/project")).toBeNull();
+  });
+  test("複数repos/がある場合は最初にマッチ", () => {
+    expect(stripReposPrefix("/a/repos/b/repos/c"))
+      .toBe("b/repos/c");
   });
 });

@@ -75,7 +75,8 @@ _claude-session-analysis() {
     sessions)
       _arguments \
         '--grep[Filter by content (regex)]:pattern:' \
-        '--project[Filter by project path (regex)]:pattern:' \
+        '--path[Filter by path (regex)]:pattern:' \
+        '--all[Show all projects (disable auto-detect)]' \
         '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \
         '--limit[Show last N sessions]:count:' \
         '--help[Show help]'

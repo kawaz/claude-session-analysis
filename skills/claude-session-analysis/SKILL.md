@@ -11,7 +11,7 @@ My session ID: `${CLAUDE_SESSION_ID}`
 
 | Subcommand | Description |
 |--------|-------------|
-| `sessions [--since <=2d>] [--limit <N=20>] [--project REGEXP] [--grep REGEXP]` | Search sessions |
+| `sessions [--since <=2d>] [--limit <N=20>] [--path REGEXP] [--grep REGEXP]` | Search sessions |
 | `timeline <id> [--since 2h] [--md] [-t UTR] [--grep REGEXP]` | Timeline (比較的コンパクトなのでSubagentに全部確認させるのが楽) |
 | `file-ops <id>` | Read/Write operations |
 | `file-diff <id> <hash> <v1> [v2]` | Diff versions (v2 omitted: vs current) |

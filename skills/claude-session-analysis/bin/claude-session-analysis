@@ -36,6 +36,11 @@ function parseArgs(argv) {
     mdMode: "none",
     emoji: "auto",
     grep: "",
+    since: "",
+    lastTurn: 0,
+    lastSince: "",
+    after: 0,
+    before: 0,
     help: false
   };
   const positional = [];
@@ -95,6 +100,49 @@ function parseArgs(argv) {
       if (i >= argv.length)
         throw new Error("--grep requires a value");
       result.grep = argv[i];
+    } else if (arg === "--since") {
+      i++;
+      if (i >= argv.length)
+        throw new Error("--since requires a value");
+      result.since = argv[i];
+    } else if (arg === "--last-turn") {
+      i++;
+      if (i >= argv.length)
+        throw new Error("--last-turn requires a value");
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n))
+        throw new Error(`--last-turn requires a number, got: ${argv[i]}`);
+      result.lastTurn = n;
+    } else if (arg === "--last-since") {
+      i++;
+      if (i >= argv.length)
+        throw new Error("--last-since requires a value");
+      result.lastSince = argv[i];
+    } else if (arg === "-A" || arg === "--after") {
+      i++;
+      if (i >= argv.length)
+        throw new Error(`${arg} requires a value`);
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n))
+        throw new Error(`${arg} requires a number, got: ${argv[i]}`);
+      result.after = n;
+    } else if (arg === "-B" || arg === "--before") {
+      i++;
+      if (i >= argv.length)
+        throw new Error(`${arg} requires a value`);
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n))
+        throw new Error(`${arg} requires a number, got: ${argv[i]}`);
+      result.before = n;
+    } else if (arg === "-C" || arg === "--context") {
+      i++;
+      if (i >= argv.length)
+        throw new Error(`${arg} requires a value`);
+      const n = parseInt(argv[i], 10);
+      if (isNaN(n))
+        throw new Error(`${arg} requires a number, got: ${argv[i]}`);
+      result.before = n;
+      result.after = n;
     } else if (arg === "--help") {
       result.help = true;
     } else if (arg.startsWith("-") && arg !== "-") {
@@ -481,7 +529,151 @@ function extractFileSnapshotEvents(entry, sessionCwd, events) {
   }
 }
 
+// src/sessions/search.ts
+import { stat } from "fs/promises";
+function parseDuration(spec) {
+  const units = { s: 1, m: 60, h: 3600, d: 86400 };
+  let total = 0;
+  const re = /(\d+)([smhd])/g;
+  let match;
+  while ((match = re.exec(spec)) !== null) {
+    total += parseInt(match[1], 10) * units[match[2]];
+  }
+  return total;
+}
+async function searchSessions(opts) {
+  const { configDirs, since, keyword, path } = opts;
+  const projectDirs = [];
+  for (const dir of configDirs) {
+    const pDir = `${dir}/projects`;
+    try {
+      const s = await stat(pDir);
+      if (s.isDirectory())
+        projectDirs.push(pDir);
+    } catch {}
+  }
+  const glob = new Bun.Glob("**/*.jsonl");
+  const allFiles = [];
+  for (const pDir of projectDirs) {
+    for await (const match of glob.scan(pDir)) {
+      const filename = match.split("/").pop() ?? "";
+      if (filename.startsWith("agent-"))
+        continue;
+      allFiles.push(`${pDir}/${match}`);
+    }
+  }
+  const statResults = await Promise.all(allFiles.map(async (file) => {
+    try {
+      const s = await stat(file);
+      if (s.size === 0)
+        return null;
+      const mtime = Math.floor(s.mtimeMs / 1000);
+      return { file, size: s.size, mtime };
+    } catch {
+      return null;
+    }
+  }));
+  const allValidFiles = statResults.filter((r) => r != null);
+  const stats = {
+    total: allValidFiles.length,
+    oldestMtime: allValidFiles.length > 0 ? Math.min(...allValidFiles.map((f) => f.mtime)) : 0,
+    newestMtime: allValidFiles.length > 0 ? Math.max(...allValidFiles.map((f) => f.mtime)) : 0
+  };
+  const validFiles = since != null ? allValidFiles.filter((f) => f.mtime >= since) : allValidFiles;
+  const parseFile = async (entry) => {
+    const text = await Bun.file(entry.file).text();
+    const lines = text.split(`
+`);
+    let sessionId = "?";
+    let cwd = "?";
+    let startTime = 0;
+    let endTime = 0;
+    let turns = 0;
+    for (let i = 0;i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim() === "")
+        continue;
+      let obj;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (obj.timestamp) {
+        const ts = Math.floor(new Date(obj.timestamp).getTime() / 1000);
+        if (startTime === 0)
+          startTime = ts;
+        endTime = ts;
+      }
+      if (cwd === "?" && obj.cwd) {
+        if (obj.sessionId)
+          sessionId = obj.sessionId;
+        cwd = obj.cwd;
+      }
+      if (obj.type === "user" && !obj.isMeta && !obj.isCompactSummary) {
+        const content = obj.message?.content;
+        if (typeof content === "string") {
+          turns++;
+        } else if (Array.isArray(content)) {
+          if (content.some((b) => b.type === "text" && !b.text?.startsWith("[Request interrupted"))) {
+            turns++;
+          }
+        }
+      }
+    }
+    if (startTime === 0)
+      startTime = entry.mtime;
+    if (endTime === 0)
+      endTime = entry.mtime;
+    if (cwd === "?" && sessionId === "?")
+      return null;
+    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns };
+  };
+  const parseResults = await Promise.all(validFiles.map(parseFile));
+  const all = parseResults.filter((r) => r != null);
+  let filtered = all;
+  if (path) {
+    const re = new RegExp(path);
+    filtered = filtered.filter((e) => re.test(e.cwd));
+  }
+  if (keyword) {
+    const re = new RegExp(keyword);
+    const searchFile = async (e) => {
+      const text = await Bun.file(e.file).text();
+      const lines = text.split(`
+`);
+      let firstCtx = "";
+      let matchCount = 0;
+      for (const line of lines) {
+        const m = re.exec(line);
+        if (m) {
+          matchCount++;
+          if (matchCount === 1) {
+            const idx = m.index;
+            const matchLen = m[0].length;
+            const preStart = Math.max(0, idx - 20);
+            let pre = line.slice(preStart, idx);
+            pre = pre.replace(/.*\n/s, "");
+            let post = line.slice(idx + matchLen, idx + matchLen + 50);
+            post = post.replace(/\n.*/s, "");
+            firstCtx = `${pre}${m[0]}${post}`.replace(/[\r\n]/g, " ");
+          }
+        }
+      }
+      if (matchCount === 0)
+        return null;
+      const ctx = `[${matchCount} hit${matchCount > 1 ? "s" : ""}] ${firstCtx}`;
+      return { ...e, context: ctx };
+    };
+    const matchResults = await Promise.all(filtered.map(searchFile));
+    filtered = matchResults.filter((r) => r != null);
+  }
+  filtered.sort((a, b) => a.mtime - b.mtime);
+  return { sessions: filtered, stats };
+}
+
 // src/timeline/filter.ts
+var DURATION_RE = /^(\d+[smhd])+$/;
 function dedup(events) {
   const seen = new Set;
   const result = [];
@@ -578,14 +770,108 @@ function filterByGrep(events, pattern) {
 function filterByType(events, types) {
   return events.filter((e) => types.includes(e.kind));
 }
+function parseSinceSpec(spec) {
+  if (spec === "")
+    return "";
+  if (DURATION_RE.test(spec)) {
+    const seconds = parseDuration(spec);
+    return new Date(Date.now() - seconds * 1000).toISOString();
+  }
+  const d = new Date(spec);
+  if (isNaN(d.getTime())) {
+    throw new Error(`Invalid --since value: ${spec}`);
+  }
+  return d.toISOString();
+}
+function filterBySince(events, since) {
+  if (since === "")
+    return events;
+  const cutoff = parseSinceSpec(since);
+  return events.filter((e) => {
+    const time = e.time.split("_")[0];
+    return time >= cutoff;
+  });
+}
+function splitTurns(events) {
+  if (events.length === 0)
+    return [];
+  const turns = [];
+  let current = [];
+  for (const e of events) {
+    if (e.kind === "U" && current.length > 0) {
+      turns.push(current);
+      current = [];
+    }
+    current.push(e);
+  }
+  if (current.length > 0)
+    turns.push(current);
+  return turns;
+}
+function filterByLastTurn(events, n) {
+  if (n <= 0)
+    return events;
+  const turns = splitTurns(events);
+  const start = Math.max(0, turns.length - n);
+  return turns.slice(start).flat();
+}
+function filterByLastSince(events, spec) {
+  if (spec === "" || events.length === 0)
+    return events;
+  const lastTime = events[events.length - 1].time.split("_")[0];
+  const lastMs = new Date(lastTime).getTime();
+  if (!DURATION_RE.test(spec)) {
+    throw new Error(`Invalid --last-since value: ${spec} (expected duration like 1h, 30m, 2d)`);
+  }
+  const seconds = parseDuration(spec);
+  const cutoff = new Date(lastMs - seconds * 1000).toISOString();
+  return events.filter((e) => {
+    const time = e.time.split("_")[0];
+    return time >= cutoff;
+  });
+}
+function filterByGrepContext(events, pattern, before, after) {
+  const turns = splitTurns(events);
+  const re = new RegExp(pattern);
+  const matchIndices = new Set;
+  for (let i = 0;i < turns.length; i++) {
+    if (turns[i].some((e) => re.test(e.desc))) {
+      matchIndices.add(i);
+    }
+  }
+  if (matchIndices.size === 0)
+    return [];
+  const includeIndices = new Set;
+  for (const idx of matchIndices) {
+    for (let j = Math.max(0, idx - before);j <= Math.min(turns.length - 1, idx + after); j++) {
+      includeIndices.add(j);
+    }
+  }
+  const sorted = [...includeIndices].sort((a, b) => a - b);
+  return sorted.flatMap((i) => turns[i]);
+}
 function pipeline(events, opts) {
   let result = dedup(events);
   result = removeNoBackup(result);
   result = result.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : a.desc < b.desc ? -1 : a.desc > b.desc ? 1 : 0);
+  if (opts.since) {
+    result = filterBySince(result, opts.since);
+  }
+  if (opts.lastSince) {
+    result = filterByLastSince(result, opts.lastSince);
+  }
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
+  if (opts.lastTurn && opts.lastTurn > 0) {
+    result = filterByLastTurn(result, opts.lastTurn);
+  }
   if (opts.grep) {
-    result = filterByGrep(result, opts.grep);
+    const hasContext = opts.before && opts.before > 0 || opts.after && opts.after > 0;
+    if (hasContext) {
+      result = filterByGrepContext(result, opts.grep, opts.before ?? 0, opts.after ?? 0);
+    } else {
+      result = filterByGrep(result, opts.grep);
+    }
   }
   return result;
 }
@@ -681,10 +967,11 @@ function formatEvent(event, opts) {
   }
   return `${event.kind}${event.ref} ${desc}`;
 }
-function mdFrontMatter(command, commandComputed, now) {
+function mdFrontMatter(command, commandComputed, commandHelp, now) {
   return `---
 command: ${command}
 command_computed: ${commandComputed}
+command_help: ${commandHelp}
 now: ${now}
 ---
 
@@ -763,46 +1050,9 @@ async function resolveFullId(input) {
   const basename = file.split("/").pop() || "";
   return basename.replace(/\.jsonl$/, "");
 }
-function buildCommandHeader(opts, args, isTty) {
+function buildCommandHelp() {
   const prog = process.env._PROG || "timeline";
-  const colorDefault = isTty ? "always" : "none";
-  const mdDefault = "none";
-  const mdAutoResolved = isTty ? "render" : "source";
-  const parts = [prog];
-  parts.push("<SESSION_ID ..>");
-  parts.push("[[RANGE1][..][RANGE2] ..]");
-  const widthExplicit = args.includes("--width");
-  parts.push(widthExplicit ? `--width ${opts.width}` : `[--width <55>]`);
-  const tExplicit = args.includes("-t");
-  parts.push(tExplicit ? `-t ${opts.types}` : `[-t <UTRFWBGASQDI>]`);
-  const colorExplicit = args.some((a) => a === "--color" || a.startsWith("--color="));
-  const colorResolved = opts.color === "auto" ? colorDefault : opts.color;
-  if (colorExplicit) {
-    parts.push(`--color ${colorResolved}`);
-  } else {
-    const alwaysStr = colorDefault === "always" ? "=[=always]" : "always";
-    const noneStr = colorDefault === "none" ? "=[=none]" : "none";
-    parts.push(`[--color [${alwaysStr}|${noneStr}]`);
-  }
-  const mdExplicit = args.some((a) => a === "--md" || a.startsWith("--md="));
-  if (mdExplicit) {
-    const mdResolved = opts.mdMode === "auto" ? mdAutoResolved : opts.mdMode;
-    parts.push(`--md ${mdResolved}`);
-  } else {
-    const renderStr = isTty ? "=render" : "render";
-    const sourceStr = isTty ? "source" : "=source";
-    const noneStr = `[=${mdDefault}]`;
-    parts.push(`[--md [${renderStr}|${sourceStr}|${noneStr}]`);
-  }
-  const grepExplicit = args.includes("--grep");
-  parts.push(grepExplicit ? `--grep ${opts.grep}` : `[--grep <REGEXP>]`);
-  const jsonlExplicit = args.some((a) => a === "--jsonl" || a.startsWith("--jsonl="));
-  if (jsonlExplicit) {
-    parts.push(`--jsonl ${opts.jsonlMode}`);
-  } else {
-    parts.push(`[--jsonl [=redact|full|[=none]]]`);
-  }
-  return `# ${parts.join(" ")}`;
+  return `${prog} <SESSION_ID ..> [[RANGE1][..][RANGE2] ..] [--width <55>] [-t <UTRFWBGASQDI>] [--color [always|=[=none]] [--md [render|=source|[=none]] [--grep <REGEXP>] [-B <N>] [-A <N>] [-C <N>] [--since <DURATION|DATE>] [--last-since <DURATION>] [--last-turn <N>] [--jsonl [=redact|full|[=none]]] [--help]`;
 }
 function buildCommandComputed(opts, resolvedInputs, filtered, isTty) {
   const prog = process.env._PROG || "timeline";
@@ -850,7 +1100,12 @@ async function run(args) {
       types: opts.types,
       from: opts.from,
       to: opts.to,
-      grep: opts.grep
+      grep: opts.grep,
+      since: opts.since,
+      lastTurn: opts.lastTurn,
+      lastSince: opts.lastSince,
+      before: opts.before,
+      after: opts.after
     });
   } catch (e) {
     if (e instanceof SyntaxError) {
@@ -880,7 +1135,7 @@ async function run(args) {
         } else {
           processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
         }
-        output2.push(JSON.stringify(processed, null, 2));
+        output2.push(JSON.stringify(processed));
       }
     }
     console.log(output2.join(`
@@ -892,10 +1147,16 @@ async function run(args) {
   const timestamps = mdMode !== "none" && !args.includes("--no-timestamps") ? true : opts.timestamps;
   const isMd = mdMode === "render" || mdMode === "source";
   const resolvedInputs = resolved.map((r) => r.fullId);
-  const frontMatter = isMd ? mdFrontMatter(`${process.env._PROG || "timeline"} ${args.join(" ")}`, buildCommandComputed(opts, resolvedInputs, filtered, isTty), localTimeMs()) : "";
-  const header = !isMd ? buildCommandHeader(opts, args, isTty) + `
-` : "";
-  const output = header + frontMatter + formatEvents(filtered, {
+  const command = `${process.env._PROG || "timeline"} ${args.join(" ")}`;
+  const commandComputed = buildCommandComputed(opts, resolvedInputs, filtered, isTty);
+  const commandHelp = buildCommandHelp();
+  const now = localTimeMs();
+  const metaBlock = isMd ? mdFrontMatter(command, commandComputed, commandHelp, now) : `# command: ${command}
+# command_computed: ${commandComputed}
+# command_help: ${commandHelp}
+# now: ${now}
+`;
+  const output = metaBlock + formatEvents(filtered, {
     jsonlMode: opts.jsonlMode,
     width: opts.width,
     timestamps,
@@ -935,6 +1196,12 @@ Options:
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
   --grep <pattern>            Filter events by desc (regex)
+  -A N, --after N             Show N turns after grep match
+  -B N, --before N            Show N turns before grep match
+  -C N, --context N           Show N turns before and after grep match
+  --since <spec>              Show events since (duration: 1h,30m,2d or date)
+  --last-since <duration>     Show events since duration before session end
+  --last-turn <N>             Show last N turns (U starts a turn)
   --md[=auto|source|render|none]  Full text for Q/T/R/U (default: none)
                               auto=render if tty, source otherwise
   --jsonl[=none|redact|full]  JSONL output (default: none)
@@ -959,6 +1226,10 @@ Examples:
   ${prog} --md abc12345                 Show with full Q/T/R/U text
   ${prog} --color=none --emoji abc12345 Emoji without colors
   ${prog} --grep "README" abc12345      Filter events matching pattern
+  ${prog} --since 1h abc12345           Show events from last 1 hour
+  ${prog} --last-turn 3 abc12345       Show last 3 turns
+  ${prog} --last-since 30m abc12345    Show events from last 30m of session
+  ${prog} --grep README -C 1 abc12345  Grep with 1 turn context
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }
 
@@ -1343,129 +1614,9 @@ async function run5(args) {
   }
 }
 
-// src/sessions/search.ts
-import { stat } from "fs/promises";
-function parseDuration(spec) {
-  const units = { s: 1, m: 60, h: 3600, d: 86400 };
-  let total = 0;
-  const re = /(\d+)([smhd])/g;
-  let match;
-  while ((match = re.exec(spec)) !== null) {
-    total += parseInt(match[1], 10) * units[match[2]];
-  }
-  return total;
-}
-async function searchSessions(opts) {
-  const { configDirs, since, keyword } = opts;
-  const projectDirs = [];
-  for (const dir of configDirs) {
-    const pDir = `${dir}/projects`;
-    try {
-      const s = await stat(pDir);
-      if (s.isDirectory())
-        projectDirs.push(pDir);
-    } catch {}
-  }
-  const glob = new Bun.Glob("**/*.jsonl");
-  const allFiles = [];
-  for (const pDir of projectDirs) {
-    for await (const match of glob.scan(pDir)) {
-      const filename = match.split("/").pop() ?? "";
-      if (filename.startsWith("agent-"))
-        continue;
-      allFiles.push(`${pDir}/${match}`);
-    }
-  }
-  const all = [];
-  for (const file of allFiles) {
-    let fileStat;
-    try {
-      fileStat = await stat(file);
-    } catch {
-      continue;
-    }
-    const size = fileStat.size;
-    if (size === 0)
-      continue;
-    const mtime = Math.floor(fileStat.mtimeMs / 1000);
-    const text = await Bun.file(file).text();
-    const lines = text.split(`
-`);
-    let sessionId = "?";
-    let cwd = "?";
-    let startTime = 0;
-    let endTime = 0;
-    const firstLine = lines[0] ?? "";
-    const firstTs = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
-    if (firstTs) {
-      startTime = Math.floor(new Date(firstTs[1]).getTime() / 1000);
-    }
-    for (let j = lines.length - 1;j >= 0; j--) {
-      const line = lines[j];
-      if (line.trim() === "")
-        continue;
-      const lastTs = line.match(/"timestamp"\s*:\s*"([^"]+)"/);
-      if (lastTs) {
-        endTime = Math.floor(new Date(lastTs[1]).getTime() / 1000);
-      }
-      break;
-    }
-    if (startTime === 0)
-      startTime = mtime;
-    if (endTime === 0)
-      endTime = mtime;
-    for (const line of lines) {
-      if (line.includes('"cwd"')) {
-        const sidMatch = line.match(/"sessionId"\s*:\s*"([^"]+)"/);
-        if (sidMatch)
-          sessionId = sidMatch[1];
-        const cwdMatch = line.match(/"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-        if (cwdMatch)
-          cwd = cwdMatch[1];
-        break;
-      }
-    }
-    if (cwd === "?" && sessionId === "?") {
-      continue;
-    }
-    all.push({ file, mtime, startTime, endTime, size, sessionId, cwd });
-  }
-  let filtered = all;
-  if (since != null) {
-    filtered = all.filter((e) => e.mtime >= since);
-  }
-  if (keyword) {
-    const re = new RegExp(keyword);
-    const matched = [];
-    for (const e of filtered) {
-      const text = await Bun.file(e.file).text();
-      const lines = text.split(`
-`);
-      for (const line of lines) {
-        const match = re.exec(line);
-        if (match) {
-          const idx = match.index;
-          const matchLen = match[0].length;
-          const preStart = Math.max(0, idx - 20);
-          let pre = line.slice(preStart, idx);
-          pre = pre.replace(/.*\n/s, "");
-          let post = line.slice(idx + matchLen, idx + matchLen + 20);
-          post = post.replace(/\n.*/s, "");
-          const ctx = `${pre}${match[0]}${post}`.replace(/[\r\n]/g, " ");
-          matched.push({ ...e, context: ctx });
-          break;
-        }
-      }
-    }
-    filtered = matched;
-  }
-  filtered.sort((a, b) => a.mtime - b.mtime);
-  return filtered;
-}
-
 // src/sessions/format.ts
 function formatHumanSize(bytes) {
-  const WIDTH = 8;
+  const WIDTH = 4;
   let v;
   let u;
   if (bytes >= 1e9) {
@@ -1507,7 +1658,7 @@ function formatAgo(seconds) {
   return `${v.toString().padStart(2)}${u}`;
 }
 function formatDuration(seconds) {
-  const WIDTH = 8;
+  const WIDTH = 3;
   let v;
   let u;
   if (seconds >= 86400) {
@@ -1523,8 +1674,7 @@ function formatDuration(seconds) {
     v = seconds;
     u = "s";
   }
-  const str = u === "d" && v >= 100 ? `${Math.floor(v)}${u}` : `${v.toFixed(1)}${u}`;
-  return str.padStart(WIDTH);
+  return `${Math.floor(v)}${u}`.padStart(WIDTH);
 }
 function formatDateTime(epochSeconds) {
   const d = new Date(epochSeconds * 1000);
@@ -1539,28 +1689,37 @@ function formatProjectPath(cwd) {
   return cwd;
 }
 function formatSessionLine(session, opts) {
-  const endStr = formatDateTime(session.endTime);
+  const endStr = formatDateTime(session.endTime).replace(/[+-]\d{2}:\d{2}$/, "");
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
+  const turnStr = String(session.turns).padStart(4);
   const path = formatProjectPath(session.cwd);
   const ctx = session.context ? `  ${session.context}` : "";
-  return `${endStr}  ${durStr}  ${sizeStr}  ${session.sessionId}  ${path}${ctx}`;
+  return `${endStr}  ${durStr}  ${sizeStr}  ${turnStr}  ${session.sessionId.slice(0, 8)}  ${path}${ctx}`;
 }
-function formatSessionsOutput(allSessions, filtered, opts) {
+function formatSessionsOutput(stats, filtered, opts) {
   const now = opts.now ?? Math.floor(Date.now() / 1000);
   const lines = [];
-  if (opts.commandLine) {
-    lines.push(`# ${opts.commandLine}`);
+  if (opts.command)
+    lines.push(`# command: ${opts.command}`);
+  if (opts.commandComputed)
+    lines.push(`# command_computed: ${opts.commandComputed}`);
+  if (opts.commandHelp)
+    lines.push(`# command_help: ${opts.commandHelp}`);
+  const nowStr = new Date(now * 1000).toISOString();
+  lines.push(`# now: ${nowStr}`);
+  if (stats.total > 0) {
+    const oldestAgo = formatAgo(now - stats.oldestMtime);
+    const newestAgo = formatAgo(now - stats.newestMtime);
+    lines.push(`# ${stats.total} sessions (${oldestAgo} .. ${newestAgo})`);
   }
-  if (allSessions.length > 0) {
-    const oldest = allSessions[0];
-    const newest = allSessions[allSessions.length - 1];
-    const oldestAgo = formatAgo(now - oldest.mtime);
-    const newestAgo = formatAgo(now - newest.mtime);
-    lines.push(`# ${allSessions.length} sessions (${oldestAgo} .. ${newestAgo})`);
-  }
-  lines.push(`${"TIMESTAMP_END".padEnd(25)}  ${"DURATION".padStart(8)}  ${"FILESIZE".padStart(8)}  SESSION_ID  PATH`);
+  const off = -new Date().getTimezoneOffset();
+  const offSign = off >= 0 ? "+" : "-";
+  const offH = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const offM = String(Math.abs(off) % 60).padStart(2, "0");
+  const tsHeader = `TIMESTAMP_END${offSign}${offH}:${offM}`;
+  lines.push(`${tsHeader.padEnd(19)}  ${"DUR".padStart(3)}  ${"SIZE".padStart(4)}  TURN  SESSION8  PATH`);
   const output = opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
   for (const session of output) {
     lines.push(formatSessionLine(session, { now }));
@@ -1570,23 +1729,26 @@ function formatSessionsOutput(allSessions, filtered, opts) {
 }
 
 // src/sessions/index.ts
-var DURATION_RE = /^(\d+[smhd])+$/;
+var DURATION_RE2 = /^(\d+[smhd])+$/;
 function printUsage3(exitCode = 0) {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? console.error : console.log;
-  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>]
+  out(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
 
 Options:
-  --grep <pattern>  Filter sessions by content (regex)
-  --since <spec>    Time filter. Duration: 5m, 1h, 2d, 1h30m
-                    or date string: 2024-01-01, 2024-01-01T12:00:00
-                    (default: 2d)
-  --limit <N>       Show last N sessions (default: 20)
-  --help            Show this help`);
+  --grep <pattern>     Filter sessions by content (regex)
+  --path <pattern>   Filter sessions by path (regex, matches cwd)
+                       Default: auto-detect from git root / cwd
+  --all                Show all projects (disable auto-detect)
+  --since <spec>       Time filter. Duration: 5m, 1h, 2d, 1h30m
+                       or date string: 2024-01-01, 2024-01-01T12:00:00
+                       (default: 2d)
+  --limit <N>          Show last N sessions (default: 20)
+  --help               Show this help`);
   process.exit(exitCode);
 }
 function parseSince(spec) {
-  if (DURATION_RE.test(spec)) {
+  if (DURATION_RE2.test(spec)) {
     const seconds = parseDuration(spec);
     return Math.floor(Date.now() / 1000) - seconds;
   }
@@ -1601,11 +1763,14 @@ var DEFAULT_SINCE = "2d";
 var DEFAULT_LIMIT = 20;
 function parseOpts(rawArgs) {
   let keyword = "";
+  let pathFilter = "";
   let since = DEFAULT_SINCE;
   let tail = DEFAULT_LIMIT;
   let sinceExplicit = false;
   let limitExplicit = false;
   let grepExplicit = false;
+  let pathExplicit = false;
+  let all = false;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
@@ -1620,6 +1785,19 @@ function parseOpts(rawArgs) {
         }
         keyword = rawArgs[i] ?? "";
         grepExplicit = true;
+        break;
+      case "--all":
+        all = true;
+        pathExplicit = true;
+        break;
+      case "--path":
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --path requires a value");
+          printUsage3(1);
+        }
+        pathFilter = rawArgs[i] ?? "";
+        pathExplicit = true;
         break;
       case "--since":
         i++;
@@ -1648,21 +1826,55 @@ function parseOpts(rawArgs) {
     }
     i++;
   }
-  return { keyword, since, tail, sinceExplicit, limitExplicit, grepExplicit };
+  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit, pathExplicit, all };
 }
-function buildCommandLine(opts) {
+function buildCommandHelp2() {
+  const prog = process.env._PROG || "sessions";
+  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP,=CURRENT_PROJECT>] [--all] [--grep <REGEXP>] [--help]`;
+}
+function buildCommandComputed2(opts) {
   const prog = process.env._PROG || "sessions";
   const parts = [prog];
-  const since = opts.sinceExplicit ? opts.since : `${DEFAULT_SINCE}`;
-  parts.push(`${opts.sinceExplicit ? "" : "["}--since ${since}${opts.sinceExplicit ? "" : "]"}`);
-  const limit = opts.limitExplicit ? String(opts.tail) : String(DEFAULT_LIMIT);
-  parts.push(`${opts.limitExplicit ? "" : "["}--limit ${limit}${opts.limitExplicit ? "" : "]"}`);
-  if (opts.grepExplicit) {
+  parts.push(`--since ${opts.since}`);
+  parts.push(`--limit ${opts.tail}`);
+  if (opts.all) {
+    parts.push("--all");
+  } else if (opts.pathFilter) {
+    parts.push(`--path ${opts.pathFilter}`);
+  }
+  if (opts.keyword) {
     parts.push(`--grep ${opts.keyword}`);
-  } else {
-    parts.push("[--grep <REGEXP>]");
   }
   return parts.join(" ");
+}
+function stripReposPrefix(p) {
+  const m = p.match(/\/repos\/(.+)/);
+  return m ? m[1] : null;
+}
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+async function getDefaultPathCandidates() {
+  const candidates = [];
+  try {
+    const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    const gitRoot = (await new Response(proc.stdout).text()).trim();
+    await proc.exited;
+    if (gitRoot) {
+      const stripped = stripReposPrefix(gitRoot);
+      if (stripped)
+        candidates.push(stripped);
+    }
+  } catch {}
+  const pwd = process.cwd();
+  const strippedPwd = stripReposPrefix(pwd);
+  if (strippedPwd && !candidates.includes(strippedPwd)) {
+    candidates.push(strippedPwd);
+  }
+  return candidates;
 }
 async function run6(args) {
   const opts = parseOpts(args);
@@ -1678,20 +1890,52 @@ async function run6(args) {
   } else {
     configDirs.push(defaultDir);
   }
-  const allSessions = await searchSessions({ configDirs });
-  allSessions.sort((a, b) => a.mtime - b.mtime);
+  const prog = process.env._PROG || "sessions";
+  const command = `${prog} ${args.join(" ")}`;
+  const commandHelp = buildCommandHelp2();
   try {
-    const filtered = await searchSessions({
-      configDirs,
-      since: cutoff,
-      keyword: opts.keyword || undefined
-    });
-    const output = formatSessionsOutput(allSessions, filtered, {
-      tail: opts.tail,
-      commandLine: buildCommandLine(opts)
-    });
-    if (output) {
-      console.log(output);
+    if (opts.pathExplicit) {
+      const { sessions: filtered, stats } = await searchSessions({
+        configDirs,
+        since: cutoff,
+        keyword: opts.keyword || undefined,
+        path: opts.pathFilter || undefined
+      });
+      const output = formatSessionsOutput(stats, filtered, {
+        tail: opts.tail,
+        command,
+        commandComputed: buildCommandComputed2(opts),
+        commandHelp
+      });
+      if (output)
+        console.log(output);
+    } else {
+      const { sessions: allFiltered, stats } = await searchSessions({
+        configDirs,
+        since: cutoff,
+        keyword: opts.keyword || undefined
+      });
+      const candidates = await getDefaultPathCandidates();
+      let filtered = null;
+      let usedPath = "";
+      for (const candidate of candidates) {
+        const re = new RegExp(escapeRegExp(candidate));
+        const matched = allFiltered.filter((s) => re.test(s.cwd));
+        if (matched.length > 0) {
+          filtered = matched;
+          usedPath = candidate;
+          break;
+        }
+      }
+      const effectiveOpts = usedPath ? { ...opts, pathFilter: usedPath } : opts;
+      const output = formatSessionsOutput(stats, filtered ?? allFiltered, {
+        tail: opts.tail,
+        command,
+        commandComputed: buildCommandComputed2(effectiveOpts),
+        commandHelp
+      });
+      if (output)
+        console.log(output);
     }
   } catch (e) {
     if (e instanceof SyntaxError) {

@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { searchSessions, parseDuration, type SessionInfo } from "./search.ts";
+import { searchSessions, parseDuration, type SessionInfo, type SearchResult, type SessionStats } from "./search.ts";
 import { mkdtemp, rm, mkdir, writeFile, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -68,11 +68,15 @@ describe("searchSessions", () => {
       '{"type":"assistant","message":"hello"}',
     ]);
 
-    const results = await searchSessions({ configDirs: [tmpDir] });
+    const { sessions: results, stats } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
     expect(results[0]!.sessionId).toBe("abc12345-6789-0123-4567-890123456789");
     expect(results[0]!.cwd).toBe("/home/user/project");
     expect(results[0]!.size).toBeGreaterThan(0);
+    // stats検証
+    expect(stats.total).toBe(1);
+    expect(stats.oldestMtime).toBe(results[0]!.mtime);
+    expect(stats.newestMtime).toBe(results[0]!.mtime);
   });
 
   test("空ファイル（サイズ0）はスキップ", async () => {
@@ -81,8 +85,9 @@ describe("searchSessions", () => {
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "empty.jsonl"), "");
 
-    const results = await searchSessions({ configDirs: [tmpDir] });
+    const { sessions: results, stats } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(0);
+    expect(stats.total).toBe(0);
   });
 
   test("agent-*.jsonl は除外", async () => {
@@ -93,7 +98,7 @@ describe("searchSessions", () => {
       '{"sessionId":"def67890","cwd":"/home/user/project2","type":"human"}',
     ]);
 
-    const results = await searchSessions({ configDirs: [tmpDir] });
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
     expect(results[0]!.sessionId).toBe("def67890");
   });
@@ -118,12 +123,14 @@ describe("searchSessions", () => {
 
     // cutoff = 10分前 → recentのみ
     const cutoff = Math.floor((now.getTime() - 10 * 60 * 1000) / 1000);
-    const results = await searchSessions({
+    const { sessions: results, stats } = await searchSessions({
       configDirs: [tmpDir],
       since: cutoff,
     });
     expect(results.length).toBe(1);
     expect(results[0]!.sessionId).toBe("recent111");
+    // statsはsinceフィルタ前の全有効ファイル統計
+    expect(stats.total).toBe(2);
   });
 
   test("since フィルタ: cutoffが古ければ全件取得", async () => {
@@ -146,11 +153,12 @@ describe("searchSessions", () => {
 
     // cutoff = 3時間前 → 両方取得
     const cutoff = Math.floor((now.getTime() - 3 * 60 * 60 * 1000) / 1000);
-    const results = await searchSessions({
+    const { sessions: results, stats } = await searchSessions({
       configDirs: [tmpDir],
       since: cutoff,
     });
     expect(results.length).toBe(2);
+    expect(stats.total).toBe(2);
   });
 
   test("キーワード検索: ファイル内容から検索しコンテキスト付き", async () => {
@@ -163,7 +171,7 @@ describe("searchSessions", () => {
       '{"type":"assistant","message":"nothing here"}',
     ]);
 
-    const results = await searchSessions({
+    const { sessions: results } = await searchSessions({
       configDirs: [tmpDir],
       keyword: "brown fox",
     });
@@ -172,21 +180,23 @@ describe("searchSessions", () => {
     expect(results[0]!.context).toContain("brown fox");
   });
 
-  test("キーワード検索: 前後20文字のコンテキスト", async () => {
+  test("キーワード検索: 前20文字+後50文字のコンテキスト", async () => {
     const prefix = "a".repeat(30);
-    const suffix = "z".repeat(30);
+    const suffix = "z".repeat(60);
     await createSession("p1", "s1.jsonl", [
       '{"sessionId":"ctx12345","cwd":"/a","type":"human"}',
       `{"message":"${prefix}KEYWORD${suffix}"}`,
     ]);
 
-    const results = await searchSessions({
+    const { sessions: results } = await searchSessions({
       configDirs: [tmpDir],
       keyword: "KEYWORD",
     });
     expect(results.length).toBe(1);
-    // 前後20文字に切り詰め
-    expect(results[0]!.context!.length).toBeLessThanOrEqual(20 + "KEYWORD".length + 20);
+    // [N hit(s)] + 前20文字+後50文字に切り詰め
+    expect(results[0]!.context).toMatch(/^\[\d+ hits?\] /);
+    const digest = results[0]!.context!.replace(/^\[\d+ hits?\] /, "");
+    expect(digest.length).toBeLessThanOrEqual(20 + "KEYWORD".length + 50);
     expect(results[0]!.context).toContain("KEYWORD");
   });
 
@@ -212,12 +222,16 @@ describe("searchSessions", () => {
       new Date(now.getTime() - 30 * 1000),
     );
 
-    const results = await searchSessions({ configDirs: [tmpDir] });
+    const { sessions: results, stats } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.map((r) => r.sessionId)).toEqual([
       "first111",
       "second22",
       "third333",
     ]);
+    // statsのmtime範囲を検証
+    expect(stats.total).toBe(3);
+    expect(stats.oldestMtime).toBe(results[0]!.mtime);
+    expect(stats.newestMtime).toBe(results[2]!.mtime);
   });
 
   test("複数のconfigDirsを検索", async () => {
@@ -237,7 +251,7 @@ describe("searchSessions", () => {
         '{"sessionId":"from_dir2","cwd":"/b","type":"human"}\n',
       );
 
-      const results = await searchSessions({
+      const { sessions: results } = await searchSessions({
         configDirs: [tmpDir, tmpDir2],
       });
       const ids = results.map((r) => r.sessionId);
@@ -253,7 +267,7 @@ describe("searchSessions", () => {
       '{"cwd":"/a","type":"human"}',
     ]);
 
-    const results = await searchSessions({ configDirs: [tmpDir] });
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
     expect(results[0]!.sessionId).toBe("?");
     expect(results[0]!.cwd).toBe("/a");
@@ -264,17 +278,18 @@ describe("searchSessions", () => {
       '{"sessionId":"abc12345","type":"human"}',
     ]);
 
-    const results = await searchSessions({ configDirs: [tmpDir] });
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     // "cwd"キーを含む行がないので、sh版同様スキップされる
     expect(results.length).toBe(0);
   });
 
   test("projectsディレクトリが存在しない場合は空結果", async () => {
     const nonExistentDir = join(tmpDir, "nonexistent");
-    const results = await searchSessions({
+    const { sessions: results, stats } = await searchSessions({
       configDirs: [nonExistentDir],
     });
     expect(results.length).toBe(0);
+    expect(stats.total).toBe(0);
   });
 
   test("キーワード検索: 正規表現パターンでマッチ", async () => {
@@ -283,7 +298,7 @@ describe("searchSessions", () => {
       '{"type":"assistant","message":"the Previous and Next items"}',
     ]);
 
-    const results = await searchSessions({
+    const { sessions: results } = await searchSessions({
       configDirs: [tmpDir],
       keyword: "Prev.*Next",
     });

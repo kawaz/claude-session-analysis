@@ -1,4 +1,4 @@
-import type { SessionInfo } from "./search.ts";
+import type { SessionInfo, SessionStats } from "./search.ts";
 
 export interface FormatOptions {
   now?: number; // テスト用に固定可能なUnix epoch seconds
@@ -6,7 +6,9 @@ export interface FormatOptions {
 
 export interface OutputOptions extends FormatOptions {
   tail: number;
-  commandLine?: string;
+  command?: string;
+  commandComputed?: string;
+  commandHelp?: string;
 }
 
 /**
@@ -15,7 +17,7 @@ export interface OutputOptions extends FormatOptions {
  * 右寄せ8文字幅。
  */
 export function formatHumanSize(bytes: number): string {
-  const WIDTH = 5;
+  const WIDTH = 4;
   let v: number;
   let u: string;
   if (bytes >= 1e9) {
@@ -67,7 +69,7 @@ export function formatAgo(seconds: number): string {
  * duration秒を ##.#[dhms] 形式でフォーマット（右寄せ8文字幅）。
  */
 export function formatDuration(seconds: number): string {
-  const WIDTH = 5;
+  const WIDTH = 3;
   let v: number;
   let u: string;
   if (seconds >= 86400) {
@@ -83,9 +85,7 @@ export function formatDuration(seconds: number): string {
     v = seconds;
     u = "s";
   }
-  // 100d以上: ####d、それ以外: ##.#[dhms]
-  const str = (u === "d" && v >= 100) ? `${Math.floor(v)}${u}` : `${v.toFixed(1)}${u}`;
-  return str.padStart(WIDTH);
+  return `${Math.floor(v)}${u}`.padStart(WIDTH);
 }
 
 /**
@@ -117,47 +117,51 @@ export function formatSessionLine(
   session: SessionInfo,
   opts: FormatOptions & { now: number },
 ): string {
-  const endStr = formatDateTime(session.endTime);
+  const endStr = formatDateTime(session.endTime).replace(/[+-]\d{2}:\d{2}$/, "");
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
   const turnStr = String(session.turns).padStart(4);
   const path = formatProjectPath(session.cwd);
   const ctx = session.context ? `  ${session.context}` : "";
-
-  return `${durStr}  ${endStr}  ${session.sessionId}  ${sizeStr}  ${turnStr}  ${path}${ctx}`;
+  return `${endStr}  ${durStr}  ${sizeStr}  ${turnStr}  ${session.sessionId.slice(0, 8)}  ${path}${ctx}`;
 }
 
 /**
  * 全セッション出力（ヘッダ + セッション行）をフォーマット。
  */
 export function formatSessionsOutput(
-  allSessions: SessionInfo[],
+  stats: SessionStats,
   filtered: SessionInfo[],
   opts: OutputOptions,
 ): string {
   const now = opts.now ?? Math.floor(Date.now() / 1000);
   const lines: string[] = [];
 
-  // コマンドライン表示
-  if (opts.commandLine) {
-    lines.push(`# ${opts.commandLine}`);
-  }
+  // メタ情報ヘッダ（command / command_computed / command_help / now）
+  if (opts.command) lines.push(`# command: ${opts.command}`);
+  if (opts.commandComputed) lines.push(`# command_computed: ${opts.commandComputed}`);
+  if (opts.commandHelp) lines.push(`# command_help: ${opts.commandHelp}`);
+  const nowStr = new Date(now * 1000).toISOString();
+  lines.push(`# now: ${nowStr}`);
 
   // ヘッダ行: # N sessions (oldest_ago .. newest_ago)
-  if (allSessions.length > 0) {
-    const oldest = allSessions[0]!;
-    const newest = allSessions[allSessions.length - 1]!;
-    const oldestAgo = formatAgo(now - oldest.mtime);
-    const newestAgo = formatAgo(now - newest.mtime);
+  if (stats.total > 0) {
+    const oldestAgo = formatAgo(now - stats.oldestMtime);
+    const newestAgo = formatAgo(now - stats.newestMtime);
     lines.push(
-      `# ${allSessions.length} sessions (${oldestAgo} .. ${newestAgo})`,
+      `# ${stats.total} sessions (${oldestAgo} .. ${newestAgo})`,
     );
   }
 
-  // カラムヘッダ
+  // カラムヘッダ（タイムゾーンオフセット付き）
+  const off = -(new Date()).getTimezoneOffset();
+  const offSign = off >= 0 ? "+" : "-";
+  const offH = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const offM = String(Math.abs(off) % 60).padStart(2, "0");
+  const tsHeader = `TIMESTAMP_END${offSign}${offH}:${offM}`;
   lines.push(
-    `${"DURAT".padStart(5)}  ${"TIMESTAMP_END".padEnd(25)}  SESSION_ID  ${"FSIZE".padStart(5)}  TURN  PATH`,
+    `${tsHeader.padEnd(19)}  ${"DUR".padStart(3)}  ${"SIZE".padStart(4)}  TURN  SESSION8  PATH`,
   );
 
   // tail 制限
