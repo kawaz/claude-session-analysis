@@ -7,7 +7,9 @@ input=$(cat)
 command=$(echo "$input" | jq -r '.tool_input.command // empty')
 
 # git push を含まなければスキップ（git -C <path> push 等にも対応）
-if ! echo "$command" | grep -qE 'git\b.*\bpush\b'; then
+# クォート内の文字列（コミットメッセージ等）を除去してから判定
+stripped=$(echo "$command" | sed "s/\"[^\"]*\"//g; s/'[^']*'//g")
+if ! echo "$stripped" | grep -qE 'git\b.*\bpush\b'; then
   exit 0
 fi
 
