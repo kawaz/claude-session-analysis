@@ -146,22 +146,43 @@ function escapeRegExp(s: string): string {
 
 async function getDefaultPathCandidates(): Promise<string[]> {
   const candidates: string[] = [];
-  // 1. git root
+
+  // 1. git-common-dir → repo親（worktree/workspace名を含まない）
   try {
-    const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"], {
+    const proc = Bun.spawn(["git", "rev-parse", "--git-common-dir"], {
       stdout: "pipe",
       stderr: "pipe",
     });
-    const gitRoot = (await new Response(proc.stdout).text()).trim();
+    const commonDir = (await new Response(proc.stdout).text()).trim();
     await proc.exited;
-    if (gitRoot) {
-      const stripped = stripReposPrefix(gitRoot);
+    if (commonDir) {
+      const repoParent = commonDir.replace(/\/\.git$/, "");
+      const stripped = stripReposPrefix(repoParent);
       if (stripped) candidates.push(stripped);
     }
   } catch {
     // git not available
   }
-  // 2. PWD
+
+  // 2. git show-toplevel（worktree自体のパス）
+  if (candidates.length === 0) {
+    try {
+      const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const gitRoot = (await new Response(proc.stdout).text()).trim();
+      await proc.exited;
+      if (gitRoot) {
+        const stripped = stripReposPrefix(gitRoot);
+        if (stripped && !candidates.includes(stripped)) candidates.push(stripped);
+      }
+    } catch {
+      // git not available
+    }
+  }
+
+  // 3. PWD
   const pwd = process.cwd();
   const strippedPwd = stripReposPrefix(pwd);
   if (strippedPwd && !candidates.includes(strippedPwd)) {
