@@ -1,13 +1,13 @@
 #!/bin/bash
 # Claude Code pre-tool hook: git push 時にバンドル・バージョンの整合性をチェック
-# "version-pass; git push" プレフィクスがあればスキップ
+# "version-pass;" プレフィクスがあればスキップ
 
 # stdin から tool input を読み取る
 input=$(cat)
 command=$(echo "$input" | jq -r '.tool_input.command // empty')
 
-# git push を含まなければスキップ
-if ! echo "$command" | grep -q 'git push'; then
+# git push を含まなければスキップ（git -C <path> push 等にも対応）
+if ! echo "$command" | grep -qE 'git\b.*\bpush\b'; then
   exit 0
 fi
 
@@ -16,8 +16,7 @@ if echo "$command" | grep -q 'version-pass;'; then
   exit 0
 fi
 
-# プロジェクトルートを特定
-project_root="$(cd "$(dirname "$0")/../.." && pwd)"
+project_root="${CLAUDE_PROJECT_DIR:?CLAUDE_PROJECT_DIR is not set}"
 
 # 1. バンドルビルドチェック: ソースとバンドルの整合性
 bundle="$project_root/skills/claude-session-analysis/bin/claude-session-analysis"
@@ -27,7 +26,7 @@ if [ -f "$bundle" ]; then
   new_hash=$(md5 -q "$bundle" 2>/dev/null || md5sum "$bundle" | cut -d' ' -f1)
   if [ "$current_hash" != "$new_hash" ]; then
     echo "BLOCK: バンドルが最新ではありません。ビルド結果をコミットしてください。"
-    echo "バージョンbump不要なら: version-pass; git push"
+    echo 'バージョンbump不要なら: version-pass; git push ...'
     exit 2
   fi
 fi
@@ -41,13 +40,12 @@ if [ "$plugin_ver" != "$market_ver" ]; then
 fi
 
 # 3. 前回pushからソース変更があるのにバージョンが同じか確認
-remote_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r '.version' 2>/dev/null)
+remote_ver=$(git -C "$project_root" show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r '.version' 2>/dev/null)
 if [ -n "$remote_ver" ] && [ "$remote_ver" = "$plugin_ver" ]; then
-  # ソースファイルに変更があるか
-  src_changed=$(git diff origin/main --name-only -- 'src/' 'skills/' 'completions/' 2>/dev/null | head -1)
+  src_changed=$(git -C "$project_root" diff origin/main --name-only -- 'src/' 'skills/' 'completions/' 2>/dev/null | head -1)
   if [ -n "$src_changed" ]; then
     echo "BLOCK: ソースに変更がありますがバージョンが $plugin_ver のままです。バージョンを上げてください。"
-    echo "バージョンbump不要なら: version-pass; git push"
+    echo 'バージョンbump不要なら: version-pass; git push ...'
     exit 2
   fi
 fi
