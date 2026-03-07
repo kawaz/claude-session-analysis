@@ -25,8 +25,8 @@ if [ -f "$bundle" ]; then
   (cd "$project_root" && bun run scripts/build.ts >/dev/null 2>&1)
   new_hash=$(md5 -q "$bundle" 2>/dev/null || md5sum "$bundle" | cut -d' ' -f1)
   if [ "$current_hash" != "$new_hash" ]; then
-    echo "BLOCK: バンドルが最新ではありません。ビルド結果をコミットしてください。"
-    echo 'バージョンbump不要なら: version-pass; git push ...'
+    echo "BLOCK: バンドルが最新ではありません。ビルド結果をコミットしてください。" >&2
+    echo 'バージョンbump不要なら: version-pass; git push ...' >&2
     exit 2
   fi
 fi
@@ -35,7 +35,7 @@ fi
 plugin_ver=$(jq -r '.version' "$project_root/.claude-plugin/plugin.json" 2>/dev/null)
 market_ver=$(jq -r '.metadata.version' "$project_root/.claude-plugin/marketplace.json" 2>/dev/null)
 if [ "$plugin_ver" != "$market_ver" ]; then
-  echo "BLOCK: plugin.json ($plugin_ver) と marketplace.json ($market_ver) のバージョンが不一致です。"
+  echo "BLOCK: plugin.json ($plugin_ver) と marketplace.json ($market_ver) のバージョンが不一致です。" >&2
   exit 2
 fi
 
@@ -44,8 +44,8 @@ remote_ver=$(git -C "$project_root" show origin/main:.claude-plugin/plugin.json 
 if [ -n "$remote_ver" ] && [ "$remote_ver" = "$plugin_ver" ]; then
   src_changed=$(git -C "$project_root" diff origin/main --name-only -- 'src/' 'skills/' 'completions/' 2>/dev/null | head -1)
   if [ -n "$src_changed" ]; then
-    echo "BLOCK: ソースに変更がありますがバージョンが $plugin_ver のままです。バージョンを上げてください。"
-    echo 'バージョンbump不要なら: version-pass; git push ...'
+    echo "BLOCK: ソースに変更がありますがバージョンが $plugin_ver のままです。バージョンを上げてください。" >&2
+    echo 'バージョンbump不要なら: version-pass; git push ...' >&2
     exit 2
   fi
 fi
