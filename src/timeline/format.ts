@@ -134,8 +134,8 @@ export interface FormatEventsOpts {
 }
 
 /** mdモード用 YAML front matter を生成 */
-export function mdFrontMatter(command: string, commandComputed: string, now: string): string {
-  return `---\ncommand: ${command}\ncommand_computed: ${commandComputed}\nnow: ${now}\n---\n\n`;
+export function mdFrontMatter(command: string, commandComputed: string, commandHelp: string, now: string): string {
+  return `---\ncommand: ${command}\ncommand_computed: ${commandComputed}\ncommand_help: ${commandHelp}\nnow: ${now}\n---\n\n`;
 }
 
 /** 複数イベントをフォーマットして結合 */

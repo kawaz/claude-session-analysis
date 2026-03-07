@@ -11,12 +11,10 @@ My session ID: `${CLAUDE_SESSION_ID}`
 
 | Subcommand | Description |
 |--------|-------------|
-| `sessions [--grep kw] [--since spec] [--limit N]` | Search sessions by keyword/time |
-| `timeline [-t <types>] [--width <n>] [--md[=auto\|source\|render\|none]] <id> [range]` | Timeline (default: all, 55 chars) |
-| `get-by-marker [--jsonl[=redact\|full]\|--raw\|--raw2] [-A n] [-B n] [-C n] <id> <marker>` | Entry details (with context) |
+| `sessions [--since <=2d>] [--limit <N=20>] [--project REGEXP] [--grep REGEXP]` | Search sessions |
+| `timeline <id> [--since 2h] [--md] [-t UTR] [--grep REGEXP]` | Timeline (比較的コンパクトなのでSubagentに全部確認させるのが楽) |
 | `file-ops <id>` | Read/Write operations |
 | `file-diff <id> <hash> <v1> [v2]` | Diff versions (v2 omitted: vs current) |
-| `summaries <id>` | Session title history |
 | `resolve-session [--path] <id_prefix>` | Resolve prefix to full session ID or path |
 
 ## Timeline Options
@@ -49,7 +47,5 @@ Types (all by default, filter with `-t`):
 ## Usage Tips
 
 1. **Start with full timeline** (default width is enough for overview)
-2. **Dive deeper** with `get-by-marker` or `-w` for specific entries
+2. **Dive deeper** with `--jsonl` or `--width` for specific entries
 3. **Read full context** with `--md` for QTRU entries
-
-⚠️ **Sandbox**: Pipes (`|`) don't work. Use `dangerouslyDisableSandbox: true` when piping output.

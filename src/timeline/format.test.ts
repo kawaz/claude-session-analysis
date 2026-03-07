@@ -335,23 +335,25 @@ describe("formatEvents", () => {
 });
 
 describe("mdFrontMatter", () => {
-  test("command, command_computed, nowを含むYAML front matterを生成", () => {
+  test("command, command_computed, command_help, nowを含むYAML front matterを生成", () => {
     const result = mdFrontMatter(
       "timeline abc --md",
       "timeline abc-full-id Uabc..Rdef -t UTRFWBGASQDI --width 0 --color none --md source --jsonl none",
+      "timeline <SESSION_ID ..> [--width <55>] [--help]",
       "2026-02-27T01:23:45.678+0900",
     );
     const lines = result.split("\n");
     expect(lines[0]).toBe("---");
     expect(lines[1]).toBe("command: timeline abc --md");
     expect(lines[2]).toMatch(/^command_computed:/);
-    expect(lines[3]).toBe("now: 2026-02-27T01:23:45.678+0900");
-    expect(lines[4]).toBe("---");
-    expect(lines[5]).toBe("");
+    expect(lines[3]).toBe("command_help: timeline <SESSION_ID ..> [--width <55>] [--help]");
+    expect(lines[4]).toBe("now: 2026-02-27T01:23:45.678+0900");
+    expect(lines[5]).toBe("---");
+    expect(lines[6]).toBe("");
   });
 
   test("末尾に空行を含む（本文との区切り）", () => {
-    const result = mdFrontMatter("cmd", "cmd-computed", "2026-01-01T00:00:00+0900");
+    const result = mdFrontMatter("cmd", "cmd-computed", "help", "2026-01-01T00:00:00+0900");
     expect(result).toEndWith("---\n\n");
   });
 });

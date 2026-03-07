@@ -44,70 +44,10 @@ async function resolveFullId(input: string): Promise<string> {
   return basename.replace(/\.jsonl$/, "");
 }
 
-/** ヘッダ用コマンドライン表示を構築 */
-function buildCommandHeader(
-  opts: ReturnType<typeof parseArgs>,
-  args: string[],
-  isTty: boolean,
-): string {
+/** 静的なコマンドヘルプ文字列を構築 */
+function buildCommandHelp(): string {
   const prog = process.env._PROG || "timeline";
-  // デフォルト値の判定
-  const colorDefault = isTty ? "always" : "none";
-  const mdDefault = "none";
-  const mdAutoResolved = isTty ? "render" : "source";
-
-  const parts: string[] = [prog];
-  parts.push("<SESSION_ID ..>");
-  parts.push("[[RANGE1][..][RANGE2] ..]");
-
-  // --width
-  const widthExplicit = args.includes("--width");
-  parts.push(widthExplicit ? `--width ${opts.width}` : `[--width <55>]`);
-
-  // -t
-  const tExplicit = args.includes("-t");
-  parts.push(tExplicit ? `-t ${opts.types}` : `[-t <UTRFWBGASQDI>]`);
-
-  // --color
-  const colorExplicit = args.some(a => a === "--color" || a.startsWith("--color="));
-  const colorResolved = opts.color === "auto" ? colorDefault : opts.color;
-  if (colorExplicit) {
-    parts.push(`--color ${colorResolved}`);
-  } else {
-    const alwaysStr = colorDefault === "always" ? "=[=always]" : "always";
-    const noneStr = colorDefault === "none" ? "=[=none]" : "none";
-    parts.push(`[--color [${alwaysStr}|${noneStr}]`);
-  }
-
-  // --md
-  const mdExplicit = args.some(a => a === "--md" || a.startsWith("--md="));
-  if (mdExplicit) {
-    const mdResolved = opts.mdMode === "auto" ? mdAutoResolved : opts.mdMode;
-    parts.push(`--md ${mdResolved}`);
-  } else {
-    const renderStr = isTty ? "=render" : "render";
-    const sourceStr = isTty ? "source" : "=source";
-    const noneStr = `[=${mdDefault}]`;
-    parts.push(`[--md [${renderStr}|${sourceStr}|${noneStr}]`);
-  }
-
-  // --grep
-  const grepExplicit = args.includes("--grep");
-  parts.push(grepExplicit ? `--grep ${opts.grep}` : `[--grep <REGEXP>]`);
-
-  // --since
-  const sinceExplicit = args.includes("--since");
-  parts.push(sinceExplicit ? `--since ${opts.since}` : `[--since <DURATION|DATE>]`);
-
-  // --jsonl
-  const jsonlExplicit = args.some(a => a === "--jsonl" || a.startsWith("--jsonl="));
-  if (jsonlExplicit) {
-    parts.push(`--jsonl ${opts.jsonlMode}`);
-  } else {
-    parts.push(`[--jsonl [=redact|full|[=none]]]`);
-  }
-
-  return `# ${parts.join(" ")}`;
+  return `${prog} <SESSION_ID ..> [[RANGE1][..][RANGE2] ..] [--width <55>] [-t <UTRFWBGASQDI>] [--color [always|=[=none]] [--md [render|=source|[=none]] [--grep <REGEXP>] [--since <DURATION|DATE>] [--jsonl [=redact|full|[=none]]] [--help]`;
 }
 
 /** md front matter 用 command_computed を構築 */
@@ -228,7 +168,7 @@ export async function run(args: string[]) {
         } else {
           processed = redact(omit(entry, OMIT_KEYS), REDACT_KEYS);
         }
-        output.push(JSON.stringify(processed, null, 2));
+        output.push(JSON.stringify(processed));
       }
     }
     console.log(output.join("\n"));
@@ -257,22 +197,21 @@ export async function run(args: string[]) {
       ? true
       : opts.timestamps;
 
-  // mdモード用 front matter
+  // 共通メタ情報
   const isMd = mdMode === "render" || mdMode === "source";
   const resolvedInputs = resolved.map(r => r.fullId);
-  const frontMatter = isMd
-    ? mdFrontMatter(
-        `${process.env._PROG || "timeline"} ${args.join(" ")}`,
-        buildCommandComputed(opts, resolvedInputs, filtered, isTty),
-        localTimeMs(),
-      )
-    : "";
+  const command = `${process.env._PROG || "timeline"} ${args.join(" ")}`;
+  const commandComputed = buildCommandComputed(opts, resolvedInputs, filtered, isTty);
+  const commandHelp = buildCommandHelp();
+  const now = localTimeMs();
 
-  // ヘッダ行（非md時）
-  const header = !isMd ? buildCommandHeader(opts, args, isTty) + "\n" : "";
+  // md時: YAML front matter / 非md時: "# " 付きヘッダ
+  const metaBlock = isMd
+    ? mdFrontMatter(command, commandComputed, commandHelp, now)
+    : `# command: ${command}\n# command_computed: ${commandComputed}\n# command_help: ${commandHelp}\n# now: ${now}\n`;
 
   // 出力生成
-  const output = header + frontMatter + formatEvents(filtered, {
+  const output = metaBlock + formatEvents(filtered, {
     jsonlMode: opts.jsonlMode,
     width: opts.width,
     timestamps,
