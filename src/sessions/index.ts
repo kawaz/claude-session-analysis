@@ -6,15 +6,16 @@ const DURATION_RE = /^(\d+[smhd])+$/;
 function printUsage(exitCode: number = 0): never {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? console.error : console.log;
-  out(`Usage: ${prog} [--grep <keyword>] [--since <spec>] [--limit <N>]
+  out(`Usage: ${prog} [--grep <pattern>] [--project <pattern>] [--since <spec>] [--limit <N>]
 
 Options:
-  --grep <pattern>  Filter sessions by content (regex)
-  --since <spec>    Time filter. Duration: 5m, 1h, 2d, 1h30m
-                    or date string: 2024-01-01, 2024-01-01T12:00:00
-                    (default: 2d)
-  --limit <N>       Show last N sessions (default: 20)
-  --help            Show this help`);
+  --grep <pattern>     Filter sessions by content (regex)
+  --project <pattern>  Filter sessions by project path (regex, matches cwd)
+  --since <spec>       Time filter. Duration: 5m, 1h, 2d, 1h30m
+                       or date string: 2024-01-01, 2024-01-01T12:00:00
+                       (default: 2d)
+  --limit <N>          Show last N sessions (default: 20)
+  --help               Show this help`);
   process.exit(exitCode);
 }
 
@@ -42,11 +43,13 @@ const DEFAULT_LIMIT = 20;
 
 function parseOpts(rawArgs: string[]) {
   let keyword = "";
+  let project = "";
   let since = DEFAULT_SINCE;
   let tail = DEFAULT_LIMIT;
   let sinceExplicit = false;
   let limitExplicit = false;
   let grepExplicit = false;
+  let projectExplicit = false;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
@@ -61,6 +64,15 @@ function parseOpts(rawArgs: string[]) {
         }
         keyword = rawArgs[i] ?? "";
         grepExplicit = true;
+        break;
+      case "--project":
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --project requires a value");
+          printUsage(1);
+        }
+        project = rawArgs[i] ?? "";
+        projectExplicit = true;
         break;
       case "--since":
         i++;
@@ -91,7 +103,7 @@ function parseOpts(rawArgs: string[]) {
     i++;
   }
 
-  return { keyword, since, tail, sinceExplicit, limitExplicit, grepExplicit };
+  return { keyword, project, since, tail, sinceExplicit, limitExplicit, grepExplicit, projectExplicit };
 }
 
 function buildCommandLine(opts: ReturnType<typeof parseOpts>): string {
@@ -101,6 +113,11 @@ function buildCommandLine(opts: ReturnType<typeof parseOpts>): string {
   parts.push(`${opts.sinceExplicit ? "" : "["}--since ${since}${opts.sinceExplicit ? "" : "]"}`);
   const limit = opts.limitExplicit ? String(opts.tail) : String(DEFAULT_LIMIT);
   parts.push(`${opts.limitExplicit ? "" : "["}--limit ${limit}${opts.limitExplicit ? "" : "]"}`);
+  if (opts.projectExplicit) {
+    parts.push(`--project ${opts.project}`);
+  } else {
+    parts.push("[--project <REGEXP>]");
+  }
   if (opts.grepExplicit) {
     parts.push(`--grep ${opts.keyword}`);
   } else {
@@ -137,6 +154,7 @@ export async function run(args: string[]) {
       configDirs,
       since: cutoff,
       keyword: opts.keyword || undefined,
+      project: opts.project || undefined,
     });
 
     // 出力

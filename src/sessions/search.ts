@@ -31,6 +31,7 @@ export interface SearchOptions {
   configDirs: string[];
   since?: number; // Unix epoch seconds (cutoff): sessions with mtime >= since are included
   keyword?: string;
+  project?: string; // cwd を正規表現でフィルタ
 }
 
 /**
@@ -40,7 +41,7 @@ export interface SearchOptions {
 export async function searchSessions(
   opts: SearchOptions,
 ): Promise<SessionInfo[]> {
-  const { configDirs, since, keyword } = opts;
+  const { configDirs, since, keyword, project } = opts;
 
   // 1. projects/ ディレクトリを収集
   const projectDirs: string[] = [];
@@ -137,7 +138,13 @@ export async function searchSessions(
     filtered = all.filter((e) => e.mtime >= since);
   }
 
-  // 5. キーワード検索（正規表現対応）
+  // 5. project フィルタ（cwd を正規表現でマッチ）
+  if (project) {
+    const re = new RegExp(project);
+    filtered = filtered.filter((e) => re.test(e.cwd));
+  }
+
+  // 6. キーワード検索（正規表現対応）
   if (keyword) {
     const re = new RegExp(keyword);
     const matched: SessionInfo[] = [];
@@ -165,7 +172,7 @@ export async function searchSessions(
     filtered = matched;
   }
 
-  // 6. mtime昇順ソート
+  // 7. mtime昇順ソート
   filtered.sort((a, b) => a.mtime - b.mtime);
 
   return filtered;
