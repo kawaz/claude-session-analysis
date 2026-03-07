@@ -242,4 +242,19 @@ describe("parseArgs", () => {
     expect(args.from).toBe("Uabc1234");
     expect(args.to).toBe("Uabc1234");
   });
+
+  // since tests
+  test("デフォルトの since は空文字列", () => {
+    const args = parseArgs(["abc12345"]);
+    expect(args.since).toBe("");
+  });
+
+  test("--since で値指定", () => {
+    const args = parseArgs(["--since", "1h", "abc12345"]);
+    expect(args.since).toBe("1h");
+  });
+
+  test("--since の後に値がない場合エラー", () => {
+    expect(() => parseArgs(["--since"])).toThrow(/--since requires/);
+  });
 });

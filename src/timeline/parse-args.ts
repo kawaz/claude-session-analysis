@@ -53,6 +53,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     mdMode: "none",
     emoji: "auto",
     grep: "",
+    since: "",
     help: false,
   };
 
@@ -111,6 +112,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       i++;
       if (i >= argv.length) throw new Error("--grep requires a value");
       result.grep = argv[i];
+    } else if (arg === "--since") {
+      i++;
+      if (i >= argv.length) throw new Error("--since requires a value");
+      result.since = argv[i];
     } else if (arg === "--help") {
       result.help = true;
     } else if (arg.startsWith("-") && arg !== "-") {

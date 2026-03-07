@@ -95,6 +95,10 @@ function buildCommandHeader(
   const grepExplicit = args.includes("--grep");
   parts.push(grepExplicit ? `--grep ${opts.grep}` : `[--grep <REGEXP>]`);
 
+  // --since
+  const sinceExplicit = args.includes("--since");
+  parts.push(sinceExplicit ? `--since ${opts.since}` : `[--since <DURATION|DATE>]`);
+
   // --jsonl
   const jsonlExplicit = args.some(a => a === "--jsonl" || a.startsWith("--jsonl="));
   if (jsonlExplicit) {
@@ -181,6 +185,7 @@ export async function run(args: string[]) {
       from: opts.from,
       to: opts.to,
       grep: opts.grep,
+      since: opts.since,
     });
   } catch (e) {
     if (e instanceof SyntaxError) {
@@ -312,6 +317,7 @@ Options:
   --emoji                     Always show emoji
   --no-emoji                  Never show emoji
   --grep <pattern>            Filter events by desc (regex)
+  --since <spec>              Show events since (duration: 1h,30m,2d or date)
   --md[=auto|source|render|none]  Full text for Q/T/R/U (default: none)
                               auto=render if tty, source otherwise
   --jsonl[=none|redact|full]  JSONL output (default: none)
@@ -336,5 +342,6 @@ Examples:
   ${prog} --md abc12345                 Show with full Q/T/R/U text
   ${prog} --color=none --emoji abc12345 Emoji without colors
   ${prog} --grep "README" abc12345      Filter events matching pattern
+  ${prog} --since 1h abc12345           Show events from last 1 hour
   ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
 }

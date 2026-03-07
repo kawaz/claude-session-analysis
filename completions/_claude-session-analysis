@@ -29,6 +29,7 @@ _claude-session-analysis() {
         '--emoji[Always show emoji]' \
         '--no-emoji[Never show emoji]' \
         '--grep[Filter events by desc (regex)]:pattern:' \
+        '--since[Show events since (duration or date)]:spec:' \
         '--md=-[Full text for Q/T/R/U events]::mode:(auto source render none)' \
         '--jsonl=-[JSONL output]::mode:(none redact full)' \
         '--help[Show help]' \

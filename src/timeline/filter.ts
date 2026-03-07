@@ -1,4 +1,7 @@
 import type { TimelineEvent, RangeMarker } from "./types.ts";
+import { parseDuration } from "../sessions/search.ts";
+
+const DURATION_RE = /^(\d+[smhd])+$/;
 
 /** time+kind+descの組み合わせで重複排除。最初に出現したものを残す */
 export function dedup(events: TimelineEvent[]): TimelineEvent[] {
@@ -133,10 +136,34 @@ export function filterByType(events: TimelineEvent[], types: string): TimelineEv
   return events.filter((e) => types.includes(e.kind));
 }
 
-/** dedup -> removeNoBackup -> sort(.time) -> filterByRange -> filterByType -> filterByGrep */
+/** --since spec を cutoff ISO文字列に変換。空文字列なら空文字列を返す */
+function parseSinceSpec(spec: string): string {
+  if (spec === "") return "";
+  if (DURATION_RE.test(spec)) {
+    const seconds = parseDuration(spec);
+    return new Date(Date.now() - seconds * 1000).toISOString();
+  }
+  const d = new Date(spec);
+  if (isNaN(d.getTime())) {
+    throw new Error(`Invalid --since value: ${spec}`);
+  }
+  return d.toISOString();
+}
+
+/** since指定以降のイベントのみ返す */
+export function filterBySince(events: TimelineEvent[], since: string): TimelineEvent[] {
+  if (since === "") return events;
+  const cutoff = parseSinceSpec(since);
+  return events.filter((e) => {
+    const time = e.time.split("_")[0];
+    return time >= cutoff;
+  });
+}
+
+/** dedup -> removeNoBackup -> sort(.time) -> filterBySince -> filterByRange -> filterByType -> filterByGrep */
 export function pipeline(
   events: TimelineEvent[],
-  opts: { types: string; from: string; to: string; grep?: string },
+  opts: { types: string; from: string; to: string; grep?: string; since?: string },
 ): TimelineEvent[] {
   let result = dedup(events);
   result = removeNoBackup(result);
@@ -147,6 +174,9 @@ export function pipeline(
     a.ref < b.ref ? -1 : a.ref > b.ref ? 1 :
     a.desc < b.desc ? -1 : a.desc > b.desc ? 1 : 0
   );
+  if (opts.since) {
+    result = filterBySince(result, opts.since);
+  }
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
   if (opts.grep) {

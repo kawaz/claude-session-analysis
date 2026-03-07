@@ -6,6 +6,7 @@ import {
   filterByRange,
   filterByType,
   filterByGrep,
+  filterBySince,
   pipeline,
 } from "./filter.ts";
 import type { TimelineEvent } from "./types.ts";
@@ -289,6 +290,52 @@ describe("filterByGrep", () => {
   test("空パターン → 全件マッチ", () => {
     const result = filterByGrep(events, "");
     expect(result).toHaveLength(4);
+  });
+});
+
+describe("filterBySince", () => {
+  const events: TimelineEvent[] = [
+    { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00Z", desc: "old" },
+    { kind: "R", ref: "bbb22222", time: "2024-01-01T01:00:00Z", desc: "mid" },
+    { kind: "U", ref: "ccc33333", time: "2024-01-01T02:00:00Z", desc: "new" },
+  ];
+
+  test("空文字列は全件返す", () => {
+    expect(filterBySince(events, "")).toHaveLength(3);
+  });
+
+  test("ISO8601日時文字列でフィルタ", () => {
+    const result = filterBySince(events, "2024-01-01T00:30:00Z");
+    expect(result).toHaveLength(2);
+    expect(result[0].ref).toBe("bbb22222");
+    expect(result[1].ref).toBe("ccc33333");
+  });
+
+  test("duration文字列でフィルタ (1h)", () => {
+    // 現在時刻から1時間前以降のイベント → 未来のイベントなので全て除外される可能性
+    // → duration テストは相対的なので、現在時刻に近いイベントを使う
+    const now = new Date();
+    const recentEvents: TimelineEvent[] = [
+      { kind: "U", ref: "aaa11111", time: new Date(now.getTime() - 7200000).toISOString(), desc: "2h ago" },
+      { kind: "R", ref: "bbb22222", time: new Date(now.getTime() - 1800000).toISOString(), desc: "30m ago" },
+      { kind: "U", ref: "ccc33333", time: new Date(now.getTime() - 600000).toISOString(), desc: "10m ago" },
+    ];
+    const result = filterBySince(recentEvents, "1h");
+    expect(result).toHaveLength(2);
+    expect(result[0].desc).toBe("30m ago");
+    expect(result[1].desc).toBe("10m ago");
+  });
+
+  test("ソートサフィックス _NNNNN 付きの time も正しく処理", () => {
+    const result = filterBySince(
+      [
+        { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00Z_00001", desc: "old" },
+        { kind: "R", ref: "bbb22222", time: "2024-01-01T02:00:00Z_00002", desc: "new" },
+      ],
+      "2024-01-01T01:00:00Z",
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].ref).toBe("bbb22222");
   });
 });
 

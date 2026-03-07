@@ -80,5 +80,6 @@ export interface ParsedArgs {
   mdMode: "none" | "auto" | "render" | "source";  // default: "none"
   emoji: "auto" | "always" | "never";   // default: "auto"
   grep: string;         // --grep pattern (default: "")
+  since: string;        // --since spec (default: "")
   help: boolean;        // --help
 }

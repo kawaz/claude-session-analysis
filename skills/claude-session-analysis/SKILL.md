@@ -27,6 +27,7 @@ My session ID: `${CLAUDE_SESSION_ID}`
 - `--color[=auto|always|none]`: Color output (default: auto)
 - `--emoji` / `--no-emoji`: Emoji display (default: auto, follows color)
 - `--grep <pattern>`: Filter events by desc (regex)
+- `--since <spec>`: Show events since (duration: `1h`,`30m`,`2d` or date string)
 - `--md[=auto|source|render|none]`: Show QTRU full text (default: none; auto: render if tty, source otherwise)
 - `--jsonl[=none|redact|full]`: JSONL output (default: none; redact: omit+redact, full: redact only)
 - Range: `..m` (start to m), `m..` (m to end), `from..to`, `m` (single)
