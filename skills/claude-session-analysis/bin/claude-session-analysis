@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/bin/sh
+':' //; b=$(command -v bun) && exec "$b" --bun "$0" "$@"; exec node "$0" "$@"
 // @bun
 
 // src/timeline/parse-args.ts
@@ -268,7 +269,7 @@ function shortenPath(path, n = 2) {
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n)
     return path;
-  return `\u2026/${segments.slice(-n).join("/")}`;
+  return `…/${segments.slice(-n).join("/")}`;
 }
 function lastSegments(path, n = 2) {
   const segments = path.split("/").filter((s) => s !== "");
@@ -530,7 +531,7 @@ function extractFileSnapshotEvents(entry, sessionCwd, events) {
 }
 
 // src/sessions/search.ts
-import { stat } from "fs/promises";
+import { stat } from "node:fs/promises";
 function parseDuration(spec) {
   const units = { s: 1, m: 60, h: 3600, d: 86400 };
   let total = 0;
@@ -857,14 +858,17 @@ function pipeline(events, opts) {
   if (opts.since) {
     result = filterBySince(result, opts.since);
   }
-  if (opts.lastSince) {
+  if (opts.lastSince && opts.lastTurn && opts.lastTurn > 0) {
+    const bySince = filterByLastSince(result, opts.lastSince);
+    const byTurn = filterByLastTurn(result, opts.lastTurn);
+    result = bySince.length >= byTurn.length ? bySince : byTurn;
+  } else if (opts.lastSince) {
     result = filterByLastSince(result, opts.lastSince);
+  } else if (opts.lastTurn && opts.lastTurn > 0) {
+    result = filterByLastTurn(result, opts.lastTurn);
   }
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
-  if (opts.lastTurn && opts.lastTurn > 0) {
-    result = filterByLastTurn(result, opts.lastTurn);
-  }
   if (opts.grep) {
     const hasContext = opts.before && opts.before > 0 || opts.after && opts.after > 0;
     if (hasContext) {
@@ -905,14 +909,14 @@ var COLOR_MAP = {
   T: { ansi: "\x1B[3;34m", emoji: "\uD83E\uDDE0" },
   R: { ansi: "\x1B[34m", emoji: "\uD83E\uDD16" },
   Q: { ansi: "\x1B[34m", emoji: "\uD83E\uDD16" },
-  B: { ansi: "\x1B[2m", emoji: "\u25B6\uFE0F" },
+  B: { ansi: "\x1B[2m", emoji: "▶️" },
   F: { ansi: "\x1B[2m", emoji: "\uD83D\uDC40" },
   W: { ansi: "\x1B[2m", emoji: "\uD83D\uDEDC" },
-  S: { ansi: "\x1B[2m", emoji: "\u26A1\uFE0F" },
+  S: { ansi: "\x1B[2m", emoji: "⚡️" },
   G: { ansi: "\x1B[2m", emoji: "\uD83D\uDD0D" },
   A: { ansi: "\x1B[2m", emoji: "\uD83D\uDC7B" },
-  D: { ansi: "\x1B[2m", emoji: "\u2705" },
-  I: { ansi: "\x1B[2m", emoji: "\u2139\uFE0F" }
+  D: { ansi: "\x1B[2m", emoji: "✅" },
+  I: { ansi: "\x1B[2m", emoji: "ℹ️" }
 };
 function colorize(line, opts) {
   const useColors = opts?.colors ?? true;
@@ -1202,6 +1206,7 @@ Options:
   --since <spec>              Show events since (duration: 1h,30m,2d or date)
   --last-since <duration>     Show events since duration before session end
   --last-turn <N>             Show last N turns (U starts a turn)
+                              Both: use whichever gives more events
   --md[=auto|source|render|none]  Full text for Q/T/R/U (default: none)
                               auto=render if tty, source otherwise
   --jsonl[=none|redact|full]  JSONL output (default: none)
@@ -1219,48 +1224,19 @@ Range:
   marker      Single marker only
 
 Examples:
-  ${prog} abc12345                      Show timeline for session
-  ${prog} ./path/to/session.jsonl       Show timeline from file
-  ${prog} -t UR abc12345                Show only User & Response
-  ${prog} --timestamps abc12345         Show with timestamps
-  ${prog} --md abc12345                 Show with full Q/T/R/U text
-  ${prog} --color=none --emoji abc12345 Emoji without colors
-  ${prog} --grep "README" abc12345      Filter events matching pattern
-  ${prog} --since 1h abc12345           Show events from last 1 hour
-  ${prog} --last-turn 3 abc12345       Show last 3 turns
-  ${prog} --last-since 30m abc12345    Show events from last 30m of session
-  ${prog} --grep README -C 1 abc12345  Grep with 1 turn context
-  ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
-}
-
-// src/summaries/extract.ts
-function extractSummaries(entries) {
-  return entries.filter((e) => e !== null && typeof e === "object" && !Array.isArray(e)).filter((e) => e.type === "summary").map((e) => e.summary);
-}
-
-// src/summaries/index.ts
-async function run2(args) {
-  const input = args[0];
-  if (!input || input === "--help") {
-    const prog = process.env._PROG || "summaries";
-    const out = !input ? console.error : console.log;
-    out(`Usage: ${prog} <session_id_or_file>`);
-    if (!input)
-      process.exit(1);
-    return;
-  }
-  const sessionFile = await resolveSession(input);
-  const text = await Bun.file(sessionFile).text();
-  const rawLines = text.split(`
-`).filter((line) => line.trim());
-  const entries = [];
-  for (const line of rawLines) {
-    try {
-      entries.push(JSON.parse(line));
-    } catch {}
-  }
-  const summaries = extractSummaries(entries);
-  console.log(JSON.stringify(summaries, null, 2));
+  ${prog} SID                                          Show timeline
+  ${prog} /path/to/session.jsonl                       Show timeline from file
+  ${prog} SID --md -t RU                               User & Response full text
+  ${prog} SID --md -t RUT                              With Think for more context
+  ${prog} SID --md -t TRU --last-since 2h --last-turn 10
+                                                       Recent turns for context recovery
+  ${prog} SID --timestamps                             Show with timestamps
+  ${prog} SID --grep "README"                          Filter events matching pattern
+  ${prog} SID --grep README -C 1                       Grep with 1 turn context
+  ${prog} SID --since 1h                               Show events from last 1 hour
+  ${prog} SID --last-turn 3                            Show last 3 turns
+  ${prog} SID --last-since 30m                         Show events from last 30m of session
+  ${prog} SID Uabc1234..Rabc5678                       Show range between markers`);
 }
 
 // src/file-ops/extract.ts
@@ -1318,7 +1294,7 @@ function extractFileOpsFromJsonl(jsonl) {
 }
 
 // src/file-ops/index.ts
-async function run3(args) {
+async function run2(args) {
   const input = args[0];
   if (!input || input === "--help") {
     const prog = process.env._PROG || "file-ops";
@@ -1332,138 +1308,6 @@ async function run3(args) {
   const text = await Bun.file(sessionFile).text();
   const result = extractFileOpsFromJsonl(text);
   console.log(JSON.stringify(result, null, 2));
-}
-
-// src/get-by-marker/extract.ts
-function parseMarker(marker) {
-  const type = marker.replace(/[a-f0-9].*$/, "");
-  const id = marker.slice(type.length);
-  return { type, id };
-}
-function matchesEntry(entry, type, id) {
-  if (type === "F") {
-    const uuid2 = (entry.uuid || "").slice(0, id.length);
-    const messageId = (entry.messageId || "").slice(0, id.length);
-    return uuid2 === id || messageId === id;
-  }
-  const uuid = (entry.uuid || "").slice(0, id.length);
-  return uuid === id;
-}
-function hasIdentifier(entry) {
-  return Boolean(entry.uuid || entry.messageId);
-}
-function findEntries(entries, type, id) {
-  return entries.filter((entry) => matchesEntry(entry, type, id));
-}
-function findEntriesWithContext(entries, type, id, before, after) {
-  const indexable = entries.filter(hasIdentifier);
-  const matchIdx = indexable.findIndex((entry) => matchesEntry(entry, type, id));
-  if (matchIdx === -1)
-    return [];
-  const start = Math.max(matchIdx - before, 0);
-  const end = Math.min(matchIdx + after, indexable.length - 1);
-  return indexable.slice(start, end + 1);
-}
-
-// src/get-by-marker/index.ts
-var OMIT_KEYS2 = [
-  "signature",
-  "isSidechain",
-  "userType",
-  "version",
-  "slug",
-  "requestId",
-  "sessionId",
-  "stop_reason",
-  "stop_sequence",
-  "usage",
-  "id",
-  "role",
-  "parentUuid",
-  "uuid",
-  "thinkingMetadata"
-];
-var REDACT_KEYS2 = ["data"];
-async function run4(args) {
-  let rawMode = 0;
-  let after = 0;
-  let before = 0;
-  const positional = [];
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg === "--help") {
-      printUsage2();
-      return;
-    } else if (arg === "--raw") {
-      rawMode = 1;
-      i++;
-    } else if (arg === "--raw2") {
-      rawMode = 2;
-      i++;
-    } else if (arg === "-A") {
-      after = Number(args[i + 1]);
-      i += 2;
-    } else if (arg === "-B") {
-      before = Number(args[i + 1]);
-      i += 2;
-    } else if (arg === "-C") {
-      after = Number(args[i + 1]);
-      before = Number(args[i + 1]);
-      i += 2;
-    } else if (arg.startsWith("-")) {
-      console.error(`Unknown option: ${arg}`);
-      process.exit(1);
-    } else {
-      positional.push(arg);
-      i++;
-    }
-  }
-  const input = positional[0];
-  const marker = positional[1];
-  if (!input || !marker) {
-    printUsage2();
-    process.exit(1);
-  }
-  const sessionFile = await resolveSession(input);
-  const text = await Bun.file(sessionFile).text();
-  const rawLines = text.split(`
-`).filter((line) => line.trim());
-  const entries = [];
-  for (const line of rawLines) {
-    try {
-      entries.push(JSON.parse(line));
-    } catch {}
-  }
-  const { type, id } = parseMarker(marker);
-  let result;
-  if (before > 0 || after > 0) {
-    result = findEntriesWithContext(entries, type, id, before, after);
-  } else {
-    result = findEntries(entries, type, id);
-  }
-  if (result.length === 0) {
-    console.error(`Not found: ${marker}`);
-    process.exit(1);
-  }
-  const output = [];
-  for (const entry of result) {
-    let processed;
-    if (rawMode === 2) {
-      processed = redactWithHint(omit(entry, OMIT_KEYS2), REDACT_KEYS2);
-    } else if (rawMode === 1) {
-      processed = redact(omit(entry, OMIT_KEYS2), REDACT_KEYS2);
-    } else {
-      processed = redact(omit(entry, OMIT_KEYS2), REDACT_KEYS2);
-    }
-    output.push(JSON.stringify(processed, null, 2));
-  }
-  console.log(output.join(`
-`));
-}
-function printUsage2() {
-  const prog = process.env._PROG || "get-by-marker";
-  console.log(`Usage: ${prog} [--raw] [--raw2] [-A <n>] [-B <n>] [-C <n>] <session_id_or_file> <marker>`);
 }
 
 // src/file-diff/resolve.ts
@@ -1533,7 +1377,7 @@ function findOriginalPath(jsonlContent, fullHash) {
 }
 
 // src/file-diff/index.ts
-async function run5(args) {
+async function run3(args) {
   if (args[0] === "--help") {
     const prog = process.env._PROG || "file-diff";
     console.log(`Usage: ${prog} <session_id_prefix> <backup_hash_prefix> <v1> [v2]`);
@@ -1730,21 +1574,19 @@ function formatSessionsOutput(stats, filtered, opts) {
 
 // src/sessions/index.ts
 var DURATION_RE2 = /^(\d+[smhd])+$/;
-function printUsage3(exitCode = 0) {
+function printUsage2(exitCode = 0) {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? console.error : console.log;
   out(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
 
 Options:
-  --grep <pattern>     Filter sessions by content (regex)
-  --path <pattern>   Filter sessions by path (regex, matches cwd)
-                       Default: auto-detect from git root / cwd
-  --all                Show all projects (disable auto-detect)
-  --since <spec>       Time filter. Duration: 5m, 1h, 2d, 1h30m
-                       or date string: 2024-01-01, 2024-01-01T12:00:00
-                       (default: 2d)
-  --limit <N>          Show last N sessions (default: 20)
-  --help               Show this help`);
+  --grep <pattern>   Filter sessions by content (regex)
+  --path <pattern>   Filter sessions by path (regex)
+  --since <spec>     Time filter. Duration: 5m, 1h, 2d, 1h30m
+                     or date string: 2024-01-01, 2024-01-01T12:00:00
+                     (default: 2d)
+  --limit <N>        Show last N sessions (default: 20)
+  --help             Show this help`);
   process.exit(exitCode);
 }
 function parseSince(spec) {
@@ -1769,41 +1611,34 @@ function parseOpts(rawArgs) {
   let sinceExplicit = false;
   let limitExplicit = false;
   let grepExplicit = false;
-  let pathExplicit = false;
-  let all = false;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
       case "--help":
-        printUsage3(0);
+        printUsage2(0);
         break;
       case "--grep":
         i++;
         if (i >= rawArgs.length) {
           console.error("Error: --grep requires a value");
-          printUsage3(1);
+          printUsage2(1);
         }
         keyword = rawArgs[i] ?? "";
         grepExplicit = true;
-        break;
-      case "--all":
-        all = true;
-        pathExplicit = true;
         break;
       case "--path":
         i++;
         if (i >= rawArgs.length) {
           console.error("Error: --path requires a value");
-          printUsage3(1);
+          printUsage2(1);
         }
         pathFilter = rawArgs[i] ?? "";
-        pathExplicit = true;
         break;
       case "--since":
         i++;
         if (i >= rawArgs.length) {
           console.error("Error: --since requires a value");
-          printUsage3(1);
+          printUsage2(1);
         }
         since = rawArgs[i] ?? DEFAULT_SINCE;
         sinceExplicit = true;
@@ -1812,7 +1647,7 @@ function parseOpts(rawArgs) {
         i++;
         if (i >= rawArgs.length) {
           console.error("Error: --limit requires a value");
-          printUsage3(1);
+          printUsage2(1);
         }
         tail = parseInt(rawArgs[i] ?? String(DEFAULT_LIMIT), 10);
         limitExplicit = true;
@@ -1820,26 +1655,24 @@ function parseOpts(rawArgs) {
       default:
         if (rawArgs[i].startsWith("-")) {
           console.error(`Unknown option: ${rawArgs[i]}`);
-          printUsage3(1);
+          printUsage2(1);
         }
         break;
     }
     i++;
   }
-  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit, pathExplicit, all };
+  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit };
 }
 function buildCommandHelp2() {
   const prog = process.env._PROG || "sessions";
-  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP,=CURRENT_PROJECT>] [--all] [--grep <REGEXP>] [--help]`;
+  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--help]`;
 }
 function buildCommandComputed2(opts) {
   const prog = process.env._PROG || "sessions";
   const parts = [prog];
   parts.push(`--since ${opts.since}`);
   parts.push(`--limit ${opts.tail}`);
-  if (opts.all) {
-    parts.push("--all");
-  } else if (opts.pathFilter) {
+  if (opts.pathFilter) {
     parts.push(`--path ${opts.pathFilter}`);
   }
   if (opts.keyword) {
@@ -1847,52 +1680,7 @@ function buildCommandComputed2(opts) {
   }
   return parts.join(" ");
 }
-function stripReposPrefix(p) {
-  const m = p.match(/\/repos\/(.+)/);
-  return m ? m[1] : null;
-}
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-async function getDefaultPathCandidates() {
-  const candidates = [];
-  try {
-    const proc = Bun.spawn(["git", "rev-parse", "--git-common-dir"], {
-      stdout: "pipe",
-      stderr: "pipe"
-    });
-    const commonDir = (await new Response(proc.stdout).text()).trim();
-    await proc.exited;
-    if (commonDir) {
-      const repoParent = commonDir.replace(/\/\.git$/, "");
-      const stripped = stripReposPrefix(repoParent);
-      if (stripped)
-        candidates.push(stripped);
-    }
-  } catch {}
-  if (candidates.length === 0) {
-    try {
-      const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"], {
-        stdout: "pipe",
-        stderr: "pipe"
-      });
-      const gitRoot = (await new Response(proc.stdout).text()).trim();
-      await proc.exited;
-      if (gitRoot) {
-        const stripped = stripReposPrefix(gitRoot);
-        if (stripped && !candidates.includes(stripped))
-          candidates.push(stripped);
-      }
-    } catch {}
-  }
-  const pwd = process.cwd();
-  const strippedPwd = stripReposPrefix(pwd);
-  if (strippedPwd && !candidates.includes(strippedPwd)) {
-    candidates.push(strippedPwd);
-  }
-  return candidates;
-}
-async function run6(args) {
+async function run4(args) {
   const opts = parseOpts(args);
   const cutoff = parseSince(opts.since);
   const configDir = process.env.CLAUDE_CONFIG_DIR;
@@ -1910,49 +1698,20 @@ async function run6(args) {
   const command = `${prog} ${args.join(" ")}`;
   const commandHelp = buildCommandHelp2();
   try {
-    if (opts.pathExplicit) {
-      const { sessions: filtered, stats } = await searchSessions({
-        configDirs,
-        since: cutoff,
-        keyword: opts.keyword || undefined,
-        path: opts.pathFilter || undefined
-      });
-      const output = formatSessionsOutput(stats, filtered, {
-        tail: opts.tail,
-        command,
-        commandComputed: buildCommandComputed2(opts),
-        commandHelp
-      });
-      if (output)
-        console.log(output);
-    } else {
-      const { sessions: allFiltered, stats } = await searchSessions({
-        configDirs,
-        since: cutoff,
-        keyword: opts.keyword || undefined
-      });
-      const candidates = await getDefaultPathCandidates();
-      let filtered = null;
-      let usedPath = "";
-      for (const candidate of candidates) {
-        const re = new RegExp(escapeRegExp(candidate));
-        const matched = allFiltered.filter((s) => re.test(s.cwd));
-        if (matched.length > 0) {
-          filtered = matched;
-          usedPath = candidate;
-          break;
-        }
-      }
-      const effectiveOpts = usedPath ? { ...opts, pathFilter: usedPath } : opts;
-      const output = formatSessionsOutput(stats, filtered ?? allFiltered, {
-        tail: opts.tail,
-        command,
-        commandComputed: buildCommandComputed2(effectiveOpts),
-        commandHelp
-      });
-      if (output)
-        console.log(output);
-    }
+    const { sessions: filtered, stats } = await searchSessions({
+      configDirs,
+      since: cutoff,
+      keyword: opts.keyword || undefined,
+      path: opts.pathFilter || undefined
+    });
+    const output = formatSessionsOutput(stats, filtered, {
+      tail: opts.tail,
+      command,
+      commandComputed: buildCommandComputed2(opts),
+      commandHelp
+    });
+    if (output)
+      console.log(output);
   } catch (e) {
     if (e instanceof SyntaxError) {
       console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);
@@ -1963,8 +1722,8 @@ async function run6(args) {
 }
 
 // src/resolve-session/index.ts
-import * as path from "path";
-function printUsage4(exitCode = 0) {
+import * as path from "node:path";
+function printUsage3(exitCode = 0) {
   const prog = process.env._PROG || "resolve-session";
   const out = exitCode !== 0 ? console.error : console.log;
   out(`Usage: ${prog} [--path] <session_id_prefix>
@@ -1974,14 +1733,14 @@ Options:
   --help  Show this help`);
   process.exit(exitCode);
 }
-async function run7(args) {
+async function run5(args) {
   let showPath = false;
   let prefix = "";
   let i = 0;
   while (i < args.length) {
     switch (args[i]) {
       case "--help":
-        printUsage4(0);
+        printUsage3(0);
         break;
       case "--path":
         showPath = true;
@@ -1989,7 +1748,7 @@ async function run7(args) {
       default:
         if (args[i].startsWith("-")) {
           console.error(`Unknown option: ${args[i]}`);
-          printUsage4(1);
+          printUsage3(1);
         }
         prefix = args[i];
         break;
@@ -1997,7 +1756,7 @@ async function run7(args) {
     i++;
   }
   if (!prefix) {
-    printUsage4(1);
+    printUsage3(1);
   }
   const resolved = await resolveSession(prefix);
   if (showPath) {
@@ -2023,14 +1782,12 @@ process.stderr?.on("error", (e) => {
 var PROG = "claude-session-analysis";
 var SUBCOMMANDS = {
   timeline: { desc: "Display session events with filtering and formatting options", run },
-  summaries: { desc: "Extract summary information from a session", run: run2 },
-  "file-ops": { desc: "Extract file operations from a session", run: run3 },
-  "get-by-marker": { desc: "Retrieve session entries by marker with optional context", run: run4 },
-  "file-diff": { desc: "Compare backup file versions or backup vs current file", run: run5 },
-  sessions: { desc: "List available Claude sessions with filtering and search", run: run6 },
-  "resolve-session": { desc: "Resolve session ID prefix to full ID or file path", run: run7 }
+  "file-ops": { desc: "Extract file operations from a session", run: run2 },
+  "file-diff": { desc: "Compare backup file versions or backup vs current file", run: run3 },
+  sessions: { desc: "List available Claude sessions with filtering and search", run: run4 },
+  "resolve-session": { desc: "Resolve session ID prefix to full ID or file path", run: run5 }
 };
-function printUsage5(exitCode = 0) {
+function printUsage4(exitCode = 0) {
   const names = Object.keys(SUBCOMMANDS);
   const maxLen = Math.max(...names.map((n) => n.length));
   const lines = Object.entries(SUBCOMMANDS).map(([name, { desc }]) => `  ${name.padEnd(maxLen)}  ${desc}`);
@@ -2046,16 +1803,16 @@ Run '${PROG} <command> --help' for more information on a command.`);
 }
 var subcmd = process.argv[2];
 if (!subcmd) {
-  printUsage5(1);
+  printUsage4(1);
 }
 if (subcmd === "--help") {
-  printUsage5();
+  printUsage4();
 }
 var entry = SUBCOMMANDS[subcmd];
 if (!entry) {
   console.error(`Unknown command: ${subcmd}
 `);
-  printUsage5(1);
+  printUsage4(1);
 }
 process.env._PROG = `${PROG} ${subcmd}`;
 try {

@@ -12,9 +12,7 @@ process.stderr?.on("error", (e: NodeJS.ErrnoException) => {
 });
 
 import { run as timelineRun } from "./timeline/index.ts";
-import { run as summariesRun } from "./summaries/index.ts";
 import { run as fileOpsRun } from "./file-ops/index.ts";
-import { run as getByMarkerRun } from "./get-by-marker/index.ts";
 import { run as fileDiffRun } from "./file-diff/index.ts";
 import { run as sessionsRun } from "./sessions/index.ts";
 import { run as resolveSessionRun } from "./resolve-session/index.ts";
@@ -23,9 +21,7 @@ const PROG = "claude-session-analysis";
 
 const SUBCOMMANDS: Record<string, { desc: string; run: (args: string[]) => Promise<void> }> = {
   timeline:        { desc: "Display session events with filtering and formatting options", run: timelineRun },
-  summaries:       { desc: "Extract summary information from a session", run: summariesRun },
   "file-ops":      { desc: "Extract file operations from a session", run: fileOpsRun },
-  "get-by-marker": { desc: "Retrieve session entries by marker with optional context", run: getByMarkerRun },
   "file-diff":     { desc: "Compare backup file versions or backup vs current file", run: fileDiffRun },
   sessions:          { desc: "List available Claude sessions with filtering and search", run: sessionsRun },
   "resolve-session": { desc: "Resolve session ID prefix to full ID or file path", run: resolveSessionRun },

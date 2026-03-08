@@ -252,21 +252,3 @@ describe("formatSessionsOutput", () => {
     expect(output).toMatch(/TIMESTAMP_END[+-]\d{2}:\d{2}\s+DUR\b/);
   });
 });
-
-// stripReposPrefix は index.ts からエクスポートされている
-import { stripReposPrefix } from "./index.ts";
-
-describe("stripReposPrefix", () => {
-
-  test("repos/以降を返す", () => {
-    expect(stripReposPrefix("/Users/kawaz/.local/share/repos/github.com/kawaz/project"))
-      .toBe("github.com/kawaz/project");
-  });
-  test("repos/がなければnull", () => {
-    expect(stripReposPrefix("/Users/kawaz/project")).toBeNull();
-  });
-  test("複数repos/がある場合は最初にマッチ", () => {
-    expect(stripReposPrefix("/a/repos/b/repos/c"))
-      .toBe("b/repos/c");
-  });
-});

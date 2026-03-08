@@ -9,15 +9,13 @@ function printUsage(exitCode: number = 0): never {
   out(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
 
 Options:
-  --grep <pattern>     Filter sessions by content (regex)
-  --path <pattern>   Filter sessions by path (regex, matches cwd)
-                       Default: auto-detect from git root / cwd
-  --all                Show all projects (disable auto-detect)
-  --since <spec>       Time filter. Duration: 5m, 1h, 2d, 1h30m
-                       or date string: 2024-01-01, 2024-01-01T12:00:00
-                       (default: 2d)
-  --limit <N>          Show last N sessions (default: 20)
-  --help               Show this help`);
+  --grep <pattern>   Filter sessions by content (regex)
+  --path <pattern>   Filter sessions by path (regex)
+  --since <spec>     Time filter. Duration: 5m, 1h, 2d, 1h30m
+                     or date string: 2024-01-01, 2024-01-01T12:00:00
+                     (default: 2d)
+  --limit <N>        Show last N sessions (default: 20)
+  --help             Show this help`);
   process.exit(exitCode);
 }
 
@@ -51,8 +49,6 @@ function parseOpts(rawArgs: string[]) {
   let sinceExplicit = false;
   let limitExplicit = false;
   let grepExplicit = false;
-  let pathExplicit = false;
-  let all = false;
   let i = 0;
   while (i < rawArgs.length) {
     switch (rawArgs[i]) {
@@ -68,10 +64,6 @@ function parseOpts(rawArgs: string[]) {
         keyword = rawArgs[i] ?? "";
         grepExplicit = true;
         break;
-      case "--all":
-        all = true;
-        pathExplicit = true;
-        break;
       case "--path":
         i++;
         if (i >= rawArgs.length) {
@@ -79,7 +71,6 @@ function parseOpts(rawArgs: string[]) {
           printUsage(1);
         }
         pathFilter = rawArgs[i] ?? "";
-        pathExplicit = true;
         break;
       case "--since":
         i++;
@@ -110,12 +101,12 @@ function parseOpts(rawArgs: string[]) {
     i++;
   }
 
-  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit, pathExplicit, all };
+  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit };
 }
 
 function buildCommandHelp(): string {
   const prog = process.env._PROG || "sessions";
-  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP,=CURRENT_PROJECT>] [--all] [--grep <REGEXP>] [--help]`;
+  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--help]`;
 }
 
 function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
@@ -123,9 +114,7 @@ function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
   const parts = [prog];
   parts.push(`--since ${opts.since}`);
   parts.push(`--limit ${opts.tail}`);
-  if (opts.all) {
-    parts.push("--all");
-  } else if (opts.pathFilter) {
+  if (opts.pathFilter) {
     parts.push(`--path ${opts.pathFilter}`);
   }
   if (opts.keyword) {
@@ -134,62 +123,7 @@ function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
   return parts.join(" ");
 }
 
-// パスから /repos/ より前を除去
-export function stripReposPrefix(p: string): string | null {
-  const m = p.match(/\/repos\/(.+)/);
-  return m ? m[1]! : null;
-}
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-async function getDefaultPathCandidates(): Promise<string[]> {
-  const candidates: string[] = [];
-
-  // 1. git-common-dir → repo親（worktree/workspace名を含まない）
-  try {
-    const proc = Bun.spawn(["git", "rev-parse", "--git-common-dir"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const commonDir = (await new Response(proc.stdout).text()).trim();
-    await proc.exited;
-    if (commonDir) {
-      const repoParent = commonDir.replace(/\/\.git$/, "");
-      const stripped = stripReposPrefix(repoParent);
-      if (stripped) candidates.push(stripped);
-    }
-  } catch {
-    // git not available
-  }
-
-  // 2. git show-toplevel（worktree自体のパス）
-  if (candidates.length === 0) {
-    try {
-      const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const gitRoot = (await new Response(proc.stdout).text()).trim();
-      await proc.exited;
-      if (gitRoot) {
-        const stripped = stripReposPrefix(gitRoot);
-        if (stripped && !candidates.includes(stripped)) candidates.push(stripped);
-      }
-    } catch {
-      // git not available
-    }
-  }
-
-  // 3. PWD
-  const pwd = process.cwd();
-  const strippedPwd = stripReposPrefix(pwd);
-  if (strippedPwd && !candidates.includes(strippedPwd)) {
-    candidates.push(strippedPwd);
-  }
-  return candidates;
-}
 
 export async function run(args: string[]) {
   const opts = parseOpts(args);
@@ -214,51 +148,19 @@ export async function run(args: string[]) {
   const commandHelp = buildCommandHelp();
 
   try {
-    if (opts.pathExplicit) {
-      // 明示指定: そのまま渡す
-      const { sessions: filtered, stats } = await searchSessions({
-        configDirs,
-        since: cutoff,
-        keyword: opts.keyword || undefined,
-        path: opts.pathFilter || undefined,
-      });
-      const output = formatSessionsOutput(stats, filtered, {
-        tail: opts.tail,
-        command,
-        commandComputed: buildCommandComputed(opts),
-        commandHelp,
-      });
-      if (output) console.log(output);
-    } else {
-      // デフォルトpath: pathなしで検索し、候補で順にフィルタ
-      const { sessions: allFiltered, stats } = await searchSessions({
-        configDirs,
-        since: cutoff,
-        keyword: opts.keyword || undefined,
-      });
-      const candidates = await getDefaultPathCandidates();
-      let filtered: SessionInfo[] | null = null;
-      let usedPath = "";
-      for (const candidate of candidates) {
-        const re = new RegExp(escapeRegExp(candidate));
-        const matched = allFiltered.filter((s) => re.test(s.cwd));
-        if (matched.length > 0) {
-          filtered = matched;
-          usedPath = candidate;
-          break;
-        }
-      }
-      const effectiveOpts = usedPath
-        ? { ...opts, pathFilter: usedPath }
-        : opts;
-      const output = formatSessionsOutput(stats, filtered ?? allFiltered, {
-        tail: opts.tail,
-        command,
-        commandComputed: buildCommandComputed(effectiveOpts),
-        commandHelp,
-      });
-      if (output) console.log(output);
-    }
+    const { sessions: filtered, stats } = await searchSessions({
+      configDirs,
+      since: cutoff,
+      keyword: opts.keyword || undefined,
+      path: opts.pathFilter || undefined,
+    });
+    const output = formatSessionsOutput(stats, filtered, {
+      tail: opts.tail,
+      command,
+      commandComputed: buildCommandComputed(opts),
+      commandHelp,
+    });
+    if (output) console.log(output);
   } catch (e) {
     if (e instanceof SyntaxError) {
       console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);

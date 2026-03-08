@@ -1,7 +1,8 @@
 import { $ } from "bun";
 import { mkdirSync } from "node:fs";
 
-const SHEBANG = "#!/usr/bin/env bun\n";
+const SHEBANG =
+  "#!/bin/sh\n':' //; b=$(command -v bun) && exec \"$b\" --bun \"$0\" \"$@\"; exec node \"$0\" \"$@\"\n";
 const OUTDIR = "skills/claude-session-analysis/bin";
 const OUTFILE = `${OUTDIR}/claude-session-analysis`;
 const ENTRYPOINT = "src/cli.ts";
@@ -15,7 +16,7 @@ const result = await Bun.build({
   entrypoints: [ENTRYPOINT],
   outdir: OUTDIR,
   naming: "claude-session-analysis.js",
-  target: "bun",
+  target: "node",
 });
 
 if (!result.success) {

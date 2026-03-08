@@ -254,14 +254,18 @@ export function pipeline(
   if (opts.since) {
     result = filterBySince(result, opts.since);
   }
-  if (opts.lastSince) {
+  if (opts.lastSince && opts.lastTurn && opts.lastTurn > 0) {
+    // 両方指定時は範囲が大きい方を採用
+    const bySince = filterByLastSince(result, opts.lastSince);
+    const byTurn = filterByLastTurn(result, opts.lastTurn);
+    result = bySince.length >= byTurn.length ? bySince : byTurn;
+  } else if (opts.lastSince) {
     result = filterByLastSince(result, opts.lastSince);
+  } else if (opts.lastTurn && opts.lastTurn > 0) {
+    result = filterByLastTurn(result, opts.lastTurn);
   }
   result = filterByRange(result, opts.from, opts.to);
   result = filterByType(result, opts.types);
-  if (opts.lastTurn && opts.lastTurn > 0) {
-    result = filterByLastTurn(result, opts.lastTurn);
-  }
   // grep: A/B/C が指定されていればターン単位コンテキスト、なければ行フィルタ
   if (opts.grep) {
     const hasContext = (opts.before && opts.before > 0) || (opts.after && opts.after > 0);

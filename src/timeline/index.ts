@@ -266,6 +266,7 @@ Options:
   --since <spec>              Show events since (duration: 1h,30m,2d or date)
   --last-since <duration>     Show events since duration before session end
   --last-turn <N>             Show last N turns (U starts a turn)
+                              Both: use whichever gives more events
   --md[=auto|source|render|none]  Full text for Q/T/R/U (default: none)
                               auto=render if tty, source otherwise
   --jsonl[=none|redact|full]  JSONL output (default: none)
@@ -283,16 +284,17 @@ Range:
   marker      Single marker only
 
 Examples:
-  ${prog} abc12345                      Show timeline for session
-  ${prog} ./path/to/session.jsonl       Show timeline from file
-  ${prog} -t UR abc12345                Show only User & Response
-  ${prog} --timestamps abc12345         Show with timestamps
-  ${prog} --md abc12345                 Show with full Q/T/R/U text
-  ${prog} --color=none --emoji abc12345 Emoji without colors
-  ${prog} --grep "README" abc12345      Filter events matching pattern
-  ${prog} --since 1h abc12345           Show events from last 1 hour
-  ${prog} --last-turn 3 abc12345       Show last 3 turns
-  ${prog} --last-since 30m abc12345    Show events from last 30m of session
-  ${prog} --grep README -C 1 abc12345  Grep with 1 turn context
-  ${prog} abc12345 Uabc1234..Rabc5678   Show range between markers`);
+  ${prog} SID                                          Show timeline
+  ${prog} /path/to/session.jsonl                       Show timeline from file
+  ${prog} SID --md -t RU                               User & Response full text
+  ${prog} SID --md -t RUT                              With Think for more context
+  ${prog} SID --md -t TRU --last-since 2h --last-turn 10
+                                                       Recent turns for context recovery
+  ${prog} SID --timestamps                             Show with timestamps
+  ${prog} SID --grep "README"                          Filter events matching pattern
+  ${prog} SID --grep README -C 1                       Grep with 1 turn context
+  ${prog} SID --since 1h                               Show events from last 1 hour
+  ${prog} SID --last-turn 3                            Show last 3 turns
+  ${prog} SID --last-since 30m                         Show events from last 30m of session
+  ${prog} SID Uabc1234..Rabc5678                       Show range between markers`);
 }
