@@ -60,7 +60,7 @@ push:
     fi
     # バリデーション
     claude plugin validate .
-    git push
+    if [ -d .jj ]; then jj git push; else git push; fi
 
 # push（バージョンbumpなし）
 push-without-bump:
@@ -77,7 +77,7 @@ push-without-bump:
             exit 1
         fi
     fi
-    git push
+    if [ -d .jj ]; then jj git push; else git push; fi
 
 # mdp のバンドル版を GitHub リリースから取り込む（バージョンが異なる場合のみ）
 mdp-copy:
