@@ -1,4 +1,4 @@
-# claude-session-analysis
+# claude-session-analysis justfile
 
 # テスト実行
 test:
