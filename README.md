@@ -1,6 +1,6 @@
-# Claude Session Analysis
+# claude-session-analysis
 
-A Claude Code skill for analyzing session files (`.jsonl`) to review past conversations, track file changes, and understand decision-making processes.
+A Claude Code plugin for analyzing session files (`.jsonl`) to review past conversations, track file changes, and understand decision-making processes.
 
 ## Features
 
@@ -11,7 +11,7 @@ A Claude Code skill for analyzing session files (`.jsonl`) to review past conver
 
 ## Installation
 
-```
+```bash
 claude plugin marketplace add kawaz/claude-session-analysis
 claude plugin install claude-session-analysis@claude-session-analysis
 ```
@@ -29,13 +29,11 @@ Once installed, Claude can use this skill to analyze sessions. Example prompts:
 
 | Subcommand | Description |
 |------------|-------------|
-| `timeline` | Display session events with filtering and formatting options |
-| `summaries` | Extract summary information from a session |
-| `file-ops` | Extract file operations from a session |
-| `get-by-marker` | Retrieve session entries by marker with optional context |
-| `file-diff` | Compare backup file versions or backup vs current file |
-| `sessions` | List available Claude sessions with filtering and search |
-| `resolve-session` | Resolve session ID prefix to full ID or file path |
+| `timeline <SESSION_ID ..>` | Display session events with filtering and formatting options |
+| `sessions [options]` | List available Claude sessions with filtering and search |
+| `file-ops <session_id>` | Extract file operations from a session |
+| `file-diff <session_id> <hash> <v1> [v2]` | Compare backup file versions or backup vs current file |
+| `resolve-session [--path] <id_prefix>` | Resolve session ID prefix to full ID or file path |
 
 ## Why Use This?
 
@@ -50,7 +48,7 @@ Once installed, Claude can use this skill to analyze sessions. Example prompts:
 
 ### Benefits
 
-- **Lightweight**: 15MB session → 4KB timeline
+- **Lightweight**: 15MB session -> 4KB timeline
 - **Accurate**: Exact file paths and version numbers preserved
 - **Flexible**: View overview first, drill down as needed
 - **Recoverable**: Access previous file versions via `~/.claude/file-history/`
@@ -69,4 +67,4 @@ File backups are stored at:
 
 ## License
 
-MIT
+MIT License

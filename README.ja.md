@@ -1,24 +1,24 @@
-# Claude Session Analysis
+# claude-session-analysis
 
-Claude Code のセッションファイル（`.jsonl`）を分析し、過去の会話の振り返り、ファイル変更の追跡、意思決定プロセスの確認を行うスキルです。
+Claude Code のセッションファイル（`.jsonl`）を分析し、過去の会話の振り返り、ファイル変更の追跡、意思決定プロセスの確認を行う Claude Code プラグイン。
 
 ## 特徴
 
 - **タイムライン表示**: User/Think/Read/Write マーカーでセッションの流れを確認
-- **ファイル操作**: 読み込み・変更されたファイルを追跡
+- **ファイル操作追跡**: 読み込み・変更されたファイルを追跡
 - **バージョン差分**: 編集間のファイルバージョンを比較
-- **セッション発見**: 現在のセッションを特定
+- **セッション検索**: フィルタリング・正規表現でセッションを特定
 
 ## インストール
 
-```
+```bash
 claude plugin marketplace add kawaz/claude-session-analysis
 claude plugin install claude-session-analysis@claude-session-analysis
 ```
 
 ## 使い方
 
-インストール後、Claude にセッション分析を依頼できます：
+インストール後、Claude にセッション分析を依頼できます:
 
 - 「このセッションを分析して」
 - 「この会話のタイムラインを見せて」
@@ -29,13 +29,13 @@ claude plugin install claude-session-analysis@claude-session-analysis
 
 | サブコマンド | 説明 |
 |------------|------|
-| `timeline` | セッションイベントの表示（フィルタリング・フォーマットオプション付き） |
-| `summaries` | セッションのサマリー情報を抽出 |
-| `file-ops` | セッションのファイル操作を抽出 |
-| `get-by-marker` | マーカーによるセッションエントリの取得（コンテキスト指定可） |
-| `file-diff` | バックアップファイルのバージョン比較、またはバックアップと現在のファイルの比較 |
-| `sessions` | 利用可能な Claude セッションの一覧（フィルタリング・検索付き） |
-| `resolve-session` | セッションIDプレフィックスからフルIDまたはファイルパスを解決 |
+| `timeline <SESSION_ID ..>` | セッションイベントの表示（フィルタリング・フォーマットオプション付き） |
+| `sessions [options]` | Claude セッションの一覧（フィルタリング・検索付き） |
+| `file-ops <session_id>` | セッションのファイル操作を抽出 |
+| `file-diff <session_id> <hash> <v1> [v2]` | バックアップファイルのバージョン比較 |
+| `resolve-session [--path] <id_prefix>` | セッション ID プレフィックスからフル ID またはパスを解決 |
+
+各サブコマンドの詳細は `claude-session-analysis <command> --help` で確認できます。
 
 ## なぜ使うのか？
 
@@ -57,16 +57,16 @@ claude plugin install claude-session-analysis@claude-session-analysis
 
 ## セッションファイルの構造
 
-Claude Code はセッションを以下に保存：
+Claude Code はセッションを以下に保存:
 ```
 ~/.claude/projects/{project-path}/{session-id}.jsonl
 ```
 
-ファイルバックアップは以下に保存：
+ファイルバックアップは以下に保存:
 ```
 ~/.claude/file-history/{session-id}/{hash}@v{version}
 ```
 
 ## ライセンス
 
-MIT
+MIT License
