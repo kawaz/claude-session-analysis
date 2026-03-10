@@ -11,5 +11,4 @@ if ! echo "$command" | grep -qE '(^|&&|;|\|\|)\s*git\s+push\b'; then
 fi
 
 echo "BLOCK: git push は直接実行できません。just push を使ってください。" >&2
-echo "バージョンbump不要なら: just push-without-bump" >&2
 exit 2
