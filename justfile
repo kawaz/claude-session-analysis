@@ -34,11 +34,15 @@ check-version-bump:
         fi
 
 push: check-bundle check-versions check-version-bump validate
-    jj bookmark set main -r @
+    #!/usr/bin/env bash
+    rev=$([ "$(jj log -r @ --no-graph -T 'empty')" = "true" ] && echo "@-" || echo "@")
+    jj bookmark set main -r "$rev"
     jj git push
 
 push-without-bump: check-bundle
-    jj bookmark set main -r @
+    #!/usr/bin/env bash
+    rev=$([ "$(jj log -r @ --no-graph -T 'empty')" = "true" ] && echo "@-" || echo "@")
+    jj bookmark set main -r "$rev"
     jj git push
 
 # mdp バンドルを GitHub リリースから取得（バージョン差分時のみ）
