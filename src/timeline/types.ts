@@ -4,6 +4,7 @@ export type EventKind = "U" | "T" | "R" | "F" | "W" | "B" | "G" | "A" | "S" | "Q
 // タイムラインイベント
 export interface TimelineEvent {
   kind: EventKind;
+  turn: number;     // ターン番号 (Uイベントでインクリメント)
   ref: string;      // 8桁hex (uuid先頭8文字)
   time: string;     // ISO8601。ソート用サフィックス "_NNNNN" 付きの場合あり
   desc: string;

@@ -3,12 +3,19 @@ import type { ParsedArgs } from "./types.ts";
 /** sessionId パターン: 16進数とハイフンのみ */
 const SESSION_ID_RE = /^[0-9a-f][0-9a-f-]*$/;
 
+/** 純粋な数字のみ（turn range として扱う） */
+const PURE_NUMBER_RE = /^\d+$/;
+
 /**
  * positional arg が入力（sessionId or ファイルパス）かどうかを判定。
- * - sessionId パターンにマッチ
- * - パス区切り `/` を含む、または `.jsonl` で終わる
+ * - 純粋な数字のみ → range（turn番号）なので false
+ * - 数字のみ..数字のみ など .. を含む → range なので false
+ * - sessionId パターンにマッチ → true
+ * - パス区切り `/` を含む、または `.jsonl` で終わる → true
  */
 function isInputArg(arg: string): boolean {
+  // 純粋な数字のみは turn range
+  if (PURE_NUMBER_RE.test(arg)) return false;
   if (SESSION_ID_RE.test(arg)) return true;
   if (arg.includes("/") || arg.endsWith(".jsonl")) return true;
   return false;
@@ -172,7 +179,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (!result.help && result.inputs.length === 0) {
-    throw new Error("Input is required (session ID or file path)");
+    result.help = true;
   }
 
   return result;

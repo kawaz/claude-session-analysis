@@ -7,7 +7,10 @@ import type {
   SystemEntry,
   FileHistorySnapshotEntry,
 } from "./types.ts";
-import { shortenPath, lastSegments } from "../lib.ts";
+import { shortenPath, lastSegments, isUserTurn } from "../lib.ts";
+
+/** turn 未付与のイベント（内部用） */
+type RawEvent = Omit<TimelineEvent, "turn">;
 
 // XMLタグの値を取得するヘルパー
 function extractTag(xml: string, tag: string): string {
@@ -24,7 +27,7 @@ function extractAttr(xml: string, attr: string): string {
 }
 
 export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
-  const events: TimelineEvent[] = [];
+  const raw: RawEvent[] = [];
 
   // session_cwd: 最初の cwd を持つエントリから取得（全エントリ型を検索）
   let sessionCwd = "";
@@ -38,44 +41,65 @@ export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
   for (const entry of entries) {
     switch (entry.type) {
       case "user":
-        extractUserEvents(entry, events);
+        extractUserEvents(entry, raw);
         break;
       case "assistant":
-        extractAssistantEvents(entry, events);
+        extractAssistantEvents(entry, raw);
         break;
       case "system":
-        extractSystemEvents(entry, events);
+        extractSystemEvents(entry, raw);
         break;
       case "file-history-snapshot":
-        extractFileSnapshotEvents(entry, sessionCwd, events);
+        extractFileSnapshotEvents(entry, sessionCwd, raw);
         break;
     }
+  }
+
+  // ターン番号を付与: U イベントが来たら turn をインクリメント
+  let turn = 0;
+  const events: TimelineEvent[] = [];
+  for (const r of raw) {
+    if (r.kind === "U") {
+      turn++;
+    }
+    events.push({ ...r, turn });
   }
 
   return events;
 }
 
-function extractUserEvents(entry: UserEntry, events: TimelineEvent[]): void {
+function extractUserEvents(entry: UserEntry, events: RawEvent[]): void {
   const ref = entry.uuid.slice(0, 8);
   const time = entry.timestamp;
 
-  // auto-compact
+  // isUserTurn で判定: true なら U イベント処理
+  if (isUserTurn(entry as Record<string, unknown>)) {
+    const content = entry.message.content;
+    if (typeof content === "string") {
+      extractUserStringContent(content, ref, time, events);
+    } else if (Array.isArray(content)) {
+      extractUserArrayContent(content, ref, time, events);
+    }
+    return;
+  }
+
+  // false → I イベント分類（timeline 固有ロジック）
   if (entry.isCompactSummary === true) {
     events.push({ kind: "I", ref, time, desc: "[auto-compact]" });
     return;
   }
-
-  // isMeta は除外
   if (entry.isMeta === true) {
     return;
   }
 
-  const content = entry.message.content;
+  // content からテキストを抽出して I イベントに分類
+  const content = entry.message?.content;
+  if (!content) return;
 
   if (typeof content === "string") {
-    extractUserStringContent(content, ref, time, events);
+    classifyNonUserStringContent(content, ref, time, events);
   } else if (Array.isArray(content)) {
-    extractUserArrayContent(content, ref, time, events);
+    classifyNonUserArrayContent(content, ref, time, events);
   }
 }
 
@@ -83,23 +107,9 @@ function extractUserStringContent(
   content: string,
   ref: string,
   time: string,
-  events: TimelineEvent[],
+  events: RawEvent[],
 ): void {
-  // 除外 → I分類
-  if (content.startsWith("[Request interrupted")) {
-    events.push({ kind: "I", ref, time, desc: content });
-    return;
-  }
-  if (content.startsWith("<task-notification>")) {
-    const summary = extractTag(content, "summary");
-    events.push({ kind: "I", ref, time, desc: `[task-notification] ${summary}` });
-    return;
-  }
-  if (content.startsWith("<teammate-message")) {
-    const teammateId = extractAttr(content, "teammate_id");
-    events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
-    return;
-  }
+  // isUserTurn ガード通過済み: I 分類対象はここに来ない
 
   // XML風スラッシュコマンド
   const trimmed = content.trim();
@@ -118,38 +128,66 @@ function extractUserArrayContent(
   content: ContentBlock[],
   ref: string,
   time: string,
-  events: TimelineEvent[],
+  events: RawEvent[],
+): void {
+  // isUserTurn ガード通過済み: I 分類対象はここに来ない
+  for (const block of content) {
+    if (block.type !== "text") continue;
+    const text = block.text as string;
+    events.push({ kind: "U", ref, time, desc: text });
+  }
+}
+
+function classifyNonUserStringContent(
+  content: string,
+  ref: string,
+  time: string,
+  events: RawEvent[],
+): void {
+  if (content.startsWith("[Request interrupted")) {
+    events.push({ kind: "I", ref, time, desc: content });
+    return;
+  }
+  if (content.startsWith("<task-notification>")) {
+    const summary = extractTag(content, "summary");
+    events.push({ kind: "I", ref, time, desc: `[task-notification] ${summary}` });
+    return;
+  }
+  if (content.startsWith("<teammate-message")) {
+    const teammateId = extractAttr(content, "teammate_id");
+    events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
+    return;
+  }
+}
+
+function classifyNonUserArrayContent(
+  content: ContentBlock[],
+  ref: string,
+  time: string,
+  events: RawEvent[],
 ): void {
   for (const block of content) {
     if (block.type !== "text") continue;
     const text = block.text as string;
 
-    // Request interrupted → I
     if (text.startsWith("[Request interrupted")) {
       events.push({ kind: "I", ref, time, desc: text });
       continue;
     }
-
-    // task-notification → I
     if (text.startsWith("<task-notification>")) {
       const summary = extractTag(text, "summary");
       events.push({ kind: "I", ref, time, desc: `[task-notification] ${summary}` });
       continue;
     }
-
-    // teammate-message → I
     if (text.startsWith("<teammate-message")) {
       const teammateId = extractAttr(text, "teammate_id");
       events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
       continue;
     }
-
-    // 通常テキスト
-    events.push({ kind: "U", ref, time, desc: text });
   }
 }
 
-function extractAssistantEvents(entry: AssistantEntry, events: TimelineEvent[]): void {
+function extractAssistantEvents(entry: AssistantEntry, events: RawEvent[]): void {
   const ref = entry.uuid.slice(0, 8);
   const timestamp = entry.timestamp;
   const content = entry.message.content;
@@ -175,7 +213,7 @@ function extractToolUseEvent(
   block: ContentBlock,
   ref: string,
   time: string,
-  events: TimelineEvent[],
+  events: RawEvent[],
 ): void {
   const name = block.name as string;
   const input = (block.input || {}) as Record<string, unknown>;
@@ -293,7 +331,7 @@ function extractToolUseEvent(
   }
 }
 
-function extractSystemEvents(entry: SystemEntry, events: TimelineEvent[]): void {
+function extractSystemEvents(entry: SystemEntry, events: RawEvent[]): void {
   const ref = entry.uuid.slice(0, 8);
   const time = entry.timestamp;
   const content = entry.content;
@@ -312,7 +350,7 @@ function extractSystemEvents(entry: SystemEntry, events: TimelineEvent[]): void 
 function extractFileSnapshotEvents(
   entry: FileHistorySnapshotEntry,
   sessionCwd: string,
-  events: TimelineEvent[],
+  events: RawEvent[],
 ): void {
   const ref = entry.messageId.slice(0, 8);
   const backups = entry.snapshot.trackedFileBackups;

@@ -121,12 +121,14 @@ describe("parseArgs", () => {
     expect(args.to).toBe("to");
   });
 
-  test("input未指定でhelpでない場合はエラー", () => {
-    expect(() => parseArgs([])).toThrow();
+  test("input未指定の場合はhelpがtrueになる", () => {
+    const args = parseArgs([]);
+    expect(args.help).toBe(true);
   });
 
-  test("helpの場合はinput未指定でもエラーにならない", () => {
-    expect(() => parseArgs(["--help"])).not.toThrow();
+  test("--help指定の場合もhelpがtrueになる", () => {
+    const args = parseArgs(["--help"]);
+    expect(args.help).toBe(true);
   });
 
   test("不明オプションでエラー", () => {
@@ -334,5 +336,39 @@ describe("parseArgs", () => {
 
   test("-A の後に値がない場合エラー", () => {
     expect(() => parseArgs(["-A"])).toThrow(/-A requires/);
+  });
+
+  // turn-based range tests
+  test("数字のみは turn range として扱われる", () => {
+    const args = parseArgs(["abc12345", "3"]);
+    expect(args.inputs).toEqual(["abc12345"]);
+    expect(args.from).toBe("3");
+    expect(args.to).toBe("3");
+  });
+
+  test("数字..数字 は turn range として扱われる", () => {
+    const args = parseArgs(["abc12345", "3..5"]);
+    expect(args.inputs).toEqual(["abc12345"]);
+    expect(args.from).toBe("3");
+    expect(args.to).toBe("5");
+  });
+
+  test("数字.. は turn range (from to end)", () => {
+    const args = parseArgs(["abc12345", "3.."]);
+    expect(args.inputs).toEqual(["abc12345"]);
+    expect(args.from).toBe("3");
+    expect(args.to).toBe("");
+  });
+
+  test("..数字 は turn range (start to turn)", () => {
+    const args = parseArgs(["abc12345", "..5"]);
+    expect(args.inputs).toEqual(["abc12345"]);
+    expect(args.from).toBe("");
+    expect(args.to).toBe("5");
+  });
+
+  test("a2119bae は session ID として扱われる（hex文字を含む）", () => {
+    const args = parseArgs(["a2119bae"]);
+    expect(args.inputs).toEqual(["a2119bae"]);
   });
 });

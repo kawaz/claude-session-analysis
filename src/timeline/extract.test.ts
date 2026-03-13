@@ -59,7 +59,7 @@ describe("U (User) events", () => {
     const entries: SessionEntry[] = [mkUser("hello world")];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "U", ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: "hello world" },
+      { kind: "U", turn: 1, ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: "hello world" },
     ]);
   });
 
@@ -68,7 +68,7 @@ describe("U (User) events", () => {
     const entries: SessionEntry[] = [mkUser(xml)];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "U", ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: 'commit -m "fix"' },
+      { kind: "U", turn: 1, ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: 'commit -m "fix"' },
     ]);
   });
 
@@ -78,7 +78,7 @@ describe("U (User) events", () => {
     ];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "U", ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: "array text" },
+      { kind: "U", turn: 1, ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: "array text" },
     ]);
   });
 
@@ -92,6 +92,7 @@ describe("U (User) events", () => {
     const uEvents = events.filter((e) => e.kind === "U");
     expect(uEvents).toContainEqual({
       kind: "U",
+      turn: 2,
       ref: "ccddee11",
       time: "2025-01-01T00:02:00Z",
       desc: "review --all",
@@ -123,7 +124,7 @@ describe("T (Think) events", () => {
     ];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "T", ref: "bbccddee", time: "2025-01-01T00:01:00Z", desc: "Let me consider..." },
+      { kind: "T", turn: 0, ref: "bbccddee", time: "2025-01-01T00:01:00Z", desc: "Let me consider..." },
     ]);
   });
 });
@@ -136,7 +137,7 @@ describe("R (Response) events", () => {
     ];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "R", ref: "bbccddee", time: "2025-01-01T00:01:00Z", desc: "Here is my response." },
+      { kind: "R", turn: 0, ref: "bbccddee", time: "2025-01-01T00:01:00Z", desc: "Here is my response." },
     ]);
   });
 
@@ -167,6 +168,7 @@ describe("F (File) events", () => {
     expect(fEvents).toHaveLength(1);
     expect(fEvents[0]).toEqual({
       kind: "F",
+      turn: 1,
       ref: "ddeeff00",
       time: "2025-01-01T00:05:00Z",
       desc: "src/foo.ts abcdef12@v1",
@@ -201,6 +203,7 @@ describe("F (File) events", () => {
     expect(fEvents).toHaveLength(1);
     expect(fEvents[0]).toEqual({
       kind: "F",
+      turn: 0,
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
       desc: "src/main.ts",
@@ -218,6 +221,7 @@ describe("F (File) events", () => {
     expect(fEvents).toHaveLength(1);
     expect(fEvents[0]).toEqual({
       kind: "F",
+      turn: 0,
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
       desc: "project/out.txt no-backup-write",
@@ -235,6 +239,7 @@ describe("F (File) events", () => {
     expect(fEvents).toHaveLength(1);
     expect(fEvents[0]).toEqual({
       kind: "F",
+      turn: 0,
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
       desc: "src/lib.ts no-backup-edit",
@@ -255,6 +260,7 @@ describe("B (Bash) events", () => {
     expect(bEvents).toHaveLength(1);
     expect(bEvents[0]).toEqual({
       kind: "B",
+      turn: 0,
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
       desc: "ls -la",
@@ -299,6 +305,7 @@ describe("W (Web) events", () => {
     expect(wEvents).toHaveLength(1);
     expect(wEvents[0]).toEqual({
       kind: "W",
+      turn: 0,
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
       desc: "https://example.com",
@@ -317,6 +324,7 @@ describe("W (Web) events", () => {
     expect(wEvents).toHaveLength(1);
     expect(wEvents[0]).toEqual({
       kind: "W",
+      turn: 0,
       ref: "bbccddee",
       time: "2025-01-01T00:01:00Z_00000",
       desc: "bun test runner",

@@ -67,7 +67,7 @@ function buildCommandComputed(
   if (filtered.length > 0) {
     const first = filtered[0];
     const last = filtered[filtered.length - 1];
-    parts.push(`${first.kind}${first.ref}..${last.kind}${last.ref}`);
+    parts.push(`${first.turn} ${first.kind} ${first.ref}..${last.turn} ${last.kind} ${last.ref}`);
   }
 
   parts.push(`-t ${opts.types}`);
@@ -90,8 +90,9 @@ export async function run(args: string[]) {
   const opts = parseArgs(args);
 
   if (opts.help) {
-    printUsage();
-    return;
+    const explicit = args.includes("--help");
+    printUsage(explicit ? process.stdout : process.stderr);
+    process.exit(explicit ? 0 : 1);
   }
 
   const isTty = process.stdout.isTTY ?? false;
@@ -150,9 +151,8 @@ export async function run(args: string[]) {
     const parsed = allEntries as unknown as Record<string, unknown>[];
     const output: string[] = [];
     for (const event of filtered) {
-      const marker = `${event.kind}${event.ref}`;
-      const id = marker.slice(1); // type prefix を除去
-      const matchType = marker[0];
+      const id = event.ref;
+      const matchType = event.kind;
 
       // エントリ検索（複数マッチ対応）
       const matches = parsed.filter((e: Record<string, unknown>) => {
@@ -247,9 +247,9 @@ export async function run(args: string[]) {
   console.log(output);
 }
 
-function printUsage() {
+function printUsage(out: NodeJS.WritableStream = process.stdout) {
   const prog = process.env._PROG || "timeline";
-  console.log(`Usage: ${prog} [options] <session_id_or_file> [range]
+  out.write(`Usage: ${prog} [options] <session_id_or_file> [range]
 
 Options:
   -t <types>                  Filter by type (default: UTRFWBGASQDI)
@@ -278,10 +278,13 @@ Types:
   G=Grep/Glob A=Agent S=Skill Q=Question D=toDo I=Info
 
 Range:
-  ..marker    From start to marker
-  marker..    From marker to end
-  from..to    Between markers
-  marker      Single marker only
+  N          Turn N only
+  N..M       Turns N to M
+  N..        Turn N to end
+  ..M        Start to turn M
+  marker..   From marker to end (e.g. Uabc1234..)
+  from..to   Between markers
+  marker     Single marker only
 
 Examples:
   ${prog} SID                                          Show timeline
@@ -296,5 +299,8 @@ Examples:
   ${prog} SID --since 1h                               Show events from last 1 hour
   ${prog} SID --last-turn 3                            Show last 3 turns
   ${prog} SID --last-since 30m                         Show events from last 30m of session
-  ${prog} SID Uabc1234..Rabc5678                       Show range between markers`);
+  ${prog} SID Uabc1234..Rabc5678                       Show range between markers
+  ${prog} SID 3                                        Show turn 3 only
+  ${prog} SID 3..5                                     Show turns 3 to 5
+  ${prog} SID 3..                                      Show from turn 3 to end\n`);
 }

@@ -76,6 +76,11 @@ export function parseRangeMarker(s: string): RangeMarker {
   return { id: rest, offset };
 }
 
+/** 文字列が純粋な数字かどうか */
+function isNumeric(s: string): boolean {
+  return /^\d+$/.test(s);
+}
+
 /** from..to の範囲でイベントをフィルタ */
 export function filterByRange(
   events: TimelineEvent[],
@@ -84,6 +89,17 @@ export function filterByRange(
 ): TimelineEvent[] {
   if (events.length === 0) return [];
 
+  // turn-based range: from/to の両方が空または数値のみの場合
+  const fromIsNum = from !== "" && isNumeric(from);
+  const toIsNum = to !== "" && isNumeric(to);
+
+  if (fromIsNum || toIsNum) {
+    const fromTurn = fromIsNum ? parseInt(from, 10) : 0;
+    const toTurn = toIsNum ? parseInt(to, 10) : Infinity;
+    return events.filter((e) => e.turn >= fromTurn && e.turn <= toTurn);
+  }
+
+  // marker-based range
   const fromMarker = parseRangeMarker(from);
   const toMarker = parseRangeMarker(to);
 

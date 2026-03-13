@@ -18,34 +18,34 @@ import type { TimelineEvent } from "./types.ts";
 describe("dedup", () => {
   test("重複排除", () => {
     const events: TimelineEvent[] = [
-      { kind: "U", ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
-      { kind: "U", ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
-      { kind: "R", ref: "def67890", time: "2024-01-01T00:00:01", desc: "response" },
+      { kind: "U", turn: 1, ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
+      { kind: "U", turn: 1, ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
+      { kind: "R", turn: 1, ref: "def67890", time: "2024-01-01T00:00:01", desc: "response" },
     ];
     expect(dedup(events)).toHaveLength(2);
   });
 
   test("同time異kindは残す", () => {
     const events: TimelineEvent[] = [
-      { kind: "U", ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
-      { kind: "R", ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
+      { kind: "U", turn: 1, ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
+      { kind: "R", turn: 1, ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
     ];
     expect(dedup(events)).toHaveLength(2);
   });
 
   test("同time同kind異descは残す", () => {
     const events: TimelineEvent[] = [
-      { kind: "U", ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
-      { kind: "U", ref: "abc12345", time: "2024-01-01T00:00:00", desc: "world" },
+      { kind: "U", turn: 1, ref: "abc12345", time: "2024-01-01T00:00:00", desc: "hello" },
+      { kind: "U", turn: 1, ref: "abc12345", time: "2024-01-01T00:00:00", desc: "world" },
     ];
     expect(dedup(events)).toHaveLength(2);
   });
 
   test("最初に出現したものを残す", () => {
     const events: TimelineEvent[] = [
-      { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "first" },
-      { kind: "U", ref: "bbb22222", time: "2024-01-01T00:00:01", desc: "second" },
-      { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "first" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "first" },
+      { kind: "U", turn: 2, ref: "bbb22222", time: "2024-01-01T00:00:01", desc: "second" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "first" },
     ];
     const result = dedup(events);
     expect(result).toHaveLength(2);
@@ -61,8 +61,8 @@ describe("dedup", () => {
 describe("removeNoBackup", () => {
   test("バックアップあり -> no-backup除去", () => {
     const events: TimelineEvent[] = [
-      { kind: "F", ref: "aaa11111", time: "t1", desc: "file.ts abc12345@v1" },
-      { kind: "F", ref: "aaa11111", time: "t2", desc: "file.ts no-backup-write" },
+      { kind: "F", turn: 1, ref: "aaa11111", time: "t1", desc: "file.ts abc12345@v1" },
+      { kind: "F", turn: 1, ref: "aaa11111", time: "t2", desc: "file.ts no-backup-write" },
     ];
     const result = removeNoBackup(events);
     expect(result).toHaveLength(1);
@@ -71,8 +71,8 @@ describe("removeNoBackup", () => {
 
   test("バックアップなし -> no-backup残す", () => {
     const events: TimelineEvent[] = [
-      { kind: "F", ref: "aaa11111", time: "t1", desc: "file.ts something" },
-      { kind: "F", ref: "aaa11111", time: "t2", desc: "file.ts no-backup-write" },
+      { kind: "F", turn: 1, ref: "aaa11111", time: "t1", desc: "file.ts something" },
+      { kind: "F", turn: 1, ref: "aaa11111", time: "t2", desc: "file.ts no-backup-write" },
     ];
     const result = removeNoBackup(events);
     expect(result).toHaveLength(2);
@@ -81,10 +81,10 @@ describe("removeNoBackup", () => {
   test("異なるrefグループは独立に処理", () => {
     const events: TimelineEvent[] = [
       // グループ aaa: @v あり -> no-backup除去
-      { kind: "F", ref: "aaa11111", time: "t1", desc: "file.ts abc12345@v1" },
-      { kind: "F", ref: "aaa11111", time: "t3", desc: "file.ts no-backup-write" },
+      { kind: "F", turn: 1, ref: "aaa11111", time: "t1", desc: "file.ts abc12345@v1" },
+      { kind: "F", turn: 1, ref: "aaa11111", time: "t3", desc: "file.ts no-backup-write" },
       // グループ bbb: @v なし -> no-backup残す
-      { kind: "F", ref: "bbb22222", time: "t2", desc: "file.ts no-backup-read" },
+      { kind: "F", turn: 1, ref: "bbb22222", time: "t2", desc: "file.ts no-backup-read" },
     ];
     const result = removeNoBackup(events);
     expect(result).toHaveLength(2);
@@ -94,9 +94,9 @@ describe("removeNoBackup", () => {
 
   test("結果はtimeでソート", () => {
     const events: TimelineEvent[] = [
-      { kind: "F", ref: "bbb22222", time: "t3", desc: "file.ts abc@v2" },
-      { kind: "F", ref: "aaa11111", time: "t1", desc: "file.ts abc@v1" },
-      { kind: "F", ref: "bbb22222", time: "t2", desc: "file.ts no-backup" },
+      { kind: "F", turn: 1, ref: "bbb22222", time: "t3", desc: "file.ts abc@v2" },
+      { kind: "F", turn: 1, ref: "aaa11111", time: "t1", desc: "file.ts abc@v1" },
+      { kind: "F", turn: 1, ref: "bbb22222", time: "t2", desc: "file.ts no-backup" },
     ];
     const result = removeNoBackup(events);
     // bbb: @vあり -> no-backup除去 -> bbb t3 残る
@@ -158,14 +158,14 @@ describe("parseRangeMarker", () => {
 
 describe("filterByRange", () => {
   const events: TimelineEvent[] = [
-    { kind: "U", ref: "aaa11111", time: "t0", desc: "e0" },
-    { kind: "R", ref: "bbb22222", time: "t1", desc: "e1" },
-    { kind: "U", ref: "ccc33333", time: "t2", desc: "e2" },
-    { kind: "R", ref: "ddd44444", time: "t3", desc: "e3" },
-    { kind: "U", ref: "eee55555", time: "t4", desc: "e4" },
+    { kind: "U", turn: 1, ref: "aaa11111", time: "t0", desc: "e0" },
+    { kind: "R", turn: 1, ref: "bbb22222", time: "t1", desc: "e1" },
+    { kind: "U", turn: 2, ref: "ccc33333", time: "t2", desc: "e2" },
+    { kind: "R", turn: 2, ref: "ddd44444", time: "t3", desc: "e3" },
+    { kind: "U", turn: 3, ref: "eee55555", time: "t4", desc: "e4" },
   ];
 
-  test("from..to", () => {
+  test("from..to (marker)", () => {
     const result = filterByRange(events, "bbb22222", "ddd44444");
     expect(result).toHaveLength(3);
     expect(result[0].ref).toBe("bbb22222");
@@ -219,10 +219,10 @@ describe("filterByRange", () => {
 
   test("toのrefが複数マッチ -> 最後のインデックス", () => {
     const evts: TimelineEvent[] = [
-      { kind: "U", ref: "aaa11111", time: "t0", desc: "e0" },
-      { kind: "R", ref: "bbb22222", time: "t1", desc: "e1" },
-      { kind: "U", ref: "bbb22222", time: "t2", desc: "e2" },
-      { kind: "R", ref: "ccc33333", time: "t3", desc: "e3" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "t0", desc: "e0" },
+      { kind: "R", turn: 1, ref: "bbb22222", time: "t1", desc: "e1" },
+      { kind: "U", turn: 2, ref: "bbb22222", time: "t2", desc: "e2" },
+      { kind: "R", turn: 2, ref: "ccc33333", time: "t3", desc: "e3" },
     ];
     const result = filterByRange(evts, "aaa", "bbb");
     expect(result).toHaveLength(3); // idx0..idx2
@@ -230,22 +230,56 @@ describe("filterByRange", () => {
 
   test("fromのrefが複数マッチ -> 最初のインデックス", () => {
     const evts: TimelineEvent[] = [
-      { kind: "U", ref: "aaa11111", time: "t0", desc: "e0" },
-      { kind: "R", ref: "bbb22222", time: "t1", desc: "e1" },
-      { kind: "U", ref: "bbb22222", time: "t2", desc: "e2" },
-      { kind: "R", ref: "ccc33333", time: "t3", desc: "e3" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "t0", desc: "e0" },
+      { kind: "R", turn: 1, ref: "bbb22222", time: "t1", desc: "e1" },
+      { kind: "U", turn: 2, ref: "bbb22222", time: "t2", desc: "e2" },
+      { kind: "R", turn: 2, ref: "ccc33333", time: "t3", desc: "e3" },
     ];
     const result = filterByRange(evts, "bbb", "ccc");
     expect(result).toHaveLength(3); // idx1..idx3
+  });
+
+  // turn-based range tests
+  test("turn range: 単一ターン (from=to)", () => {
+    const result = filterByRange(events, "2", "2");
+    expect(result).toHaveLength(2);
+    expect(result[0].ref).toBe("ccc33333");
+    expect(result[1].ref).toBe("ddd44444");
+  });
+
+  test("turn range: from..to", () => {
+    const result = filterByRange(events, "1", "2");
+    expect(result).toHaveLength(4);
+    expect(result[0].ref).toBe("aaa11111");
+    expect(result[3].ref).toBe("ddd44444");
+  });
+
+  test("turn range: from.. (to空)", () => {
+    const result = filterByRange(events, "2", "");
+    expect(result).toHaveLength(3);
+    expect(result[0].ref).toBe("ccc33333");
+    expect(result[2].ref).toBe("eee55555");
+  });
+
+  test("turn range: ..to (from空)", () => {
+    const result = filterByRange(events, "", "2");
+    expect(result).toHaveLength(4);
+    expect(result[0].ref).toBe("aaa11111");
+    expect(result[3].ref).toBe("ddd44444");
+  });
+
+  test("turn range: 範囲外のターンは空", () => {
+    const result = filterByRange(events, "10", "20");
+    expect(result).toHaveLength(0);
   });
 });
 
 describe("filterByType", () => {
   const events: TimelineEvent[] = [
-    { kind: "U", ref: "aaa11111", time: "t0", desc: "user" },
-    { kind: "R", ref: "bbb22222", time: "t1", desc: "response" },
-    { kind: "F", ref: "ccc33333", time: "t2", desc: "file" },
-    { kind: "T", ref: "ddd44444", time: "t3", desc: "tool" },
+    { kind: "U", turn: 1, ref: "aaa11111", time: "t0", desc: "user" },
+    { kind: "R", turn: 1, ref: "bbb22222", time: "t1", desc: "response" },
+    { kind: "F", turn: 1, ref: "ccc33333", time: "t2", desc: "file" },
+    { kind: "T", turn: 1, ref: "ddd44444", time: "t3", desc: "tool" },
   ];
 
   test("指定タイプのみフィルタ", () => {
@@ -268,10 +302,10 @@ describe("filterByType", () => {
 
 describe("filterByGrep", () => {
   const events: TimelineEvent[] = [
-    { kind: "U", ref: "aaa11111", time: "t0", desc: "Update README.md" },
-    { kind: "R", ref: "bbb22222", time: "t1", desc: "response text" },
-    { kind: "F", ref: "ccc33333", time: "t2", desc: "src/index.ts abc@v1" },
-    { kind: "B", ref: "ddd44444", time: "t3", desc: "bun test" },
+    { kind: "U", turn: 1, ref: "aaa11111", time: "t0", desc: "Update README.md" },
+    { kind: "R", turn: 1, ref: "bbb22222", time: "t1", desc: "response text" },
+    { kind: "F", turn: 1, ref: "ccc33333", time: "t2", desc: "src/index.ts abc@v1" },
+    { kind: "B", turn: 1, ref: "ddd44444", time: "t3", desc: "bun test" },
   ];
 
   test("正規表現でdescをフィルタ", () => {
@@ -299,9 +333,9 @@ describe("filterByGrep", () => {
 
 describe("filterBySince", () => {
   const events: TimelineEvent[] = [
-    { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00Z", desc: "old" },
-    { kind: "R", ref: "bbb22222", time: "2024-01-01T01:00:00Z", desc: "mid" },
-    { kind: "U", ref: "ccc33333", time: "2024-01-01T02:00:00Z", desc: "new" },
+    { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00Z", desc: "old" },
+    { kind: "R", turn: 1, ref: "bbb22222", time: "2024-01-01T01:00:00Z", desc: "mid" },
+    { kind: "U", turn: 2, ref: "ccc33333", time: "2024-01-01T02:00:00Z", desc: "new" },
   ];
 
   test("空文字列は全件返す", () => {
@@ -320,9 +354,9 @@ describe("filterBySince", () => {
     // → duration テストは相対的なので、現在時刻に近いイベントを使う
     const now = new Date();
     const recentEvents: TimelineEvent[] = [
-      { kind: "U", ref: "aaa11111", time: new Date(now.getTime() - 7200000).toISOString(), desc: "2h ago" },
-      { kind: "R", ref: "bbb22222", time: new Date(now.getTime() - 1800000).toISOString(), desc: "30m ago" },
-      { kind: "U", ref: "ccc33333", time: new Date(now.getTime() - 600000).toISOString(), desc: "10m ago" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: new Date(now.getTime() - 7200000).toISOString(), desc: "2h ago" },
+      { kind: "R", turn: 1, ref: "bbb22222", time: new Date(now.getTime() - 1800000).toISOString(), desc: "30m ago" },
+      { kind: "U", turn: 2, ref: "ccc33333", time: new Date(now.getTime() - 600000).toISOString(), desc: "10m ago" },
     ];
     const result = filterBySince(recentEvents, "1h");
     expect(result).toHaveLength(2);
@@ -333,8 +367,8 @@ describe("filterBySince", () => {
   test("ソートサフィックス _NNNNN 付きの time も正しく処理", () => {
     const result = filterBySince(
       [
-        { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00Z_00001", desc: "old" },
-        { kind: "R", ref: "bbb22222", time: "2024-01-01T02:00:00Z_00002", desc: "new" },
+        { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00Z_00001", desc: "old" },
+        { kind: "R", turn: 1, ref: "bbb22222", time: "2024-01-01T02:00:00Z_00002", desc: "new" },
       ],
       "2024-01-01T01:00:00Z",
     );
@@ -346,11 +380,11 @@ describe("filterBySince", () => {
 describe("splitTurns", () => {
   test("U区切りでターン分割", () => {
     const events: TimelineEvent[] = [
-      { kind: "U", ref: "aaa11111", time: "t1", desc: "user1" },
-      { kind: "R", ref: "bbb22222", time: "t2", desc: "resp1" },
-      { kind: "B", ref: "ccc33333", time: "t3", desc: "bash1" },
-      { kind: "U", ref: "ddd44444", time: "t4", desc: "user2" },
-      { kind: "R", ref: "eee55555", time: "t5", desc: "resp2" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "t1", desc: "user1" },
+      { kind: "R", turn: 1, ref: "bbb22222", time: "t2", desc: "resp1" },
+      { kind: "B", turn: 1, ref: "ccc33333", time: "t3", desc: "bash1" },
+      { kind: "U", turn: 2, ref: "ddd44444", time: "t4", desc: "user2" },
+      { kind: "R", turn: 2, ref: "eee55555", time: "t5", desc: "resp2" },
     ];
     const turns = splitTurns(events);
     expect(turns).toHaveLength(2);
@@ -360,9 +394,9 @@ describe("splitTurns", () => {
 
   test("先頭にUがない場合はプレターンとして扱う", () => {
     const events: TimelineEvent[] = [
-      { kind: "I", ref: "aaa11111", time: "t1", desc: "info" },
-      { kind: "U", ref: "bbb22222", time: "t2", desc: "user1" },
-      { kind: "R", ref: "ccc33333", time: "t3", desc: "resp1" },
+      { kind: "I", turn: 0, ref: "aaa11111", time: "t1", desc: "info" },
+      { kind: "U", turn: 1, ref: "bbb22222", time: "t2", desc: "user1" },
+      { kind: "R", turn: 1, ref: "ccc33333", time: "t3", desc: "resp1" },
     ];
     const turns = splitTurns(events);
     expect(turns).toHaveLength(2); // [I], [U, R]
@@ -373,8 +407,8 @@ describe("splitTurns", () => {
 
   test("Uがない場合は全体が1ターン", () => {
     const events: TimelineEvent[] = [
-      { kind: "R", ref: "aaa11111", time: "t1", desc: "resp1" },
-      { kind: "B", ref: "bbb22222", time: "t2", desc: "bash1" },
+      { kind: "R", turn: 0, ref: "aaa11111", time: "t1", desc: "resp1" },
+      { kind: "B", turn: 0, ref: "bbb22222", time: "t2", desc: "bash1" },
     ];
     const turns = splitTurns(events);
     expect(turns).toHaveLength(1);
@@ -388,12 +422,12 @@ describe("splitTurns", () => {
 
 describe("filterByLastTurn", () => {
   const events: TimelineEvent[] = [
-    { kind: "U", ref: "aaa11111", time: "t1", desc: "user1" },
-    { kind: "R", ref: "bbb22222", time: "t2", desc: "resp1" },
-    { kind: "U", ref: "ccc33333", time: "t3", desc: "user2" },
-    { kind: "R", ref: "ddd44444", time: "t4", desc: "resp2" },
-    { kind: "U", ref: "eee55555", time: "t5", desc: "user3" },
-    { kind: "R", ref: "fff66666", time: "t6", desc: "resp3" },
+    { kind: "U", turn: 1, ref: "aaa11111", time: "t1", desc: "user1" },
+    { kind: "R", turn: 1, ref: "bbb22222", time: "t2", desc: "resp1" },
+    { kind: "U", turn: 2, ref: "ccc33333", time: "t3", desc: "user2" },
+    { kind: "R", turn: 2, ref: "ddd44444", time: "t4", desc: "resp2" },
+    { kind: "U", turn: 3, ref: "eee55555", time: "t5", desc: "user3" },
+    { kind: "R", turn: 3, ref: "fff66666", time: "t6", desc: "resp3" },
   ];
 
   test("末尾1ターン", () => {
@@ -421,9 +455,9 @@ describe("filterByLastTurn", () => {
 
 describe("filterByLastSince", () => {
   const events: TimelineEvent[] = [
-    { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00Z", desc: "old" },
-    { kind: "R", ref: "bbb22222", time: "2024-01-01T01:00:00Z", desc: "mid" },
-    { kind: "U", ref: "ccc33333", time: "2024-01-01T02:00:00Z", desc: "new" },
+    { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00Z", desc: "old" },
+    { kind: "R", turn: 1, ref: "bbb22222", time: "2024-01-01T01:00:00Z", desc: "mid" },
+    { kind: "U", turn: 2, ref: "ccc33333", time: "2024-01-01T02:00:00Z", desc: "new" },
   ];
 
   test("空文字列は全件返す", () => {
@@ -454,14 +488,14 @@ describe("filterByLastSince", () => {
 
 describe("filterByGrepContext", () => {
   const events: TimelineEvent[] = [
-    { kind: "U", ref: "aaa11111", time: "t1", desc: "user1" },
-    { kind: "R", ref: "bbb22222", time: "t2", desc: "resp1" },
-    { kind: "U", ref: "ccc33333", time: "t3", desc: "target" },
-    { kind: "R", ref: "ddd44444", time: "t4", desc: "resp2" },
-    { kind: "U", ref: "eee55555", time: "t5", desc: "user3" },
-    { kind: "R", ref: "fff66666", time: "t6", desc: "resp3" },
-    { kind: "U", ref: "ggg77777", time: "t7", desc: "user4" },
-    { kind: "R", ref: "hhh88888", time: "t8", desc: "resp4" },
+    { kind: "U", turn: 1, ref: "aaa11111", time: "t1", desc: "user1" },
+    { kind: "R", turn: 1, ref: "bbb22222", time: "t2", desc: "resp1" },
+    { kind: "U", turn: 2, ref: "ccc33333", time: "t3", desc: "target" },
+    { kind: "R", turn: 2, ref: "ddd44444", time: "t4", desc: "resp2" },
+    { kind: "U", turn: 3, ref: "eee55555", time: "t5", desc: "user3" },
+    { kind: "R", turn: 3, ref: "fff66666", time: "t6", desc: "resp3" },
+    { kind: "U", turn: 4, ref: "ggg77777", time: "t7", desc: "user4" },
+    { kind: "R", turn: 4, ref: "hhh88888", time: "t8", desc: "resp4" },
   ];
 
   test("grep マッチターン + 前後1ターン", () => {
@@ -496,12 +530,12 @@ describe("filterByGrepContext", () => {
 describe("pipeline", () => {
   test("全フィルタの組み合わせ", () => {
     const events: TimelineEvent[] = [
-      { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "hello" },
-      { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "hello" }, // dup
-      { kind: "R", ref: "bbb22222", time: "2024-01-01T00:00:01", desc: "resp" },
-      { kind: "F", ref: "ccc33333", time: "2024-01-01T00:00:02", desc: "file abc@v1" },
-      { kind: "F", ref: "ccc33333", time: "2024-01-01T00:00:03", desc: "file no-backup" },
-      { kind: "U", ref: "ddd44444", time: "2024-01-01T00:00:04", desc: "end" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "hello" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "hello" }, // dup
+      { kind: "R", turn: 1, ref: "bbb22222", time: "2024-01-01T00:00:01", desc: "resp" },
+      { kind: "F", turn: 1, ref: "ccc33333", time: "2024-01-01T00:00:02", desc: "file abc@v1" },
+      { kind: "F", turn: 1, ref: "ccc33333", time: "2024-01-01T00:00:03", desc: "file no-backup" },
+      { kind: "U", turn: 2, ref: "ddd44444", time: "2024-01-01T00:00:04", desc: "end" },
     ];
     // dedup: 5件 (dup除去)
     // removeNoBackup: cccグループに@vあり -> no-backup除去 -> 4件
@@ -517,8 +551,8 @@ describe("pipeline", () => {
 
   test("デフォルトオプション -> 全件（dedup+removeNoBackupのみ適用）", () => {
     const events: TimelineEvent[] = [
-      { kind: "U", ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "hello" },
-      { kind: "R", ref: "bbb22222", time: "2024-01-01T00:00:01", desc: "resp" },
+      { kind: "U", turn: 1, ref: "aaa11111", time: "2024-01-01T00:00:00", desc: "hello" },
+      { kind: "R", turn: 1, ref: "bbb22222", time: "2024-01-01T00:00:01", desc: "resp" },
     ];
     const result = pipeline(events, { types: "UTRFWBGASQDI", from: "", to: "" });
     expect(result).toHaveLength(2);

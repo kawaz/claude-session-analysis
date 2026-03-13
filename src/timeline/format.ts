@@ -29,21 +29,34 @@ export function localTimeMs(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}${sign}${hh}${mm}`;
 }
 
-const MARKER_RE = /([UTRFWBGASQDI])([0-9a-f]{8})/;
+const EMOJI_MAP: Record<string, string> = {
+  U: "👤",
+  T: "🧠",
+  R: "🤖",
+  Q: "🤖",
+  B: "▶️",
+  F: "👀",
+  W: "🛜",
+  S: "⚡️",
+  G: "🔍",
+  A: "👻",
+  D: "✅",
+  I: "ℹ️",
+};
 
-const COLOR_MAP: Record<string, { ansi: string; emoji: string }> = {
-  U: { ansi: "\x1b[32m", emoji: "👤" },
-  T: { ansi: "\x1b[3;34m", emoji: "🧠" },
-  R: { ansi: "\x1b[34m", emoji: "🤖" },
-  Q: { ansi: "\x1b[34m", emoji: "🤖" },
-  B: { ansi: "\x1b[2m", emoji: "▶️" },
-  F: { ansi: "\x1b[2m", emoji: "👀" },
-  W: { ansi: "\x1b[2m", emoji: "🛜" },
-  S: { ansi: "\x1b[2m", emoji: "⚡️" },
-  G: { ansi: "\x1b[2m", emoji: "🔍" },
-  A: { ansi: "\x1b[2m", emoji: "👻" },
-  D: { ansi: "\x1b[2m", emoji: "✅" },
-  I: { ansi: "\x1b[2m", emoji: "ℹ️" },
+const ANSI_MAP: Record<string, string> = {
+  U: "\x1b[32m",
+  T: "\x1b[3;34m",
+  R: "\x1b[34m",
+  Q: "\x1b[34m",
+  B: "\x1b[2m",
+  F: "\x1b[2m",
+  W: "\x1b[2m",
+  S: "\x1b[2m",
+  G: "\x1b[2m",
+  A: "\x1b[2m",
+  D: "\x1b[2m",
+  I: "\x1b[2m",
 };
 
 /** colorize のオプション */
@@ -52,62 +65,58 @@ export interface ColorizeOpts {
   emoji: boolean;
 }
 
-/** 行内マーカーを検出し、ANSIカラー+絵文字を付与 */
+/** 行全体にANSIカラーを付与 */
 export function colorize(line: string, opts?: ColorizeOpts): string {
   const useColors = opts?.colors ?? true;
-  const useEmoji = opts?.emoji ?? true;
+  if (!useColors) return line;
 
-  if (!useColors && !useEmoji) return line;
-
-  const m = MARKER_RE.exec(line);
+  // 行内から kind 文字を検出してカラーを決定
+  // フォーマット: {emoji?} {timestamp?} {turn} {kind} {ref} ...
+  const m = line.match(/\d+ ([UTRFWBGASQDI]) [0-9a-f]{8}/);
   if (!m) return line;
 
   const kind = m[1];
-  const marker = m[0];
-  const idx = m.index;
-  const beforeMarker = line.slice(0, idx);
-  const afterMarker = line.slice(idx + marker.length);
+  const ansi = ANSI_MAP[kind];
+  if (!ansi) return line;
 
-  const color = COLOR_MAP[kind];
-  if (!color) return line;
-
-  let { ansi, emoji } = color;
-
-  if (kind === "F") {
-    if (afterMarker.includes("no-backup-") || /@v/.test(afterMarker)) {
-      emoji = "📝";
-    } else {
-      emoji = "👀";
-    }
-  }
-
-  const emojiPrefix = useEmoji ? `${emoji} ` : "";
-  const ansiStart = useColors ? ansi : "";
-  const ansiEnd = useColors ? "\x1b[0m" : "";
-
-  return `${ansiStart}${emojiPrefix}${beforeMarker}${marker}${afterMarker}${ansiEnd}`;
+  return `${ansi}${line}\x1b[0m`;
 }
 
 /** QTRU タイプかどうか */
 const QTRU_KINDS = new Set(["Q", "T", "R", "U"]);
 
-/** 単一イベントをフォーマット */
+/** イベントの emoji を取得 */
+function eventEmoji(event: TimelineEvent): string {
+  if (event.kind === "F") {
+    if (event.desc.includes("no-backup-") || /@v/.test(event.desc)) {
+      return "📝";
+    }
+    return "👀";
+  }
+  return EMOJI_MAP[event.kind] || "";
+}
+
+/** 単一イベントをフォーマット: {emoji?} {timestamp?} {turn} {kind} {ref} {content} */
 export function formatEvent(
   event: TimelineEvent,
-  opts: { jsonlMode: string; width: number; timestamps: boolean; mdMode?: "none" | "render" | "source" },
+  opts: { jsonlMode: string; width: number; timestamps: boolean; mdMode?: "none" | "render" | "source"; emoji?: boolean },
 ): string {
+  const useEmoji = opts.emoji ?? false;
+  const emojiPrefix = useEmoji ? `${eventEmoji(event)} ` : "";
+
   if (opts.jsonlMode !== "none") {
-    return `${event.kind}${event.ref}`;
+    return `${event.turn} ${event.kind} ${event.ref}`;
   }
 
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
   const fmtTime = isMd ? localTime : cleanTime;
 
+  const head = opts.timestamps
+    ? `${emojiPrefix}${fmtTime(event.time)} ${event.turn} ${event.kind} ${event.ref}`
+    : `${emojiPrefix}${event.turn} ${event.kind} ${event.ref}`;
+
   if (isMd && QTRU_KINDS.has(event.kind)) {
-    if (opts.timestamps) {
-      return `${fmtTime(event.time)} ${event.kind}${event.ref}`;
-    }
-    return `${event.kind}${event.ref}`;
+    return head;
   }
 
   let desc: string;
@@ -117,10 +126,7 @@ export function formatEvent(
     desc = truncate(event.desc.replace(/\n/g, " "), opts.width);
   }
 
-  if (opts.timestamps) {
-    return `${fmtTime(event.time)} ${event.kind}${event.ref} ${desc}`;
-  }
-  return `${event.kind}${event.ref} ${desc}`;
+  return `${head} ${desc}`;
 }
 
 /** formatEvents のオプション型 */
@@ -144,18 +150,18 @@ export function formatEvents(
   opts: FormatEventsOpts,
 ): string {
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
-  const needColorize = opts.colors || opts.emoji;
 
   const output: string[] = [];
   let mdQtruSeen = false;
   for (const e of events) {
-    let line = formatEvent(e, opts);
-    if (needColorize) {
+    let line = formatEvent(e, { ...opts, emoji: opts.emoji });
+    if (opts.colors) {
       line = colorize(line, { colors: opts.colors, emoji: opts.emoji });
     }
 
     if (isMd && QTRU_KINDS.has(e.kind)) {
       if (mdQtruSeen) {
+        output.push("");
         output.push("---");
         output.push("");
       }
