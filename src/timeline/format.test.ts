@@ -28,132 +28,102 @@ describe("localTime", () => {
 });
 
 describe("colorize", () => {
-  test("Uイベント → 緑 + 👤", () => {
-    const result = colorize("1 U abc12345 hello");
+  test("Uイベント → 緑", () => {
+    const result = colorize("1 Uabc12345 hello");
     expect(result).toContain("\x1b[32m");
-    expect(result).toContain("👤");
     expect(result).toEndWith("\x1b[0m");
   });
-  test("Tイベント → italic青 + 🧠", () => {
-    const result = colorize("1 T abc12345 thinking");
+  test("Tイベント → italic青", () => {
+    const result = colorize("1 Tabc12345 thinking");
     expect(result).toContain("\x1b[3;34m");
-    expect(result).toContain("🧠");
     expect(result).toEndWith("\x1b[0m");
   });
-  test("Rイベント → 青 + 🤖", () => {
-    const result = colorize("1 R abc12345 response");
+  test("Rイベント → 青", () => {
+    const result = colorize("1 Rabc12345 response");
     expect(result).toContain("\x1b[34m");
-    expect(result).toContain("🤖");
     expect(result).toEndWith("\x1b[0m");
   });
-  test("Qイベント → 青 + 🤖", () => {
-    const result = colorize("1 Q abc12345 response");
+  test("Qイベント → 青", () => {
+    const result = colorize("1 Qabc12345 response");
     expect(result).toContain("\x1b[34m");
-    expect(result).toContain("🤖");
     expect(result).toEndWith("\x1b[0m");
   });
-  test("Bイベント → dim + ▶️", () => {
-    const result = colorize("1 B abc12345 bash cmd");
+  test("Bイベント → dim", () => {
+    const result = colorize("1 Babc12345 bash cmd");
     expect(result).toContain("\x1b[2m");
-    expect(result).toContain("▶️");
     expect(result).toEndWith("\x1b[0m");
   });
-  test("Fイベント(read) → 👀", () => {
-    const result = colorize("1 F abc12345 lib.ts");
-    expect(result).toContain("👀");
-  });
-  test("Fイベント(write) → 📝", () => {
-    const result = colorize("1 F abc12345 lib.ts no-backup-write");
-    expect(result).toContain("📝");
-  });
-  test("Fイベント(@v) → 📝", () => {
-    const result = colorize("1 F abc12345 lib.ts abc12345@v1");
-    expect(result).toContain("📝");
-  });
-  test("Wイベント → dim + 🛜", () => {
-    const result = colorize("1 W abc12345 fetch");
+  test("Fイベント → dim", () => {
+    const result = colorize("1 Fabc12345 lib.ts");
     expect(result).toContain("\x1b[2m");
-    expect(result).toContain("🛜");
+    expect(result).toEndWith("\x1b[0m");
   });
-  test("Sイベント → dim + ⚡️", () => {
-    const result = colorize("1 S abc12345 skill");
+  test("Wイベント → dim", () => {
+    const result = colorize("1 Wabc12345 fetch");
     expect(result).toContain("\x1b[2m");
-    expect(result).toContain("⚡️");
+    expect(result).toEndWith("\x1b[0m");
   });
-  test("Gイベント → dim + 🔍", () => {
-    const result = colorize("1 G abc12345 grep");
+  test("Sイベント → dim", () => {
+    const result = colorize("1 Sabc12345 skill");
     expect(result).toContain("\x1b[2m");
-    expect(result).toContain("🔍");
+    expect(result).toEndWith("\x1b[0m");
   });
-  test("Aイベント → dim + 👻", () => {
-    const result = colorize("1 A abc12345 agent");
+  test("Gイベント → dim", () => {
+    const result = colorize("1 Gabc12345 grep");
     expect(result).toContain("\x1b[2m");
-    expect(result).toContain("👻");
+    expect(result).toEndWith("\x1b[0m");
   });
-  test("Dイベント → dim + ✅", () => {
-    const result = colorize("1 D abc12345 done");
+  test("Aイベント → dim", () => {
+    const result = colorize("1 Aabc12345 agent");
     expect(result).toContain("\x1b[2m");
-    expect(result).toContain("✅");
+    expect(result).toEndWith("\x1b[0m");
   });
-  test("Iイベント → dim + ℹ️", () => {
-    const result = colorize("1 I abc12345 info");
+  test("Dイベント → dim", () => {
+    const result = colorize("1 Dabc12345 done");
     expect(result).toContain("\x1b[2m");
-    expect(result).toContain("ℹ️");
+    expect(result).toEndWith("\x1b[0m");
+  });
+  test("Iイベント → dim", () => {
+    const result = colorize("1 Iabc12345 info");
+    expect(result).toContain("\x1b[2m");
+    expect(result).toEndWith("\x1b[0m");
   });
   test("マーカーなし → そのまま", () => {
     const result = colorize("plain text without marker");
     expect(result).toBe("plain text without marker");
   });
   test("タイムスタンプ付きのマーカー", () => {
-    const result = colorize("2024-01-01T10:00:00 1 R abc12345 response");
+    const result = colorize("2024-01-01T10:00:00 1 Rabc12345 response");
     expect(result).toContain("\x1b[34m");
-    expect(result).toContain("🤖");
     expect(result).toContain("2024-01-01T10:00:00 ");
-    expect(result).toContain("1 R abc12345");
+    expect(result).toContain("1 Rabc12345");
     expect(result).toContain(" response");
   });
 
-  // emoji独立制御テスト
-  test("emoji=false → 絵文字なし、ANSIあり", () => {
-    const result = colorize("1 R abc12345 response", { colors: true, emoji: false });
+  // emoji独立制御テスト（colorizeはemojiを付与しない）
+  test("colors=true, emoji=false → ANSIあり、emojiなし", () => {
+    const result = colorize("1 Rabc12345 response", { colors: true, emoji: false });
     expect(result).toContain("\x1b[34m");
     expect(result).not.toContain("🤖");
     expect(result).toEndWith("\x1b[0m");
   });
-  test("emoji=true, colors=false → 絵文字あり、ANSIなし", () => {
-    const result = colorize("1 R abc12345 response", { colors: false, emoji: true });
-    expect(result).not.toContain("\x1b[");
-    expect(result).toContain("🤖");
+  test("colors=false, emoji=true → そのまま返す（colorizeはemojiを付与しない）", () => {
+    const result = colorize("1 Rabc12345 response", { colors: false, emoji: true });
+    expect(result).toBe("1 Rabc12345 response");
   });
-  test("emoji=true, colors=true → 両方あり", () => {
-    const result = colorize("1 R abc12345 response", { colors: true, emoji: true });
+  test("colors=true, emoji=true → ANSIあり、emojiなし", () => {
+    const result = colorize("1 Rabc12345 response", { colors: true, emoji: true });
     expect(result).toContain("\x1b[34m");
-    expect(result).toContain("🤖");
+    expect(result).not.toContain("🤖");
     expect(result).toEndWith("\x1b[0m");
   });
-  test("emoji=false, colors=false → どちらもなし（そのまま返す）", () => {
-    const result = colorize("1 R abc12345 response", { colors: false, emoji: false });
-    expect(result).toBe("1 R abc12345 response");
+  test("colors=false, emoji=false → そのまま返す", () => {
+    const result = colorize("1 Rabc12345 response", { colors: false, emoji: false });
+    expect(result).toBe("1 Rabc12345 response");
   });
-  test("Uイベント emoji=false → emoji無し", () => {
-    const result = colorize("1 U abc12345 hello", { colors: true, emoji: false });
-    expect(result).toContain("\x1b[32m");
-    expect(result).not.toContain("👤");
-  });
-  test("Uイベント emoji=true, colors=false → emoji、ANSIなし", () => {
-    const result = colorize("1 U abc12345 hello", { colors: false, emoji: true });
-    expect(result).not.toContain("\x1b[");
-    expect(result).toContain("👤");
-  });
-  test("Fイベント emoji=false → F条件分岐の絵文字も出ない", () => {
-    const result = colorize("1 F abc12345 lib.ts abc12345@v1", { colors: true, emoji: false });
-    expect(result).toContain("\x1b[2m");
-    expect(result).not.toContain("📝");
-    expect(result).not.toContain("👀");
-  });
-  test("引数なし(後方互換) → colors=true,emoji=true と同等", () => {
-    const withOpts = colorize("1 R abc12345 response", { colors: true, emoji: true });
-    const withoutOpts = colorize("1 R abc12345 response");
+  test("引数なし(後方互換) → colors=true,emoji=trueと同等（ANSIのみ、emojiなし）", () => {
+    const withOpts = colorize("1 Rabc12345 response", { colors: true, emoji: true });
+    const withoutOpts = colorize("1 Rabc12345 response");
     expect(withOpts).toBe(withoutOpts);
   });
 });
@@ -169,38 +139,38 @@ describe("formatEvent", () => {
 
   test("jsonlモード", () => {
     const result = formatEvent(baseEvent, { jsonlMode: "redact", width: 55, timestamps: false });
-    expect(result).toBe("1 R abc12345");
+    expect(result).toBe("1 Rabc12345");
   });
 
   test("通常モード(timestamps=false)", () => {
     const result = formatEvent(baseEvent, { jsonlMode: "none", width: 55, timestamps: false });
-    expect(result).toBe("1 R abc12345 response text");
+    expect(result).toBe("1 Rabc12345 response text");
   });
 
   test("timestampsモード", () => {
     const result = formatEvent(baseEvent, { jsonlMode: "none", width: 55, timestamps: true });
-    expect(result).toBe("2024-01-01T10:00:00 1 R abc12345 response text");
+    expect(result).toBe("2024-01-01T10:00:00 1 Rabc12345 response text");
   });
 
   test("notruncフラグ", () => {
     const longDesc = "a".repeat(100);
     const event: TimelineEvent = { ...baseEvent, desc: longDesc, notrunc: true };
     const result = formatEvent(event, { jsonlMode: "none", width: 55, timestamps: false });
-    expect(result).toBe(`1 R abc12345 ${"a".repeat(100)}`);
+    expect(result).toBe(`1 Rabc12345 ${"a".repeat(100)}`);
   });
 
   test("truncateされる", () => {
     const longDesc = "a".repeat(100);
     const event: TimelineEvent = { ...baseEvent, desc: longDesc };
     const result = formatEvent(event, { jsonlMode: "none", width: 55, timestamps: false });
-    expect(result.length).toBeLessThan(12 + 1 + 100);
+    expect(result.length).toBeLessThan(11 + 1 + 100);
     expect(result).toContain("[+");
   });
 
   test("desc内の改行は空白に置換", () => {
     const event: TimelineEvent = { ...baseEvent, desc: "line1\nline2\nline3" };
     const result = formatEvent(event, { jsonlMode: "none", width: 55, timestamps: false });
-    expect(result).toBe("1 R abc12345 line1 line2 line3");
+    expect(result).toBe("1 Rabc12345 line1 line2 line3");
   });
 
   test("notrunc時は改行を除去しない", () => {
@@ -222,17 +192,17 @@ describe("formatEvents", () => {
     const result = formatEvents(events, { ...defaultOpts });
     const lines = result.split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toBe("1 U abc12345 user msg");
-    expect(lines[1]).toBe("1 R def67890 response");
+    expect(lines[0]).toBe("1 Uabc12345 user msg");
+    expect(lines[1]).toBe("1 Rdef67890 response");
   });
 
   test("カラーあり", () => {
     const result = formatEvents(events, { ...defaultOpts, colors: true, emoji: true });
     expect(result).toContain("\x1b[32m");
-    expect(result).toContain("👤");
     expect(result).toContain("\x1b[34m");
-    expect(result).toContain("🤖");
     expect(result).toContain("\x1b[0m");
+    expect(result).toContain("👤");
+    expect(result).toContain("🤖");
   });
 
   test("colors=true, emoji=false → ANSIカラーあり、絵文字なし", () => {
@@ -242,7 +212,7 @@ describe("formatEvents", () => {
     expect(result).not.toContain("🤖");
   });
 
-  test("colors=false, emoji=true → ANSIなし、絵文字あり", () => {
+  test("colors=false, emoji=true → ANSIなし、絵文字あり（formatEventが付与）", () => {
     const result = formatEvents(events, { ...defaultOpts, colors: false, emoji: true });
     expect(result).not.toContain("\x1b[");
     expect(result).toContain("👤");
@@ -266,30 +236,33 @@ describe("formatEvents", () => {
     const lines = result.split("\n");
     const lt = (t: string) => localTime(t);
     let i = 0;
-    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:00")} 1 U abc12345`);
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:00")} 1 Uabc12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("hello");
     expect(lines[i++]).toBe("world");
     expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("---");
     expect(lines[i++]).toBe("");
-    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:01")} 1 T bbb12345`);
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:01")} 1 Tbbb12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("thinking");
     expect(lines[i++]).toBe("about it");
     expect(lines[i++]).toBe("");
+    expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("---");
     expect(lines[i++]).toBe("");
-    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:02")} 1 R ccc12345`);
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:02")} 1 Rccc12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("response");
     expect(lines[i++]).toBe("text");
     expect(lines[i++]).toBe("");
-    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:03")} 1 F ddd12345 src/lib.ts hash@v1`);
-    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:04")} 1 B eee12345 git status`);
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:03")} 1 Fddd12345 src/lib.ts hash@v1`);
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:04")} 1 Beee12345 git status`);
+    expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("---");
     expect(lines[i++]).toBe("");
-    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:05")} 1 Q fff12345`);
+    expect(lines[i++]).toBe(`${lt("2024-01-01T10:00:05")} 1 Qfff12345`);
     expect(lines[i++]).toBe("");
     expect(lines[i++]).toBe("question");
     expect(lines[i++]).toBe("for user");
@@ -323,15 +296,15 @@ describe("formatEvents", () => {
     });
     const lines = result.split("\n");
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} 1 F aaa12345/);
+    expect(lines[0]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} 1 Faaa12345/);
   });
 
   test("mdMode=none: 通常動作", () => {
     const result = formatEvents(events, { ...defaultOpts, mdMode: "none" });
     const lines = result.split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toBe("1 U abc12345 user msg");
-    expect(lines[1]).toBe("1 R def67890 response");
+    expect(lines[0]).toBe("1 Uabc12345 user msg");
+    expect(lines[1]).toBe("1 Rdef67890 response");
   });
 });
 
