@@ -77,6 +77,34 @@ export function pick(
   return result;
 }
 
+/**
+ * user エントリがターン開始（U イベント）になるか判定する。
+ * isMeta, isCompactSummary, task-notification, teammate-message, Request interrupted は除外。
+ */
+export function isUserTurn(entry: Record<string, unknown>): boolean {
+  if (entry.type !== "user") return false;
+  if (entry.isMeta === true) return false;
+  if (entry.isCompactSummary === true) return false;
+
+  const message = entry.message as Record<string, unknown> | undefined;
+  if (!message) return false;
+  const content = message.content;
+
+  // string content のチェック
+  const text = typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? (content.find((b: Record<string, unknown>) => b.type === "text") as Record<string, unknown> | undefined)?.text as string | undefined
+      : undefined;
+
+  if (!text) return false;
+  if (text.startsWith("[Request interrupted")) return false;
+  if (text.startsWith("<task-notification>")) return false;
+  if (text.startsWith("<teammate-message")) return false;
+
+  return true;
+}
+
 export function shortenPath(path: string, n: number = 2): string {
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n) return path;

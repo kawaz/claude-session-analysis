@@ -5,8 +5,8 @@ const DURATION_RE = /^(\d+[smhd])+$/;
 
 function printUsage(exitCode: number = 0): never {
   const prog = process.env._PROG || "sessions";
-  const out = exitCode !== 0 ? console.error : console.log;
-  out(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
+  const out = exitCode !== 0 ? process.stderr : process.stdout;
+  out.write(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
 
 Options:
   --grep <pattern>   Filter sessions by content (regex)
@@ -15,7 +15,7 @@ Options:
                      or date string: 2024-01-01, 2024-01-01T12:00:00
                      (default: 2d)
   --limit <N>        Show last N sessions (default: 20)
-  --help             Show this help`);
+  --help             Show this help\n`);
   process.exit(exitCode);
 }
 

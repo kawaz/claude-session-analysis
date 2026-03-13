@@ -13,18 +13,16 @@ process.stderr?.on("error", (e: NodeJS.ErrnoException) => {
 
 import { run as timelineRun } from "./timeline/index.ts";
 import { run as fileOpsRun } from "./file-ops/index.ts";
-import { run as fileDiffRun } from "./file-diff/index.ts";
 import { run as sessionsRun } from "./sessions/index.ts";
-import { run as resolveSessionRun } from "./resolve-session/index.ts";
+import { run as resolveRun } from "./resolve-session/index.ts";
 
 const PROG = "claude-session-analysis";
 
 const SUBCOMMANDS: Record<string, { desc: string; run: (args: string[]) => Promise<void> }> = {
-  timeline:        { desc: "Display session events with filtering and formatting options", run: timelineRun },
-  "file-ops":      { desc: "Extract file operations from a session", run: fileOpsRun },
-  "file-diff":     { desc: "Compare backup file versions or backup vs current file", run: fileDiffRun },
   sessions:          { desc: "List available Claude sessions with filtering and search", run: sessionsRun },
-  "resolve-session": { desc: "Resolve session ID prefix to full ID or file path", run: resolveSessionRun },
+  timeline:          { desc: "Display session events with filtering and formatting options", run: timelineRun },
+  "file-ops":        { desc: "Extract file operations from a session", run: fileOpsRun },
+  resolve:           { desc: "Resolve session ID prefix to full ID or file path", run: resolveRun },
 };
 
 function printUsage(exitCode: number = 0): never {
@@ -33,13 +31,13 @@ function printUsage(exitCode: number = 0): never {
   const lines = Object.entries(SUBCOMMANDS).map(([name, { desc }]) =>
     `  ${name.padEnd(maxLen)}  ${desc}`,
   );
-  const out = exitCode !== 0 ? console.error : console.log;
-  out(`Usage: ${PROG} <command> [options]
+  const out = exitCode !== 0 ? process.stderr : process.stdout;
+  out.write(`Usage: ${PROG} <command> [options]
 
 Commands:
 ${lines.join("\n")}
 
-Run '${PROG} <command> --help' for more information on a command.`);
+Run '${PROG} <command> --help' for more information on a command.\n`);
   process.exit(exitCode);
 }
 
