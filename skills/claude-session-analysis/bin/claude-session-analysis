@@ -1010,7 +1010,7 @@ function colorize(line, opts) {
   const useColors = opts?.colors ?? true;
   if (!useColors)
     return line;
-  const m = line.match(/\d+ ([UTRFWBGASQDI]) [0-9a-f]{8}/);
+  const m = line.match(/\d+ ([UTRFWBGASQDI])[0-9a-f]{8}/);
   if (!m)
     return line;
   const kind = m[1];
@@ -1033,11 +1033,11 @@ function formatEvent(event, opts) {
   const useEmoji = opts.emoji ?? false;
   const emojiPrefix = useEmoji ? `${eventEmoji(event)} ` : "";
   if (opts.jsonlMode !== "none") {
-    return `${event.turn} ${event.kind} ${event.ref}`;
+    return `${event.turn} ${event.kind}${event.ref}`;
   }
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
   const fmtTime = isMd ? localTime : cleanTime;
-  const head = opts.timestamps ? `${emojiPrefix}${fmtTime(event.time)} ${event.turn} ${event.kind} ${event.ref}` : `${emojiPrefix}${event.turn} ${event.kind} ${event.ref}`;
+  const head = opts.timestamps ? `${emojiPrefix}${fmtTime(event.time)} ${event.turn} ${event.kind}${event.ref}` : `${emojiPrefix}${event.turn} ${event.kind}${event.ref}`;
   if (isMd && QTRU_KINDS.has(event.kind)) {
     return head;
   }
@@ -1143,7 +1143,7 @@ function buildCommandComputed(opts, resolvedInputs, filtered, isTty) {
   if (filtered.length > 0) {
     const first = filtered[0];
     const last = filtered[filtered.length - 1];
-    parts.push(`${first.turn} ${first.kind} ${first.ref}..${last.turn} ${last.kind} ${last.ref}`);
+    parts.push(`${first.turn} ${first.kind}${first.ref}..${last.turn} ${last.kind}${last.ref}`);
   }
   parts.push(`-t ${opts.types}`);
   parts.push(`--width 0`);

@@ -67,7 +67,7 @@ function buildCommandComputed(
   if (filtered.length > 0) {
     const first = filtered[0];
     const last = filtered[filtered.length - 1];
-    parts.push(`${first.turn} ${first.kind} ${first.ref}..${last.turn} ${last.kind} ${last.ref}`);
+    parts.push(`${first.turn} ${first.kind}${first.ref}..${last.turn} ${last.kind}${last.ref}`);
   }
 
   parts.push(`-t ${opts.types}`);

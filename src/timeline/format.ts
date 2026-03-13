@@ -72,7 +72,7 @@ export function colorize(line: string, opts?: ColorizeOpts): string {
 
   // 行内から kind 文字を検出してカラーを決定
   // フォーマット: {emoji?} {timestamp?} {turn} {kind} {ref} ...
-  const m = line.match(/\d+ ([UTRFWBGASQDI]) [0-9a-f]{8}/);
+  const m = line.match(/\d+ ([UTRFWBGASQDI])[0-9a-f]{8}/);
   if (!m) return line;
 
   const kind = m[1];
@@ -105,15 +105,15 @@ export function formatEvent(
   const emojiPrefix = useEmoji ? `${eventEmoji(event)} ` : "";
 
   if (opts.jsonlMode !== "none") {
-    return `${event.turn} ${event.kind} ${event.ref}`;
+    return `${event.turn} ${event.kind}${event.ref}`;
   }
 
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
   const fmtTime = isMd ? localTime : cleanTime;
 
   const head = opts.timestamps
-    ? `${emojiPrefix}${fmtTime(event.time)} ${event.turn} ${event.kind} ${event.ref}`
-    : `${emojiPrefix}${event.turn} ${event.kind} ${event.ref}`;
+    ? `${emojiPrefix}${fmtTime(event.time)} ${event.turn} ${event.kind}${event.ref}`
+    : `${emojiPrefix}${event.turn} ${event.kind}${event.ref}`;
 
   if (isMd && QTRU_KINDS.has(event.kind)) {
     return head;
