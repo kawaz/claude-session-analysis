@@ -197,7 +197,9 @@ function extractAssistantEvents(entry: AssistantEntry, events: RawEvent[]): void
     const timeSuffix = `${timestamp}_${String(i).padStart(5, "0")}`;
 
     if (block.type === "thinking") {
-      events.push({ kind: "T", ref, time: timestamp, desc: block.thinking as string });
+      const thinking = block.thinking as string;
+      if (thinking.replace(/\s/g, "").length === 0) continue;
+      events.push({ kind: "T", ref, time: timestamp, desc: thinking });
     } else if (block.type === "text") {
       const text = block.text as string;
       // 空白のみスキップ

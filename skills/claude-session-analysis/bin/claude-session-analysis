@@ -449,7 +449,10 @@ function extractAssistantEvents(entry, events) {
     const block = content[i];
     const timeSuffix = `${timestamp}_${String(i).padStart(5, "0")}`;
     if (block.type === "thinking") {
-      events.push({ kind: "T", ref, time: timestamp, desc: block.thinking });
+      const thinking = block.thinking;
+      if (thinking.replace(/\s/g, "").length === 0)
+        continue;
+      events.push({ kind: "T", ref, time: timestamp, desc: thinking });
     } else if (block.type === "text") {
       const text = block.text;
       if (text.replace(/\s/g, "").length === 0)
