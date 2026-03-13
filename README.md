@@ -5,6 +5,7 @@ A Claude Code plugin for analyzing session files (`.jsonl`) to review past conve
 ## Installation
 
 ```bash
+claude plugin marketplace add kawaz/claude-session-analysis
 claude plugin install kawaz/claude-session-analysis
 ```
 
