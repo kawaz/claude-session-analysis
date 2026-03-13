@@ -15,11 +15,10 @@ $ claude-session-analysis --help
 Usage: claude-session-analysis <command> [options]
 
 Commands:
-  sessions         List available Claude sessions with filtering and search
-  timeline         Display session events with filtering and formatting options
-  file-ops         Extract file operations from a session
-  file-diff        Compare backup file versions or backup vs current file
-  resolve-session  Resolve session ID prefix to full ID or file path
+  sessions  List available Claude sessions with filtering and search
+  timeline  Display session events with filtering and formatting options
+  file-ops  Extract file operations from a session
+  resolve   Resolve session ID prefix to full ID or file path
 
 Run 'claude-session-analysis <command> --help' for more information on a command.
 ```
@@ -69,10 +68,13 @@ Types:
   G=Grep/Glob A=Agent S=Skill Q=Question D=toDo I=Info
 
 Range:
-  ..marker    From start to marker
-  marker..    From marker to end
-  from..to    Between markers
-  marker      Single marker only
+  N          Turn N only
+  N..M       Turns N to M
+  N..        Turn N to end
+  ..M        Start to turn M
+  marker..   From marker to end (e.g. Uabc1234..)
+  from..to   Between markers
+  marker     Single marker only
 
 Examples:
   claude-session-analysis timeline SID                                          Show timeline
@@ -88,6 +90,9 @@ Examples:
   claude-session-analysis timeline SID --last-turn 3                            Show last 3 turns
   claude-session-analysis timeline SID --last-since 30m                         Show events from last 30m of session
   claude-session-analysis timeline SID Uabc1234..Rabc5678                       Show range between markers
+  claude-session-analysis timeline SID 3                                        Show turn 3 only
+  claude-session-analysis timeline SID 3..5                                     Show turns 3 to 5
+  claude-session-analysis timeline SID 3..                                      Show from turn 3 to end
 ```
 
 ## License
