@@ -29,11 +29,10 @@ claude plugin install claude-session-analysis@claude-session-analysis
 
 | サブコマンド | 説明 |
 |------------|------|
-| `timeline <SESSION_ID ..>` | セッションイベントの表示（フィルタリング・フォーマットオプション付き） |
 | `sessions [options]` | Claude セッションの一覧（フィルタリング・検索付き） |
+| `timeline <SESSION_ID ..>` | セッションイベントの表示（フィルタリング・フォーマットオプション付き） |
 | `file-ops <session_id>` | セッションのファイル操作を抽出 |
-| `file-diff <session_id> <hash> <v1> [v2]` | バックアップファイルのバージョン比較 |
-| `resolve-session [--path] <id_prefix>` | セッション ID プレフィックスからフル ID またはパスを解決 |
+| `resolve [--path] [--all] <session_id_or_prefix>...` | セッション ID プレフィックスからフル ID またはパスを解決 |
 
 各サブコマンドの詳細は `claude-session-analysis <command> --help` で確認できます。
 
