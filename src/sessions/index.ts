@@ -1,21 +1,27 @@
 import { searchSessions, parseDuration, type SessionInfo } from "./search.ts";
-import { formatSessionsOutput } from "./format.ts";
+import { formatSessionsOutput, formatSessionsJsonl } from "./format.ts";
+import { writeJsonl } from "../lib.ts";
+import { resolveSessionAll } from "../resolve-session.ts";
+import * as path from "node:path";
 
 const DURATION_RE = /^(\d+[smhd])+$/;
+
+type Format = "list" | "jsonl";
 
 function printUsage(exitCode: number = 0): never {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? process.stderr : process.stdout;
-  out.write(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
+  out.write(`Usage: ${prog} [options] [<session_id_or_file> ...]
 
 Options:
-  --grep <pattern>   Filter sessions by content (regex)
-  --path <pattern>   Filter sessions by path (regex)
-  --since <spec>     Time filter. Duration: 5m, 1h, 2d, 1h30m
-                     or date string: 2024-01-01, 2024-01-01T12:00:00
-                     (default: 2d)
-  --limit <N>        Show last N sessions (default: 20)
-  --help             Show this help\n`);
+  --grep <pattern>      Filter sessions by content (regex)
+  --path <pattern>      Filter sessions by path (regex)
+  --since <spec>        Time filter. Duration: 5m, 1h, 2d, 1h30m
+                        or date string: 2024-01-01, 2024-01-01T12:00:00
+                        (default: 2d, disabled when session IDs given)
+  --limit <N>           Show last N sessions (default: 20)
+  --format <list|jsonl>  Output format (default: list)
+  --help                Show this help\n`);
   process.exit(exitCode);
 }
 
@@ -46,6 +52,8 @@ function parseOpts(rawArgs: string[]) {
   let pathFilter = "";
   let since = DEFAULT_SINCE;
   let tail = DEFAULT_LIMIT;
+  let format: Format = "list";
+  const positionals: string[] = [];
   let sinceExplicit = false;
   let limitExplicit = false;
   let grepExplicit = false;
@@ -90,23 +98,38 @@ function parseOpts(rawArgs: string[]) {
         tail = parseInt(rawArgs[i] ?? String(DEFAULT_LIMIT), 10);
         limitExplicit = true;
         break;
+      case "--format":
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --format requires a value");
+          printUsage(1);
+        }
+        {
+          const v = rawArgs[i] ?? "";
+          if (v !== "list" && v !== "jsonl") {
+            console.error(`Error: --format must be 'list' or 'jsonl', got '${v}'`);
+            printUsage(1);
+          }
+          format = v;
+        }
+        break;
       default:
         if (rawArgs[i]!.startsWith("-")) {
           console.error(`Unknown option: ${rawArgs[i]}`);
           printUsage(1);
         }
-        // 位置引数は無視
+        positionals.push(rawArgs[i]!);
         break;
     }
     i++;
   }
 
-  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit };
+  return { keyword, pathFilter, since, tail, format, positionals, sinceExplicit, limitExplicit, grepExplicit };
 }
 
 function buildCommandHelp(): string {
   const prog = process.env._PROG || "sessions";
-  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--help]`;
+  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--format <list|jsonl>] [--help]`;
 }
 
 function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
@@ -119,6 +142,9 @@ function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
   }
   if (opts.keyword) {
     parts.push(`--grep ${opts.keyword}`);
+  }
+  if (opts.format !== "list") {
+    parts.push(`--format ${opts.format}`);
   }
   return parts.join(" ");
 }
@@ -147,20 +173,41 @@ export async function run(args: string[]) {
   const command = `${prog} ${args.join(" ")}`;
   const commandHelp = buildCommandHelp();
 
+  // 位置引数をセッションファイルに解決
+  let sessionFiles: Set<string> | undefined;
+  if (opts.positionals.length > 0) {
+    sessionFiles = new Set<string>();
+    for (const input of opts.positionals) {
+      try {
+        const resolved = await resolveSessionAll(input);
+        for (const f of resolved) sessionFiles.add(f);
+      } catch (e) {
+        console.error(`Error: ${(e as Error).message}`);
+        process.exit(1);
+      }
+    }
+  }
+
   try {
     const { sessions: filtered, stats } = await searchSessions({
       configDirs,
-      since: cutoff,
+      since: sessionFiles ? undefined : cutoff,
       keyword: opts.keyword || undefined,
       path: opts.pathFilter || undefined,
+      files: sessionFiles ? [...sessionFiles] : undefined,
     });
-    const output = formatSessionsOutput(stats, filtered, {
-      tail: opts.tail,
-      command,
-      commandComputed: buildCommandComputed(opts),
-      commandHelp,
-    });
-    if (output) console.log(output);
+    if (opts.format === "jsonl") {
+      const output = formatSessionsJsonl(filtered, { tail: opts.tail });
+      await writeJsonl(output);
+    } else {
+      const output = formatSessionsOutput(stats, filtered, {
+        tail: opts.tail,
+        command,
+        commandComputed: buildCommandComputed(opts),
+        commandHelp,
+      });
+      if (output) console.log(output);
+    }
   } catch (e) {
     if (e instanceof SyntaxError) {
       console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);

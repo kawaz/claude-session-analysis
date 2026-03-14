@@ -128,6 +128,40 @@ export function formatSessionLine(
 }
 
 /**
+ * セッション一覧をJSONL形式でフォーマット。
+ * 各行は1セッションの集計情報を含むJSON。
+ */
+export function formatSessionsJsonl(
+  filtered: SessionInfo[],
+  opts: { tail: number },
+): string {
+  const output = opts.tail > 0 && filtered.length > opts.tail
+    ? filtered.slice(-opts.tail)
+    : filtered;
+
+  if (output.length === 0) return "";
+
+  const lines: string[] = [];
+  for (const s of output) {
+    const obj: Record<string, unknown> = {
+      sessionId: s.sessionId,
+      file: s.file,
+      cwd: s.cwd,
+      startTime: formatDateTime(s.startTime),
+      endTime: formatDateTime(s.endTime),
+      duration_ms: Math.max(0, s.endTime - s.startTime) * 1000,
+      bytes: s.size,
+      turns: s.turns,
+    };
+    if (s.context) {
+      obj.context = s.context;
+    }
+    lines.push(JSON.stringify(obj));
+  }
+  return lines.join("\n");
+}
+
+/**
  * 全セッション出力（ヘッダ + セッション行）をフォーマット。
  */
 export function formatSessionsOutput(

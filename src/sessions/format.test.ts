@@ -7,6 +7,7 @@ import {
   formatProjectPath,
   formatSessionLine,
   formatSessionsOutput,
+  formatSessionsJsonl,
 } from "./format.ts";
 import type { SessionInfo, SessionStats } from "./search.ts";
 
@@ -250,5 +251,115 @@ describe("formatSessionsOutput", () => {
     expect(output).toContain("# now:");
     expect(output).toMatch(/# 1 sessions/);
     expect(output).toMatch(/TIMESTAMP_END[+-]\d{2}:\d{2}\s+DUR\b/);
+  });
+});
+
+describe("formatSessionsJsonl", () => {
+  const now = Math.floor(new Date(2026, 2, 6, 12, 0, 0).getTime() / 1000);
+
+  test("各セッションが1行のJSONとして出力される", () => {
+    const sessions: SessionInfo[] = [
+      {
+        file: "/a/b.jsonl",
+        mtime: now - 7200,
+        startTime: now - 7500,
+        endTime: now - 7200,
+        size: 5000,
+        sessionId: "aaaaaaaa-1111-2222-3333-444444444444",
+        cwd: "/x/y",
+        turns: 5,
+      },
+      {
+        file: "/a/c.jsonl",
+        mtime: now - 300,
+        startTime: now - 600,
+        endTime: now - 300,
+        size: 10000,
+        sessionId: "bbbbbbbb-1111-2222-3333-444444444444",
+        cwd: "/x/z",
+        turns: 10,
+      },
+    ];
+    const output = formatSessionsJsonl(sessions, { tail: 10 });
+    const lines = output.split("\n").filter((l) => l);
+    expect(lines.length).toBe(2);
+
+    const obj0 = JSON.parse(lines[0]!);
+    expect(obj0.sessionId).toBe("aaaaaaaa-1111-2222-3333-444444444444");
+    expect(obj0.file).toBe("/a/b.jsonl");
+    expect(obj0.cwd).toBe("/x/y");
+    expect(obj0.bytes).toBe(5000);
+    expect(obj0.turns).toBe(5);
+    expect(obj0.duration_ms).toBe(300000);
+    expect(obj0.startTime).toMatch(/^2026-03-06T/);
+    expect(obj0.endTime).toMatch(/^2026-03-06T/);
+
+    const obj1 = JSON.parse(lines[1]!);
+    expect(obj1.sessionId).toBe("bbbbbbbb-1111-2222-3333-444444444444");
+    expect(obj1.turns).toBe(10);
+  });
+
+  test("tail制限が適用される", () => {
+    const sessions: SessionInfo[] = [];
+    for (let i = 0; i < 5; i++) {
+      const t = now - (5 - i) * 60;
+      sessions.push({
+        file: `/a/s${i}.jsonl`,
+        mtime: t,
+        startTime: t - 30,
+        endTime: t,
+        size: 1000,
+        sessionId: `sess${i}000`,
+        cwd: "/x/y",
+        turns: i + 1,
+      });
+    }
+    const output = formatSessionsJsonl(sessions, { tail: 2 });
+    const lines = output.split("\n").filter((l) => l);
+    expect(lines.length).toBe(2);
+    expect(JSON.parse(lines[0]!).sessionId).toBe("sess3000");
+    expect(JSON.parse(lines[1]!).sessionId).toBe("sess4000");
+  });
+
+  test("contextがあれば含まれる", () => {
+    const sessions: SessionInfo[] = [
+      {
+        file: "/a/b.jsonl",
+        mtime: now - 300,
+        startTime: now - 600,
+        endTime: now - 300,
+        size: 5000,
+        sessionId: "aaaaaaaa",
+        cwd: "/x/y",
+        turns: 3,
+        context: "[2 hits] some match context",
+      },
+    ];
+    const output = formatSessionsJsonl(sessions, { tail: 10 });
+    const obj = JSON.parse(output.trim());
+    expect(obj.context).toBe("[2 hits] some match context");
+  });
+
+  test("contextがなければフィールドに含まれない", () => {
+    const sessions: SessionInfo[] = [
+      {
+        file: "/a/b.jsonl",
+        mtime: now - 300,
+        startTime: now - 600,
+        endTime: now - 300,
+        size: 5000,
+        sessionId: "aaaaaaaa",
+        cwd: "/x/y",
+        turns: 3,
+      },
+    ];
+    const output = formatSessionsJsonl(sessions, { tail: 10 });
+    const obj = JSON.parse(output.trim());
+    expect(obj).not.toHaveProperty("context");
+  });
+
+  test("空配列なら空文字列", () => {
+    const output = formatSessionsJsonl([], { tail: 10 });
+    expect(output).toBe("");
   });
 });

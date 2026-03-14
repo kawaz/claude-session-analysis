@@ -44,6 +44,7 @@ export interface SearchOptions {
   since?: number; // Unix epoch seconds (cutoff): sessions with mtime >= since are included
   keyword?: string;
   path?: string; // cwd を正規表現でフィルタ
+  files?: string[]; // 直接指定のファイルリスト（指定時はglob検索をスキップ）
 }
 
 /**
@@ -53,29 +54,35 @@ export interface SearchOptions {
 export async function searchSessions(
   opts: SearchOptions,
 ): Promise<SearchResult> {
-  const { configDirs, since, keyword, path } = opts;
+  const { configDirs, since, keyword, path, files } = opts;
 
-  // 1. projects/ ディレクトリを収集
-  const projectDirs: string[] = [];
-  for (const dir of configDirs) {
-    const pDir = `${dir}/projects`;
-    try {
-      const s = await stat(pDir);
-      if (s.isDirectory()) projectDirs.push(pDir);
-    } catch {
-      // ディレクトリが存在しない
+  let allFiles: string[];
+  if (files) {
+    // 直接指定のファイルリスト
+    allFiles = files;
+  } else {
+    // 1. projects/ ディレクトリを収集
+    const projectDirs: string[] = [];
+    for (const dir of configDirs) {
+      const pDir = `${dir}/projects`;
+      try {
+        const s = await stat(pDir);
+        if (s.isDirectory()) projectDirs.push(pDir);
+      } catch {
+        // ディレクトリが存在しない
+      }
     }
-  }
 
-  // 2. *.jsonl ファイルを Glob で検索（agent-*.jsonl は除外）
-  const glob = new Bun.Glob("**/*.jsonl");
-  const allFiles: string[] = [];
-  for (const pDir of projectDirs) {
-    for await (const match of glob.scan(pDir)) {
-      // agent-*.jsonl を除外
-      const filename = match.split("/").pop() ?? "";
-      if (filename.startsWith("agent-")) continue;
-      allFiles.push(`${pDir}/${match}`);
+    // 2. *.jsonl ファイルを Glob で検索（agent-*.jsonl は除外）
+    const glob = new Bun.Glob("**/*.jsonl");
+    allFiles = [];
+    for (const pDir of projectDirs) {
+      for await (const match of glob.scan(pDir)) {
+        // agent-*.jsonl を除外
+        const filename = match.split("/").pop() ?? "";
+        if (filename.startsWith("agent-")) continue;
+        allFiles.push(`${pDir}/${match}`);
+      }
     }
   }
 
