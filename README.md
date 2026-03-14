@@ -9,6 +9,13 @@ claude plugin marketplace add kawaz/claude-session-analysis
 claude plugin install claude-session-analysis@claude-session-analysis
 ```
 
+## Update
+
+```bash
+claude plugin marketplace update claude-session-analysis
+claude plugin update claude-session-analysis@claude-session-analysis
+```
+
 ## Usage
 
 ```
