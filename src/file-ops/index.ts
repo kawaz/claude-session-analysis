@@ -1,6 +1,7 @@
 import { resolveSession } from "../resolve-session.ts";
 import { extractFileOps, extractFileOpsDetailed, extractFileOpsFullDetail, parseJsonl } from "./extract.ts";
 import { getClaudeConfigDirs, findSessionDir } from "../file-diff/resolve.ts";
+import { writeJsonl } from "../lib.ts";
 import * as path from "node:path";
 
 export async function run(args: string[]) {
@@ -55,18 +56,19 @@ export async function run(args: string[]) {
     const ops = detail >= 2
       ? extractFileOpsFullDetail(entries)
       : extractFileOpsDetailed(entries);
+    const lines: string[] = [];
     for (const op of ops) {
       if (op.snapshot && sessionDir) {
         op.snapshot = `${sessionDir}/${op.snapshot}`;
       }
-      process.stdout.write(JSON.stringify(op) + "\n");
+      lines.push(JSON.stringify(op));
     }
+    await writeJsonl(lines.join("\n"));
   } else {
     // detail=0: パス毎サマリ
     const result = extractFileOps(entries);
-    for (const entry of result) {
-      process.stdout.write(JSON.stringify(entry) + "\n");
-    }
+    const lines = result.map(entry => JSON.stringify(entry));
+    await writeJsonl(lines.join("\n"));
   }
 }
 

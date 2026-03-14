@@ -3,7 +3,7 @@ import { resolveSession } from "../resolve-session.ts";
 import { extractEvents } from "./extract.ts";
 import { pipeline } from "./filter.ts";
 import { formatEvents, mdFrontMatter, localTimeMs } from "./format.ts";
-import { omit, redact, redactWithHint } from "../lib.ts";
+import { omit, redact, redactWithHint, writeJsonl } from "../lib.ts";
 import type { SessionEntry, TimelineEvent } from "./types.ts";
 
 const OMIT_KEYS = [
@@ -175,7 +175,7 @@ export async function run(args: string[]) {
         output.push(JSON.stringify(processed));
       }
     }
-    console.log(output.join("\n"));
+    await writeJsonl(output.join("\n"));
     return;
   }
 
