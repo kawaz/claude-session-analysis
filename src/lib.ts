@@ -117,3 +117,26 @@ export function lastSegments(path: string, n: number = 2): string {
   if (segments.length <= n) return path;
   return segments.slice(-n).join("/");
 }
+
+/**
+ * JSONL文字列をstdoutに出力する。
+ * stdoutがTTYかつjqが利用可能なら `jq -c .` を通してカラー出力する。
+ */
+export async function writeJsonl(text: string): Promise<void> {
+  if (!text) return;
+  if (process.stdout.isTTY) {
+    const which = Bun.spawnSync(["which", "jq"]);
+    if (which.exitCode === 0) {
+      const proc = Bun.spawn(["jq", "-c", "."], {
+        stdin: "pipe",
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      proc.stdin.write(text + "\n");
+      proc.stdin.end();
+      await proc.exited;
+      return;
+    }
+  }
+  process.stdout.write(text + "\n");
+}
