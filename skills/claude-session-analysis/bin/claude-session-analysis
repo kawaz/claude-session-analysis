@@ -681,10 +681,12 @@ async function searchSessions(opts) {
     let startTime = 0;
     let endTime = 0;
     let turns = 0;
+    let lineCount = 0;
     for (let i = 0;i < lines.length; i++) {
       const line = lines[i];
       if (line.trim() === "")
         continue;
+      lineCount++;
       let obj;
       try {
         obj = JSON.parse(line);
@@ -719,7 +721,7 @@ async function searchSessions(opts) {
       endTime = entry.mtime;
     if (cwd === "?" && sessionId === "?")
       return null;
-    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns };
+    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount };
   };
   const parseResults = await Promise.all(validFiles.map(parseFile));
   const all = parseResults.filter((r) => r != null);
@@ -1745,6 +1747,7 @@ function formatSessionsJsonl(filtered, opts) {
       endTime: formatDateTime(s.endTime),
       duration_ms: Math.max(0, s.endTime - s.startTime) * 1000,
       bytes: s.size,
+      lines: s.lines,
       turns: s.turns
     };
     if (s.context) {

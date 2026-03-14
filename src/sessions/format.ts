@@ -151,6 +151,7 @@ export function formatSessionsJsonl(
       endTime: formatDateTime(s.endTime),
       duration_ms: Math.max(0, s.endTime - s.startTime) * 1000,
       bytes: s.size,
+      lines: s.lines,
       turns: s.turns,
     };
     if (s.context) {

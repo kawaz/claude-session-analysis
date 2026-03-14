@@ -142,6 +142,7 @@ describe("formatSessionLine", () => {
     sessionId: "abc12345-6789-0123-4567-890123456789",
     cwd: "/Users/kawaz/.local/share/repos/github.com/kawaz/myproject",
     turns: 42,
+    lines: 200,
   };
 
   test("end, duration, full sessionId, turns, full path を含む", () => {
@@ -181,6 +182,7 @@ describe("formatSessionsOutput", () => {
         sessionId: "aaaaaaaa",
         cwd: "/x/y",
         turns: 5,
+        lines: 50,
       },
       {
         file: "/a/c.jsonl",
@@ -191,6 +193,7 @@ describe("formatSessionsOutput", () => {
         sessionId: "bbbbbbbb",
         cwd: "/x/z",
         turns: 10,
+        lines: 100,
       },
     ];
     const output = formatSessionsOutput(stats, filtered, {
@@ -217,6 +220,7 @@ describe("formatSessionsOutput", () => {
         sessionId: `sess${i}000`,
         cwd: "/x/y",
         turns: i + 1,
+        lines: (i + 1) * 10,
       });
     }
     const stats: SessionStats = {
@@ -268,6 +272,7 @@ describe("formatSessionsJsonl", () => {
         sessionId: "aaaaaaaa-1111-2222-3333-444444444444",
         cwd: "/x/y",
         turns: 5,
+        lines: 50,
       },
       {
         file: "/a/c.jsonl",
@@ -278,6 +283,7 @@ describe("formatSessionsJsonl", () => {
         sessionId: "bbbbbbbb-1111-2222-3333-444444444444",
         cwd: "/x/z",
         turns: 10,
+        lines: 100,
       },
     ];
     const output = formatSessionsJsonl(sessions, { tail: 10 });
@@ -289,6 +295,7 @@ describe("formatSessionsJsonl", () => {
     expect(obj0.file).toBe("/a/b.jsonl");
     expect(obj0.cwd).toBe("/x/y");
     expect(obj0.bytes).toBe(5000);
+    expect(obj0.lines).toBe(50);
     expect(obj0.turns).toBe(5);
     expect(obj0.duration_ms).toBe(300000);
     expect(obj0.startTime).toMatch(/^2026-03-06T/);
@@ -312,6 +319,7 @@ describe("formatSessionsJsonl", () => {
         sessionId: `sess${i}000`,
         cwd: "/x/y",
         turns: i + 1,
+        lines: (i + 1) * 10,
       });
     }
     const output = formatSessionsJsonl(sessions, { tail: 2 });
@@ -332,6 +340,7 @@ describe("formatSessionsJsonl", () => {
         sessionId: "aaaaaaaa",
         cwd: "/x/y",
         turns: 3,
+        lines: 30,
         context: "[2 hits] some match context",
       },
     ];
@@ -351,6 +360,7 @@ describe("formatSessionsJsonl", () => {
         sessionId: "aaaaaaaa",
         cwd: "/x/y",
         turns: 3,
+        lines: 30,
       },
     ];
     const output = formatSessionsJsonl(sessions, { tail: 10 });

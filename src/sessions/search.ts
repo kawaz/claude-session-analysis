@@ -25,6 +25,7 @@ export interface SessionInfo {
   sessionId: string;
   cwd: string;
   turns: number; // Uイベント（ユーザーターン）の数
+  lines: number; // JSONLファイルの行数（空行除く）
   context?: string; // keyword search context
 }
 
@@ -126,10 +127,12 @@ export async function searchSessions(
     let startTime = 0;
     let endTime = 0;
     let turns = 0;
+    let lineCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
       if (line.trim() === "") continue;
+      lineCount++;
       let obj: any;
       try {
         obj = JSON.parse(line);
@@ -167,7 +170,7 @@ export async function searchSessions(
     if (startTime === 0) startTime = entry.mtime;
     if (endTime === 0) endTime = entry.mtime;
     if (cwd === "?" && sessionId === "?") return null;
-    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns };
+    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount };
   };
 
   const parseResults = await Promise.all(validFiles.map(parseFile));
