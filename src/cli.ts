@@ -15,6 +15,7 @@ import { run as timelineRun } from "./timeline/index.ts";
 import { run as fileOpsRun } from "./file-ops/index.ts";
 import { run as sessionsRun } from "./sessions/index.ts";
 import { run as resolveRun } from "./resolve-session/index.ts";
+import ZSH_COMPLETION from "../completions/_claude-session-analysis" with { type: "text" };
 
 const PROG = "claude-session-analysis";
 
@@ -35,13 +36,7 @@ Example:
     console.error(`Error: unsupported shell: ${shell}`);
     process.exit(1);
   }
-  const scriptPath = `${import.meta.dirname}/../completions/_${PROG}`;
-  const file = Bun.file(scriptPath);
-  if (!(await file.exists())) {
-    console.error(`Error: completion file not found: ${scriptPath}`);
-    process.exit(1);
-  }
-  process.stdout.write(await file.text());
+  process.stdout.write(ZSH_COMPLETION);
 }
 
 const SUBCOMMANDS: Record<string, { desc: string; run: (args: string[]) => Promise<void> }> = {

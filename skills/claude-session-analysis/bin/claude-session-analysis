@@ -1038,7 +1038,7 @@ function colorize(line, opts) {
   const useColors = opts?.colors ?? true;
   if (!useColors)
     return line;
-  const m = line.match(/\d+ ([UTRFWBGASQDI])[0-9a-f]{8}/);
+  const m = line.match(/([UTRFWBGASQDI])[0-9a-f]{8} \d+/);
   if (!m)
     return line;
   const kind = m[1];
@@ -1061,11 +1061,11 @@ function formatEvent(event, opts) {
   const useEmoji = opts.emoji ?? false;
   const emojiPrefix = useEmoji ? `${eventEmoji(event)} ` : "";
   if (opts.jsonlMode !== "none") {
-    return `${event.turn} ${event.kind}${event.ref}`;
+    return `${event.kind}${event.ref} ${event.turn}`;
   }
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
   const fmtTime = isMd ? localTime : cleanTime;
-  const head = opts.timestamps ? `${emojiPrefix}${fmtTime(event.time)} ${event.turn} ${event.kind}${event.ref}` : `${emojiPrefix}${event.turn} ${event.kind}${event.ref}`;
+  const head = opts.timestamps ? `${emojiPrefix}${fmtTime(event.time)} ${event.kind}${event.ref} ${event.turn}` : `${emojiPrefix}${event.kind}${event.ref} ${event.turn}`;
   if (isMd && QTRU_KINDS.has(event.kind)) {
     return head;
   }
@@ -2059,6 +2059,112 @@ async function run4(args) {
   }
 }
 
+// completions/_claude-session-analysis
+var _claude_session_analysis_default = `#compdef claude-session-analysis
+
+_claude-session-analysis() {
+  local -a subcommands=(
+    'timeline:Display session events with filtering and formatting options'
+    'summaries:Extract summary information from a session'
+    'file-ops:Extract file operations from a session'
+    'get-by-marker:Retrieve session entries by marker with optional context'
+    'file-diff:Compare backup file versions or backup vs current file'
+    'sessions:List available Claude sessions with filtering and search'
+    'resolve-session:Resolve session ID prefix to full ID or file path'
+    'completion:Output shell completion script'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'subcommand' subcommands
+    return
+  fi
+
+  local subcmd="$words[2]"
+
+  case "$subcmd" in
+    timeline)
+      _arguments -s \\
+        '-t[Filter by type (UTRFWBGASQDI)]:types:' \\
+        '--width[Truncation width]:width:' \\
+        '--timestamps[Show timestamps]' \\
+        '--no-timestamps[Disable timestamps]' \\
+        '--color=-[Color output]::mode:(auto always none)' \\
+        '--emoji[Always show emoji]' \\
+        '--no-emoji[Never show emoji]' \\
+        '--grep[Filter events by desc (regex)]:pattern:' \\
+        '-A[Show N turns after grep match]:count:' \\
+        '--after[Show N turns after grep match]:count:' \\
+        '-B[Show N turns before grep match]:count:' \\
+        '--before[Show N turns before grep match]:count:' \\
+        '-C[Show N turns before and after grep match]:count:' \\
+        '--context[Show N turns before and after grep match]:count:' \\
+        '--since[Show events since (duration or date)]:spec:' \\
+        '--last-since[Show events since duration before session end]:duration:' \\
+        '--last-turn[Show last N turns]:count:' \\
+        '--md=-[Full text for Q/T/R/U events]::mode:(auto source render none)' \\
+        '--jsonl=-[JSONL output]::mode:(none redact full)' \\
+        '--help[Show help]' \\
+        '*:session:_files'
+      ;;
+    summaries)
+      _arguments -s \\
+        '--help[Show help]' \\
+        ':session:_files'
+      ;;
+    file-ops)
+      _arguments -s \\
+        '--help[Show help]' \\
+        ':session:_files'
+      ;;
+    get-by-marker)
+      _arguments -s \\
+        '--raw[Output with omit + redact]' \\
+        '--raw2[Output with redact only]' \\
+        '-A[Lines after match]:count:' \\
+        '-B[Lines before match]:count:' \\
+        '-C[Lines before and after match]:count:' \\
+        '--help[Show help]' \\
+        ':session:_files' \\
+        ':marker:'
+      ;;
+    file-diff)
+      _arguments -s \\
+        '--help[Show help]' \\
+        ':session_id_prefix:' \\
+        ':backup_hash_prefix:' \\
+        ':v1:' \\
+        '::v2:'
+      ;;
+    sessions)
+      _arguments \\
+        '--grep[Filter by content (regex)]:pattern:' \\
+        '--path[Filter by path (regex)]:pattern:' \\
+        '--all[Show all projects (disable auto-detect)]' \\
+        '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \\
+        '--limit[Show last N sessions]:count:' \\
+        '--format[Output format]:format:(list jsonl)' \\
+        '--help[Show help]'
+      ;;
+    resolve-session)
+      _arguments -s \\
+        '--path[Output full file path instead of session ID]' \\
+        '--help[Show help]' \\
+        ':session_id_prefix:'
+      ;;
+    completion)
+      _arguments -s \\
+        '--help[Show help]' \\
+        ':shell:(zsh)'
+      ;;
+    *)
+      _files
+      ;;
+  esac
+}
+
+_claude-session-analysis "$@"
+`;
+
 // src/cli.ts
 process.on("SIGPIPE", () => process.exit(0));
 process.stdout?.on("error", (e) => {
@@ -2090,13 +2196,7 @@ Example:
     console.error(`Error: unsupported shell: ${shell}`);
     process.exit(1);
   }
-  const scriptPath = `${import.meta.dirname}/../completions/_${PROG}`;
-  const file = Bun.file(scriptPath);
-  if (!await file.exists()) {
-    console.error(`Error: completion file not found: ${scriptPath}`);
-    process.exit(1);
-  }
-  process.stdout.write(await file.text());
+  process.stdout.write(_claude_session_analysis_default);
 }
 var SUBCOMMANDS = {
   sessions: { desc: "List available Claude sessions with filtering and search", run: run3 },
