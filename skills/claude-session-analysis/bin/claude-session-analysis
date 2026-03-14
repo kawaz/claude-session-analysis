@@ -2072,11 +2072,38 @@ process.stderr?.on("error", (e) => {
   throw e;
 });
 var PROG = "claude-session-analysis";
+async function completionRun(args) {
+  const shell = args[0];
+  if (!shell || shell === "--help") {
+    const out = shell === "--help" ? process.stdout : process.stderr;
+    out.write(`Usage: ${PROG} completion <shell>
+
+Shells:
+  zsh    Output zsh completion script
+
+Example:
+  ${PROG} completion zsh > ~/.zsh/completions/_${PROG}
+`);
+    process.exit(shell === "--help" ? 0 : 1);
+  }
+  if (shell !== "zsh") {
+    console.error(`Error: unsupported shell: ${shell}`);
+    process.exit(1);
+  }
+  const scriptPath = `${import.meta.dirname}/../completions/_${PROG}`;
+  const file = Bun.file(scriptPath);
+  if (!await file.exists()) {
+    console.error(`Error: completion file not found: ${scriptPath}`);
+    process.exit(1);
+  }
+  process.stdout.write(await file.text());
+}
 var SUBCOMMANDS = {
   sessions: { desc: "List available Claude sessions with filtering and search", run: run3 },
   timeline: { desc: "Display session events with filtering and formatting options", run },
   "file-ops": { desc: "Extract file operations from a session", run: run2 },
-  resolve: { desc: "Resolve session ID prefix to full ID or file path", run: run4 }
+  resolve: { desc: "Resolve session ID prefix to full ID or file path", run: run4 },
+  completion: { desc: "Output shell completion script", run: completionRun }
 };
 function printUsage5(exitCode = 0) {
   const names = Object.keys(SUBCOMMANDS);

@@ -18,11 +18,38 @@ import { run as resolveRun } from "./resolve-session/index.ts";
 
 const PROG = "claude-session-analysis";
 
+async function completionRun(args: string[]) {
+  const shell = args[0];
+  if (!shell || shell === "--help") {
+    const out = shell === "--help" ? process.stdout : process.stderr;
+    out.write(`Usage: ${PROG} completion <shell>
+
+Shells:
+  zsh    Output zsh completion script
+
+Example:
+  ${PROG} completion zsh > ~/.zsh/completions/_${PROG}\n`);
+    process.exit(shell === "--help" ? 0 : 1);
+  }
+  if (shell !== "zsh") {
+    console.error(`Error: unsupported shell: ${shell}`);
+    process.exit(1);
+  }
+  const scriptPath = `${import.meta.dirname}/../completions/_${PROG}`;
+  const file = Bun.file(scriptPath);
+  if (!(await file.exists())) {
+    console.error(`Error: completion file not found: ${scriptPath}`);
+    process.exit(1);
+  }
+  process.stdout.write(await file.text());
+}
+
 const SUBCOMMANDS: Record<string, { desc: string; run: (args: string[]) => Promise<void> }> = {
   sessions:          { desc: "List available Claude sessions with filtering and search", run: sessionsRun },
   timeline:          { desc: "Display session events with filtering and formatting options", run: timelineRun },
   "file-ops":        { desc: "Extract file operations from a session", run: fileOpsRun },
   resolve:           { desc: "Resolve session ID prefix to full ID or file path", run: resolveRun },
+  completion:        { desc: "Output shell completion script", run: completionRun },
 };
 
 function printUsage(exitCode: number = 0): never {

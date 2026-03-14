@@ -9,6 +9,7 @@ _claude-session-analysis() {
     'file-diff:Compare backup file versions or backup vs current file'
     'sessions:List available Claude sessions with filtering and search'
     'resolve-session:Resolve session ID prefix to full ID or file path'
+    'completion:Output shell completion script'
   )
 
   if (( CURRENT == 2 )); then
@@ -87,6 +88,11 @@ _claude-session-analysis() {
         '--path[Output full file path instead of session ID]' \
         '--help[Show help]' \
         ':session_id_prefix:'
+      ;;
+    completion)
+      _arguments -s \
+        '--help[Show help]' \
+        ':shell:(zsh)'
       ;;
     *)
       _files
