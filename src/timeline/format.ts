@@ -71,8 +71,8 @@ export function colorize(line: string, opts?: ColorizeOpts): string {
   if (!useColors) return line;
 
   // 行内から kind 文字を検出してカラーを決定
-  // フォーマット: {emoji?} {timestamp?} {turn} {kind} {ref} ...
-  const m = line.match(/\d+ ([UTRFWBGASQDI])[0-9a-f]{8}/);
+  // フォーマット: {emoji?} {timestamp?} {kind}{ref} {turn} ...
+  const m = line.match(/([UTRFWBGASQDI])[0-9a-f]{8} \d+/);
   if (!m) return line;
 
   const kind = m[1];
@@ -96,7 +96,7 @@ function eventEmoji(event: TimelineEvent): string {
   return EMOJI_MAP[event.kind] || "";
 }
 
-/** 単一イベントをフォーマット: {emoji?} {timestamp?} {turn} {kind} {ref} {content} */
+/** 単一イベントをフォーマット: {emoji?} {timestamp?} {kind}{ref} {turn} {content} */
 export function formatEvent(
   event: TimelineEvent,
   opts: { jsonlMode: string; width: number; timestamps: boolean; mdMode?: "none" | "render" | "source"; emoji?: boolean },
@@ -105,15 +105,15 @@ export function formatEvent(
   const emojiPrefix = useEmoji ? `${eventEmoji(event)} ` : "";
 
   if (opts.jsonlMode !== "none") {
-    return `${event.turn} ${event.kind}${event.ref}`;
+    return `${event.kind}${event.ref} ${event.turn}`;
   }
 
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
   const fmtTime = isMd ? localTime : cleanTime;
 
   const head = opts.timestamps
-    ? `${emojiPrefix}${fmtTime(event.time)} ${event.turn} ${event.kind}${event.ref}`
-    : `${emojiPrefix}${event.turn} ${event.kind}${event.ref}`;
+    ? `${emojiPrefix}${fmtTime(event.time)} ${event.kind}${event.ref} ${event.turn}`
+    : `${emojiPrefix}${event.kind}${event.ref} ${event.turn}`;
 
   if (isMd && QTRU_KINDS.has(event.kind)) {
     return head;
