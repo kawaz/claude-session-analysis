@@ -79,6 +79,7 @@ _claude-session-analysis() {
         '--all[Show all projects (disable auto-detect)]' \
         '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \
         '--limit[Show last N sessions]:count:' \
+        '--format[Output format]:format:(list jsonl)' \
         '--help[Show help]'
       ;;
     resolve-session)

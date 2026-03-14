@@ -311,6 +311,27 @@ function lastSegments(path, n = 2) {
     return path;
   return segments.slice(-n).join("/");
 }
+async function writeJsonl(text) {
+  if (!text)
+    return;
+  if (process.stdout.isTTY) {
+    const which = Bun.spawnSync(["which", "jq"]);
+    if (which.exitCode === 0) {
+      const proc = Bun.spawn(["jq", "-c", "."], {
+        stdin: "pipe",
+        stdout: "inherit",
+        stderr: "inherit"
+      });
+      proc.stdin.write(text + `
+`);
+      proc.stdin.end();
+      await proc.exited;
+      return;
+    }
+  }
+  process.stdout.write(text + `
+`);
+}
 
 // src/timeline/extract.ts
 function extractTag(xml, tag) {
@@ -608,24 +629,29 @@ function parseDuration(spec) {
   return total;
 }
 async function searchSessions(opts) {
-  const { configDirs, since, keyword, path } = opts;
-  const projectDirs = [];
-  for (const dir of configDirs) {
-    const pDir = `${dir}/projects`;
-    try {
-      const s = await stat(pDir);
-      if (s.isDirectory())
-        projectDirs.push(pDir);
-    } catch {}
-  }
-  const glob = new Bun.Glob("**/*.jsonl");
-  const allFiles = [];
-  for (const pDir of projectDirs) {
-    for await (const match of glob.scan(pDir)) {
-      const filename = match.split("/").pop() ?? "";
-      if (filename.startsWith("agent-"))
-        continue;
-      allFiles.push(`${pDir}/${match}`);
+  const { configDirs, since, keyword, path, files } = opts;
+  let allFiles;
+  if (files) {
+    allFiles = files;
+  } else {
+    const projectDirs = [];
+    for (const dir of configDirs) {
+      const pDir = `${dir}/projects`;
+      try {
+        const s = await stat(pDir);
+        if (s.isDirectory())
+          projectDirs.push(pDir);
+      } catch {}
+    }
+    const glob = new Bun.Glob("**/*.jsonl");
+    allFiles = [];
+    for (const pDir of projectDirs) {
+      for await (const match of glob.scan(pDir)) {
+        const filename = match.split("/").pop() ?? "";
+        if (filename.startsWith("agent-"))
+          continue;
+        allFiles.push(`${pDir}/${match}`);
+      }
     }
   }
   const statResults = await Promise.all(allFiles.map(async (file) => {
@@ -1220,7 +1246,7 @@ async function run(args) {
         output2.push(JSON.stringify(processed));
       }
     }
-    console.log(output2.join(`
+    await writeJsonl(output2.join(`
 `));
     return;
   }
@@ -1592,19 +1618,20 @@ async function run2(args) {
     const configDirs = getClaudeConfigDirs(process.env.CLAUDE_CONFIG_DIR, process.env.HOME);
     const sessionDir = await findSessionDir(sessionId, configDirs);
     const ops = detail >= 2 ? extractFileOpsFullDetail(entries) : extractFileOpsDetailed(entries);
+    const lines = [];
     for (const op of ops) {
       if (op.snapshot && sessionDir) {
         op.snapshot = `${sessionDir}/${op.snapshot}`;
       }
-      process.stdout.write(JSON.stringify(op) + `
-`);
+      lines.push(JSON.stringify(op));
     }
+    await writeJsonl(lines.join(`
+`));
   } else {
     const result = extractFileOps(entries);
-    for (const entry of result) {
-      process.stdout.write(JSON.stringify(entry) + `
-`);
-    }
+    const lines = result.map((entry) => JSON.stringify(entry));
+    await writeJsonl(lines.join(`
+`));
   }
 }
 function printUsage2(out) {
@@ -1704,6 +1731,30 @@ function formatSessionLine(session, opts) {
   const ctx = session.context ? `  ${session.context}` : "";
   return `${endStr}  ${durStr}  ${sizeStr}  ${turnStr}  ${session.sessionId.slice(0, 8)}  ${path2}${ctx}`;
 }
+function formatSessionsJsonl(filtered, opts) {
+  const output = opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
+  if (output.length === 0)
+    return "";
+  const lines = [];
+  for (const s of output) {
+    const obj = {
+      sessionId: s.sessionId,
+      file: s.file,
+      cwd: s.cwd,
+      startTime: formatDateTime(s.startTime),
+      endTime: formatDateTime(s.endTime),
+      duration_ms: Math.max(0, s.endTime - s.startTime) * 1000,
+      bytes: s.size,
+      turns: s.turns
+    };
+    if (s.context) {
+      obj.context = s.context;
+    }
+    lines.push(JSON.stringify(obj));
+  }
+  return lines.join(`
+`);
+}
 function formatSessionsOutput(stats, filtered, opts) {
   const now = opts.now ?? Math.floor(Date.now() / 1000);
   const lines = [];
@@ -1739,16 +1790,17 @@ var DURATION_RE2 = /^(\d+[smhd])+$/;
 function printUsage3(exitCode = 0) {
   const prog = process.env._PROG || "sessions";
   const out = exitCode !== 0 ? process.stderr : process.stdout;
-  out.write(`Usage: ${prog} [--grep <pattern>] [--path <pattern>] [--since <spec>] [--limit <N>]
+  out.write(`Usage: ${prog} [options] [<session_id_or_file> ...]
 
 Options:
-  --grep <pattern>   Filter sessions by content (regex)
-  --path <pattern>   Filter sessions by path (regex)
-  --since <spec>     Time filter. Duration: 5m, 1h, 2d, 1h30m
-                     or date string: 2024-01-01, 2024-01-01T12:00:00
-                     (default: 2d)
-  --limit <N>        Show last N sessions (default: 20)
-  --help             Show this help
+  --grep <pattern>      Filter sessions by content (regex)
+  --path <pattern>      Filter sessions by path (regex)
+  --since <spec>        Time filter. Duration: 5m, 1h, 2d, 1h30m
+                        or date string: 2024-01-01, 2024-01-01T12:00:00
+                        (default: 2d, disabled when session IDs given)
+  --limit <N>           Show last N sessions (default: 20)
+  --format <list|jsonl>  Output format (default: list)
+  --help                Show this help
 `);
   process.exit(exitCode);
 }
@@ -1771,6 +1823,8 @@ function parseOpts(rawArgs) {
   let pathFilter = "";
   let since = DEFAULT_SINCE;
   let tail = DEFAULT_LIMIT;
+  let format = "list";
+  const positionals = [];
   let sinceExplicit = false;
   let limitExplicit = false;
   let grepExplicit = false;
@@ -1815,20 +1869,36 @@ function parseOpts(rawArgs) {
         tail = parseInt(rawArgs[i] ?? String(DEFAULT_LIMIT), 10);
         limitExplicit = true;
         break;
+      case "--format":
+        i++;
+        if (i >= rawArgs.length) {
+          console.error("Error: --format requires a value");
+          printUsage3(1);
+        }
+        {
+          const v = rawArgs[i] ?? "";
+          if (v !== "list" && v !== "jsonl") {
+            console.error(`Error: --format must be 'list' or 'jsonl', got '${v}'`);
+            printUsage3(1);
+          }
+          format = v;
+        }
+        break;
       default:
         if (rawArgs[i].startsWith("-")) {
           console.error(`Unknown option: ${rawArgs[i]}`);
           printUsage3(1);
         }
+        positionals.push(rawArgs[i]);
         break;
     }
     i++;
   }
-  return { keyword, pathFilter, since, tail, sinceExplicit, limitExplicit, grepExplicit };
+  return { keyword, pathFilter, since, tail, format, positionals, sinceExplicit, limitExplicit, grepExplicit };
 }
 function buildCommandHelp2() {
   const prog = process.env._PROG || "sessions";
-  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--help]`;
+  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--format <list|jsonl>] [--help]`;
 }
 function buildCommandComputed2(opts) {
   const prog = process.env._PROG || "sessions";
@@ -1840,6 +1910,9 @@ function buildCommandComputed2(opts) {
   }
   if (opts.keyword) {
     parts.push(`--grep ${opts.keyword}`);
+  }
+  if (opts.format !== "list") {
+    parts.push(`--format ${opts.format}`);
   }
   return parts.join(" ");
 }
@@ -1860,21 +1933,41 @@ async function run3(args) {
   const prog = process.env._PROG || "sessions";
   const command = `${prog} ${args.join(" ")}`;
   const commandHelp = buildCommandHelp2();
+  let sessionFiles;
+  if (opts.positionals.length > 0) {
+    sessionFiles = new Set;
+    for (const input of opts.positionals) {
+      try {
+        const resolved = await resolveSessionAll(input);
+        for (const f of resolved)
+          sessionFiles.add(f);
+      } catch (e) {
+        console.error(`Error: ${e.message}`);
+        process.exit(1);
+      }
+    }
+  }
   try {
     const { sessions: filtered, stats } = await searchSessions({
       configDirs,
-      since: cutoff,
+      since: sessionFiles ? undefined : cutoff,
       keyword: opts.keyword || undefined,
-      path: opts.pathFilter || undefined
+      path: opts.pathFilter || undefined,
+      files: sessionFiles ? [...sessionFiles] : undefined
     });
-    const output = formatSessionsOutput(stats, filtered, {
-      tail: opts.tail,
-      command,
-      commandComputed: buildCommandComputed2(opts),
-      commandHelp
-    });
-    if (output)
-      console.log(output);
+    if (opts.format === "jsonl") {
+      const output = formatSessionsJsonl(filtered, { tail: opts.tail });
+      await writeJsonl(output);
+    } else {
+      const output = formatSessionsOutput(stats, filtered, {
+        tail: opts.tail,
+        command,
+        commandComputed: buildCommandComputed2(opts),
+        commandHelp
+      });
+      if (output)
+        console.log(output);
+    }
   } catch (e) {
     if (e instanceof SyntaxError) {
       console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);
