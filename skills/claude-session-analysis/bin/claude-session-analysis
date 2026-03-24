@@ -467,21 +467,7 @@ function classifyNonUserArrayContent(content, ref, time, events) {
   for (const block of content) {
     if (block.type !== "text")
       continue;
-    const text = block.text;
-    if (text.startsWith("[Request interrupted")) {
-      events.push({ kind: "I", ref, time, desc: text });
-      continue;
-    }
-    if (text.startsWith("<task-notification>")) {
-      const summary = extractTag(text, "summary");
-      events.push({ kind: "I", ref, time, desc: `[task-notification] ${summary}` });
-      continue;
-    }
-    if (text.startsWith("<teammate-message")) {
-      const teammateId = extractAttr(text, "teammate_id");
-      events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
-      continue;
-    }
+    classifyNonUserStringContent(block.text, ref, time, events);
   }
 }
 function extractAssistantEvents(entry, events) {
@@ -726,15 +712,8 @@ async function searchSessions(opts) {
           sessionId = obj.sessionId;
         cwd = obj.cwd;
       }
-      if (obj.type === "user" && !obj.isMeta && !obj.isCompactSummary) {
-        const content = obj.message?.content;
-        if (typeof content === "string") {
-          turns++;
-        } else if (Array.isArray(content)) {
-          if (content.some((b) => b.type === "text" && !b.text?.startsWith("[Request interrupted"))) {
-            turns++;
-          }
-        }
+      if (isUserTurn(obj)) {
+        turns++;
       }
     }
     if (startTime === 0)
@@ -1396,7 +1375,8 @@ function extractFileOps(entries) {
     path
   }));
 }
-function extractFileOpsDetailed(entries) {
+function extractFileOpsDetailed(entries, opts) {
+  const fullDetail = opts?.fullDetail ?? false;
   const snapshotMap = buildSnapshotMap(entries);
   const result = [];
   let turn = 0;
@@ -1432,6 +1412,25 @@ function extractFileOpsDetailed(entries) {
         const snapshot = snapshotMap.get(uuid)?.get(filePath);
         if (snapshot)
           op.snapshot = snapshot;
+      }
+      if (fullDetail) {
+        if (name === "Read") {
+          if (typeof input.offset === "number")
+            op.offset = input.offset;
+          if (typeof input.limit === "number")
+            op.limit = input.limit;
+        } else if (name === "Edit") {
+          if (typeof input.old_string === "string")
+            op.old_string = input.old_string;
+          if (typeof input.new_string === "string")
+            op.new_string = input.new_string;
+        } else if (name === "Write") {
+          const writeContent = input.content;
+          if (typeof writeContent === "string") {
+            op.content_lines = writeContent.split(`
+`).length;
+          }
+        }
       }
       result.push(op);
     }
@@ -1439,63 +1438,7 @@ function extractFileOpsDetailed(entries) {
   return result;
 }
 function extractFileOpsFullDetail(entries) {
-  const snapshotMap = buildSnapshotMap(entries);
-  const result = [];
-  let turn = 0;
-  for (const entry of entries) {
-    if (isUserTurn(entry)) {
-      turn++;
-      continue;
-    }
-    if (entry.type !== "assistant")
-      continue;
-    const uuid = entry.uuid;
-    const timestamp = entry.timestamp || "";
-    const message = entry.message;
-    if (!message)
-      continue;
-    const content = message.content;
-    if (!Array.isArray(content))
-      continue;
-    for (const block of content) {
-      if (block.type !== "tool_use")
-        continue;
-      const name = block.name;
-      if (!FILE_OPS_TOOLS.has(name))
-        continue;
-      const input = block.input;
-      if (!input)
-        continue;
-      const filePath = input.file_path;
-      if (!filePath)
-        continue;
-      const op = { timestamp, turn, tool: name, path: filePath };
-      if (uuid) {
-        const snapshot = snapshotMap.get(uuid)?.get(filePath);
-        if (snapshot)
-          op.snapshot = snapshot;
-      }
-      if (name === "Read") {
-        if (typeof input.offset === "number")
-          op.offset = input.offset;
-        if (typeof input.limit === "number")
-          op.limit = input.limit;
-      } else if (name === "Edit") {
-        if (typeof input.old_string === "string")
-          op.old_string = input.old_string;
-        if (typeof input.new_string === "string")
-          op.new_string = input.new_string;
-      } else if (name === "Write") {
-        const writeContent = input.content;
-        if (typeof writeContent === "string") {
-          op.content_lines = writeContent.split(`
-`).length;
-        }
-      }
-      result.push(op);
-    }
-  }
-  return result;
+  return extractFileOpsDetailed(entries, { fullDetail: true });
 }
 function buildSnapshotMap(entries) {
   const result = new Map;

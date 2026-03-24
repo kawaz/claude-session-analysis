@@ -162,22 +162,7 @@ function classifyNonUserArrayContent(
 ): void {
   for (const block of content) {
     if (block.type !== "text") continue;
-    const text = block.text as string;
-
-    if (text.startsWith("[Request interrupted")) {
-      events.push({ kind: "I", ref, time, desc: text });
-      continue;
-    }
-    if (text.startsWith("<task-notification>")) {
-      const summary = extractTag(text, "summary");
-      events.push({ kind: "I", ref, time, desc: `[task-notification] ${summary}` });
-      continue;
-    }
-    if (text.startsWith("<teammate-message")) {
-      const teammateId = extractAttr(text, "teammate_id");
-      events.push({ kind: "I", ref, time, desc: `[teammate-message] ${teammateId}` });
-      continue;
-    }
+    classifyNonUserStringContent(block.text as string, ref, time, events);
   }
 }
 

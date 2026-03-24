@@ -12,6 +12,9 @@ export interface OutputOptions extends FormatOptions {
   commandHelp?: string;
 }
 
+// Design rationale: formatHumanSize は 1000 ベース（K=1e3, M=1e6, G=1e9）でセッション一覧の人間向け表示用。
+// lib.ts の formatSize は 1024 ベース（K=1024, M=1048576）で redact 表示用。
+// 用途が異なるため意図的に2つ並存させている。
 /**
  * sh版の h() 相当: ファイルサイズを人間可読形式にフォーマット。
  * 1e9ベースの単位系（K=1e3, M=1e6, G=1e9）。

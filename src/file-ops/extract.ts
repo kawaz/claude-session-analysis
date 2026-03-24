@@ -71,54 +71,12 @@ export function extractFileOps(entries: Record<string, unknown>[]): FileOpSummar
 }
 
 /**
- * パース済みエントリの配列から個別操作をフラットに抽出する（--details 用）。
+ * パース済みエントリの配列から個別操作をフラットに抽出する。
+ * fullDetail=true の場合、各ツールの入力詳細（offset, limit, old_string, new_string, content_lines）を含む。
  * 時系列順（エントリ出現順）。
  */
-export function extractFileOpsDetailed(entries: Record<string, unknown>[]): FileOpEntry[] {
-  const snapshotMap = buildSnapshotMap(entries);
-  const result: FileOpEntry[] = [];
-  let turn = 0;
-
-  for (const entry of entries) {
-    if (isUserTurn(entry)) {
-      turn++;
-      continue;
-    }
-    if (entry.type !== "assistant") continue;
-    const uuid = entry.uuid as string | undefined;
-    const timestamp = entry.timestamp as string || "";
-    const message = entry.message as Record<string, unknown> | undefined;
-    if (!message) continue;
-    const content = message.content as Record<string, unknown>[] | undefined;
-    if (!Array.isArray(content)) continue;
-
-    for (const block of content) {
-      if (block.type !== "tool_use") continue;
-      const name = block.name as string;
-      if (!FILE_OPS_TOOLS.has(name)) continue;
-
-      const input = block.input as Record<string, unknown> | undefined;
-      if (!input) continue;
-      const filePath = input.file_path as string | undefined;
-      if (!filePath) continue;
-
-      const op: FileOpEntry = { timestamp, turn, tool: name, path: filePath };
-      if (uuid) {
-        const snapshot = snapshotMap.get(uuid)?.get(filePath);
-        if (snapshot) op.snapshot = snapshot;
-      }
-      result.push(op);
-    }
-  }
-
-  return result;
-}
-
-/**
- * パース済みエントリの配列から個別操作を詳細付きで抽出する（--ops-detail 用）。
- * extractFileOpsDetailed の結果に加えて、各ツールの入力詳細を含む。
- */
-export function extractFileOpsFullDetail(entries: Record<string, unknown>[]): FileOpEntry[] {
+export function extractFileOpsDetailed(entries: Record<string, unknown>[], opts?: { fullDetail?: boolean }): FileOpEntry[] {
+  const fullDetail = opts?.fullDetail ?? false;
   const snapshotMap = buildSnapshotMap(entries);
   const result: FileOpEntry[] = [];
   let turn = 0;
@@ -152,17 +110,19 @@ export function extractFileOpsFullDetail(entries: Record<string, unknown>[]): Fi
         if (snapshot) op.snapshot = snapshot;
       }
 
-      // ツール固有の詳細フィールドを追加
-      if (name === "Read") {
-        if (typeof input.offset === "number") op.offset = input.offset;
-        if (typeof input.limit === "number") op.limit = input.limit;
-      } else if (name === "Edit") {
-        if (typeof input.old_string === "string") op.old_string = input.old_string;
-        if (typeof input.new_string === "string") op.new_string = input.new_string;
-      } else if (name === "Write") {
-        const writeContent = input.content;
-        if (typeof writeContent === "string") {
-          op.content_lines = writeContent.split("\n").length;
+      if (fullDetail) {
+        // ツール固有の詳細フィールドを追加
+        if (name === "Read") {
+          if (typeof input.offset === "number") op.offset = input.offset;
+          if (typeof input.limit === "number") op.limit = input.limit;
+        } else if (name === "Edit") {
+          if (typeof input.old_string === "string") op.old_string = input.old_string;
+          if (typeof input.new_string === "string") op.new_string = input.new_string;
+        } else if (name === "Write") {
+          const writeContent = input.content;
+          if (typeof writeContent === "string") {
+            op.content_lines = writeContent.split("\n").length;
+          }
         }
       }
 
@@ -171,6 +131,11 @@ export function extractFileOpsFullDetail(entries: Record<string, unknown>[]): Fi
   }
 
   return result;
+}
+
+/** 後方互換ラッパー: extractFileOpsDetailed({ fullDetail: true }) と同等 */
+export function extractFileOpsFullDetail(entries: Record<string, unknown>[]): FileOpEntry[] {
+  return extractFileOpsDetailed(entries, { fullDetail: true });
 }
 
 /**

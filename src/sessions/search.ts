@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { isUserTurn } from "../lib.ts";
 
 /**
  * duration文字列を秒数に変換する。
@@ -153,17 +154,9 @@ export async function searchSessions(
         cwd = obj.cwd;
       }
 
-      // ターンカウント: type=user, isMeta/isCompactSummary除外
-      // message.contentがarrayの場合、type=textブロックを含むもののみカウント
-      if (obj.type === "user" && !obj.isMeta && !obj.isCompactSummary) {
-        const content = obj.message?.content;
-        if (typeof content === "string") {
-          turns++;
-        } else if (Array.isArray(content)) {
-          if (content.some((b: any) => b.type === "text" && !b.text?.startsWith("[Request interrupted"))) {
-            turns++;
-          }
-        }
+      // ターンカウント: isUserTurn() で統一判定
+      if (isUserTurn(obj as Record<string, unknown>)) {
+        turns++;
       }
     }
 

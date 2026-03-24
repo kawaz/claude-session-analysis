@@ -24,6 +24,9 @@ export function truncate(str: string, width: number): string {
   return `${str.slice(0, width)}[+${str.length - width}]`;
 }
 
+// Design rationale: formatSize は 1024 ベース（K=1024, M=1048576）で redact 表示用。
+// sessions/format.ts の formatHumanSize は 1000 ベース（K=1e3, M=1e6, G=1e9）でセッション一覧の人間向け表示用。
+// 用途が異なるため意図的に2つ並存させている。
 export function formatSize(bytes: number): string {
   if (bytes >= 1048576) return `${(Math.floor(bytes / 1048576 * 10) / 10).toFixed(1)}M`;
   if (bytes >= 1024) return `${(Math.floor(bytes / 1024 * 10) / 10).toFixed(1)}K`;
