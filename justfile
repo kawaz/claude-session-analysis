@@ -36,10 +36,14 @@ check-version-bump:
 push: check-bundle check-versions check-version-bump validate
     jj bookmark set main -r @-
     jj git push
+    claude plugin marketplace update claude-session-analysis
+    claude plugin update claude-session-analysis@claude-session-analysis
 
 push-without-bump: check-bundle
     jj bookmark set main -r @-
     jj git push
+    claude plugin marketplace update claude-session-analysis
+    claude plugin update claude-session-analysis@claude-session-analysis
 
 # mdp バンドルを GitHub リリースから取得（バージョン差分時のみ）
 mdp-copy:
