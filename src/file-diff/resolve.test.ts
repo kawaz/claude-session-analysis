@@ -3,25 +3,25 @@ import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
-  getClaudeConfigDirs,
   findSessionDir,
   findBackupFile,
   findOriginalPath,
 } from "./resolve.ts";
+import { getConfigDirs } from "../lib.ts";
 
-describe("getClaudeConfigDirs", () => {
+describe("getConfigDirs", () => {
   test("CLAUDE_CONFIG_DIR 未設定 -> $HOME/.claude のみ", () => {
-    const dirs = getClaudeConfigDirs(undefined, "/home/user");
+    const dirs = getConfigDirs(undefined, "/home/user");
     expect(dirs).toEqual(["/home/user/.claude"]);
   });
 
   test("CLAUDE_CONFIG_DIR が $HOME/.claude と同じ -> 重複なし", () => {
-    const dirs = getClaudeConfigDirs("/home/user/.claude", "/home/user");
+    const dirs = getConfigDirs("/home/user/.claude", "/home/user");
     expect(dirs).toEqual(["/home/user/.claude"]);
   });
 
   test("CLAUDE_CONFIG_DIR が別パス -> 両方含む", () => {
-    const dirs = getClaudeConfigDirs("/custom/config", "/home/user");
+    const dirs = getConfigDirs("/custom/config", "/home/user");
     expect(dirs).toEqual(["/custom/config", "/home/user/.claude"]);
   });
 });

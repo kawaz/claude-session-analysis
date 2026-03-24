@@ -3,7 +3,7 @@ import { resolveSession } from "../resolve-session.ts";
 import { extractEvents } from "./extract.ts";
 import { pipeline } from "./filter.ts";
 import { formatEvents, mdFrontMatter, localTimeMs } from "./format.ts";
-import { omit, redact, redactWithHint, writeJsonl } from "../lib.ts";
+import { omit, redact, redactWithHint, writeJsonl, parseJsonl, progName } from "../lib.ts";
 import type { SessionEntry, TimelineEvent } from "./types.ts";
 
 const OMIT_KEYS = [
@@ -16,21 +16,12 @@ const REDACT_KEYS = ["data"];
 /** 1つのセッションファイルを処理し、イベント・エントリを返す */
 async function loadSession(sessionFile: string) {
   const text = await Bun.file(sessionFile).text();
-  const rawLines = text.split("\n").filter((line) => line.trim());
-  const entries: SessionEntry[] = [];
-  for (const line of rawLines) {
-    try {
-      entries.push(JSON.parse(line) as SessionEntry);
-    } catch {
-      // 不正なJSON行をスキップ（書き込み途中のデータ等）
-    }
-  }
-  return entries;
+  return parseJsonl(text) as unknown as SessionEntry[];
 }
 
 /** 静的なコマンドヘルプ文字列を構築 */
 function buildCommandHelp(): string {
-  const prog = process.env._PROG || "timeline";
+  const prog = progName("timeline");
   return `${prog} <SESSION_ID ..> [[RANGE1][..][RANGE2] ..] [--width <55>] [-t <UTRFWBGASQDI>] [--color [always|=[=none]] [--md [render|=source|[=none]] [--grep <REGEXP>] [-B <N>] [-A <N>] [-C <N>] [--since <DURATION|DATE>] [--last-since <DURATION>] [--last-turn <N>] [--jsonl [=redact|full|[=none]]] [--help]`;
 }
 
@@ -41,7 +32,7 @@ function buildCommandComputed(
   filtered: TimelineEvent[],
   isTty: boolean,
 ): string {
-  const prog = process.env._PROG || "timeline";
+  const prog = progName("timeline");
   const parts: string[] = [prog];
 
   // 解決済みセッションID
@@ -204,7 +195,7 @@ export async function run(args: string[]) {
   // 共通メタ情報
   const isMd = mdMode === "render" || mdMode === "source";
   const resolvedInputs = resolved.map(r => r.fullId);
-  const command = `${process.env._PROG || "timeline"} ${args.join(" ")}`;
+  const command = `${progName("timeline")} ${args.join(" ")}`;
   const commandComputed = buildCommandComputed(opts, resolvedInputs, filtered, isTty);
   const commandHelp = buildCommandHelp();
   const now = localTimeMs();
@@ -248,7 +239,7 @@ export async function run(args: string[]) {
 }
 
 function printUsage(out: NodeJS.WritableStream = process.stdout) {
-  const prog = process.env._PROG || "timeline";
+  const prog = progName("timeline");
   out.write(`Usage: ${prog} [options] <session_id_or_file> [range]
 
 Options:

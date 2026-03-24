@@ -1,7 +1,7 @@
 /**
  * file-ops: Read/Write/Edit tool_use からファイル操作をパス毎に抽出する。
  */
-import { isUserTurn } from "../lib.ts";
+import { isUserTurn, getSessionCwd } from "../lib.ts";
 
 /** --summary 出力: パス毎のサマリ */
 export interface FileOpSummary {
@@ -179,13 +179,7 @@ export function extractFileOpsFullDetail(entries: Record<string, unknown>[]): Fi
 function buildSnapshotMap(entries: Record<string, unknown>[]): Map<string, Map<string, string>> {
   const result = new Map<string, Map<string, string>>();
 
-  let sessionCwd = "";
-  for (const e of entries) {
-    if (e.cwd) {
-      sessionCwd = e.cwd as string;
-      break;
-    }
-  }
+  const sessionCwd = getSessionCwd(entries);
 
   for (const entry of entries) {
     if (entry.type !== "file-history-snapshot") continue;
@@ -217,18 +211,5 @@ function buildSnapshotMap(entries: Record<string, unknown>[]): Map<string, Map<s
   return result;
 }
 
-/**
- * JSONL テキストをパースしてエントリ配列を返す。
- */
-export function parseJsonl(jsonl: string): Record<string, unknown>[] {
-  const entries: Record<string, unknown>[] = [];
-  for (const line of jsonl.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      entries.push(JSON.parse(line) as Record<string, unknown>);
-    } catch {
-      // 不正なJSON行をスキップ
-    }
-  }
-  return entries;
-}
+// parseJsonl は lib.ts に移動済み
+export { parseJsonl } from "../lib.ts";

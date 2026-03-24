@@ -2,25 +2,7 @@
  * file-diff のバックアップファイル解決ロジック
  */
 import { statSync } from "fs";
-
-/**
- * Claude の設定ディレクトリ一覧を返す。
- * CLAUDE_CONFIG_DIR が設定されている場合はそれを優先し、
- * $HOME/.claude と異なる場合は両方を返す。
- */
-export function getClaudeConfigDirs(
-  claudeConfigDir: string | undefined,
-  home: string,
-): string[] {
-  const defaultDir = `${home}/.claude`;
-  if (!claudeConfigDir) {
-    return [defaultDir];
-  }
-  if (claudeConfigDir === defaultDir) {
-    return [defaultDir];
-  }
-  return [claudeConfigDir, defaultDir];
-}
+import { parseJsonl } from "../lib.ts";
 
 /**
  * file-history ディレクトリ内でセッションID前方一致のディレクトリを検索する。
@@ -77,14 +59,8 @@ export function findOriginalPath(
   jsonlContent: string,
   fullHash: string,
 ): string | null {
-  const lines = jsonlContent.split("\n").filter((line) => line.trim());
-  for (const line of lines) {
-    let entry: Record<string, unknown>;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
+  const entries = parseJsonl(jsonlContent);
+  for (const entry of entries) {
     if (entry.type !== "file-history-snapshot") continue;
 
     const snapshot = entry.snapshot as {

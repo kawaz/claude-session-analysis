@@ -1,5 +1,5 @@
 import type { TimelineEvent } from "./types.ts";
-import { truncate } from "../lib.ts";
+import { truncate, formatTzOffset } from "../lib.ts";
 
 /** ソートサフィックス _NNNNN を除去 */
 export function cleanTime(time: string): string {
@@ -9,24 +9,17 @@ export function cleanTime(time: string): string {
 /** ローカルタイムゾーン付き ISO8601 (秒精度) に変換 */
 export function localTime(time: string): string {
   const d = new Date(time.split("_")[0]);
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? "+" : "-";
-  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const mm = String(Math.abs(off) % 60).padStart(2, "0");
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${formatTzOffset(d)}`;
 }
 
 /** ローカルタイムゾーン付き ISO8601 (ミリ秒精度, now用) */
 export function localTimeMs(): string {
   const d = new Date();
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? "+" : "-";
-  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const mm = String(Math.abs(off) % 60).padStart(2, "0");
   const pad = (n: number) => String(n).padStart(2, "0");
   const ms = String(d.getMilliseconds()).padStart(3, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}${sign}${hh}${mm}`;
+  const tz = formatTzOffset(d).replace(":", "");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}${tz}`;
 }
 
 const EMOJI_MAP: Record<string, string> = {

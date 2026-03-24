@@ -1,4 +1,5 @@
 import type { SessionInfo, SessionStats } from "./search.ts";
+import { formatTzOffset } from "../lib.ts";
 
 export interface FormatOptions {
   now?: number; // テスト用に固定可能なUnix epoch seconds
@@ -92,12 +93,8 @@ export function formatDuration(seconds: number): string {
  */
 export function formatDateTime(epochSeconds: number): string {
   const d = new Date(epochSeconds * 1000);
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? "+" : "-";
-  const oh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const om = String(Math.abs(off) % 60).padStart(2, "0");
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${formatTzOffset(d)}`;
 }
 
 
@@ -182,11 +179,7 @@ export function formatSessionsOutput(
   }
 
   // カラムヘッダ（タイムゾーンオフセット付き）
-  const off = -(new Date()).getTimezoneOffset();
-  const offSign = off >= 0 ? "+" : "-";
-  const offH = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const offM = String(Math.abs(off) % 60).padStart(2, "0");
-  const tsHeader = `TIMESTAMP_END${offSign}${offH}:${offM}`;
+  const tsHeader = `TIMESTAMP_END${formatTzOffset(new Date())}`;
   lines.push(
     `${tsHeader.padEnd(19)}  ${"DUR".padStart(3)}  ${"SIZE".padStart(4)}  TURN  SESSION8  PATH`,
   );

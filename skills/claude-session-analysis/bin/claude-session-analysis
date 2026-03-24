@@ -171,47 +171,18 @@ function parseArgs(argv) {
   return result;
 }
 
-// src/resolve-session.ts
-function getSearchDirs() {
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
-  const defaultDir = `${process.env.HOME}/.claude`;
-  const searchDirs = [];
-  if (configDir) {
-    searchDirs.push(configDir);
-    if (configDir !== defaultDir) {
-      searchDirs.push(defaultDir);
-    }
-  } else {
-    searchDirs.push(defaultDir);
-  }
-  return searchDirs;
-}
-async function resolveSessionAll(input) {
-  if (await Bun.file(input).exists()) {
-    return [input];
-  }
-  if (!/^[a-f0-9-]+$/.test(input)) {
-    throw new Error(`Invalid session ID: ${input}`);
-  }
-  const searchDirs = getSearchDirs();
-  const glob = new Bun.Glob(`projects/*/${input}*.jsonl`);
-  const results = [];
-  for (const dir of searchDirs) {
-    for (const match of glob.scanSync(dir)) {
-      results.push(`${dir}/${match}`);
-    }
-  }
-  if (results.length === 0) {
-    throw new Error(`Session not found: ${input}`);
-  }
-  return results;
-}
-async function resolveSession(input) {
-  const results = await resolveSessionAll(input);
-  return results[0];
-}
-
 // src/lib.ts
+function getConfigDirs(claudeConfigDir, home) {
+  const configDir = claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR;
+  const defaultDir = `${home ?? process.env.HOME}/.claude`;
+  if (!configDir) {
+    return [defaultDir];
+  }
+  if (configDir === defaultDir) {
+    return [defaultDir];
+  }
+  return [configDir, defaultDir];
+}
 function truncate(str, width) {
   if (width <= 0)
     return str;
@@ -311,6 +282,37 @@ function lastSegments(path, n = 2) {
     return path;
   return segments.slice(-n).join("/");
 }
+function progName(defaultName) {
+  return process.env._PROG || defaultName || "claude-session-analysis";
+}
+function formatTzOffset(date) {
+  const off = -date.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm = String(Math.abs(off) % 60).padStart(2, "0");
+  return `${sign}${hh}:${mm}`;
+}
+var DURATION_RE = /^(\d+[smhd])+$/;
+function getSessionCwd(entries) {
+  for (const e of entries) {
+    if (e.cwd) {
+      return e.cwd;
+    }
+  }
+  return "";
+}
+function parseJsonl(jsonl) {
+  const entries = [];
+  for (const line of jsonl.split(`
+`)) {
+    if (!line.trim())
+      continue;
+    try {
+      entries.push(JSON.parse(line));
+    } catch {}
+  }
+  return entries;
+}
 async function writeJsonl(text) {
   if (!text)
     return;
@@ -333,6 +335,32 @@ async function writeJsonl(text) {
 `);
 }
 
+// src/resolve-session.ts
+async function resolveSessionAll(input) {
+  if (await Bun.file(input).exists()) {
+    return [input];
+  }
+  if (!/^[a-f0-9-]+$/.test(input)) {
+    throw new Error(`Invalid session ID: ${input}`);
+  }
+  const searchDirs = getConfigDirs();
+  const glob = new Bun.Glob(`projects/*/${input}*.jsonl`);
+  const results = [];
+  for (const dir of searchDirs) {
+    for (const match of glob.scanSync(dir)) {
+      results.push(`${dir}/${match}`);
+    }
+  }
+  if (results.length === 0) {
+    throw new Error(`Session not found: ${input}`);
+  }
+  return results;
+}
+async function resolveSession(input) {
+  const results = await resolveSessionAll(input);
+  return results[0];
+}
+
 // src/timeline/extract.ts
 function extractTag(xml, tag) {
   const re = new RegExp(`<${tag}>(.*?)</${tag}>`, "s");
@@ -346,13 +374,7 @@ function extractAttr(xml, attr) {
 }
 function extractEvents(entries) {
   const raw = [];
-  let sessionCwd = "";
-  for (const e of entries) {
-    if (e.cwd) {
-      sessionCwd = e.cwd;
-      break;
-    }
-  }
+  const sessionCwd = getSessionCwd(entries);
   for (const entry of entries) {
     switch (entry.type) {
       case "user":
@@ -767,7 +789,6 @@ async function searchSessions(opts) {
 }
 
 // src/timeline/filter.ts
-var DURATION_RE = /^(\d+[smhd])+$/;
 function dedup(events) {
   const seen = new Set;
   const result = [];
@@ -989,22 +1010,15 @@ function cleanTime(time) {
 }
 function localTime(time) {
   const d = new Date(time.split("_")[0]);
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? "+" : "-";
-  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const mm = String(Math.abs(off) % 60).padStart(2, "0");
   const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${formatTzOffset(d)}`;
 }
 function localTimeMs() {
   const d = new Date;
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? "+" : "-";
-  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const mm = String(Math.abs(off) % 60).padStart(2, "0");
   const pad = (n) => String(n).padStart(2, "0");
   const ms = String(d.getMilliseconds()).padStart(3, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}${sign}${hh}${mm}`;
+  const tz = formatTzOffset(d).replace(":", "");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${ms}${tz}`;
 }
 var EMOJI_MAP = {
   U: "\uD83D\uDC64",
@@ -1136,22 +1150,14 @@ var OMIT_KEYS = [
 var REDACT_KEYS = ["data"];
 async function loadSession(sessionFile) {
   const text = await Bun.file(sessionFile).text();
-  const rawLines = text.split(`
-`).filter((line) => line.trim());
-  const entries = [];
-  for (const line of rawLines) {
-    try {
-      entries.push(JSON.parse(line));
-    } catch {}
-  }
-  return entries;
+  return parseJsonl(text);
 }
 function buildCommandHelp() {
-  const prog = process.env._PROG || "timeline";
+  const prog = progName("timeline");
   return `${prog} <SESSION_ID ..> [[RANGE1][..][RANGE2] ..] [--width <55>] [-t <UTRFWBGASQDI>] [--color [always|=[=none]] [--md [render|=source|[=none]] [--grep <REGEXP>] [-B <N>] [-A <N>] [-C <N>] [--since <DURATION|DATE>] [--last-since <DURATION>] [--last-turn <N>] [--jsonl [=redact|full|[=none]]] [--help]`;
 }
 function buildCommandComputed(opts, resolvedInputs, filtered, isTty) {
-  const prog = process.env._PROG || "timeline";
+  const prog = progName("timeline");
   const parts = [prog];
   parts.push(resolvedInputs.join(" "));
   if (filtered.length > 0) {
@@ -1254,7 +1260,7 @@ async function run(args) {
   const timestamps = mdMode !== "none" && !args.includes("--no-timestamps") ? true : opts.timestamps;
   const isMd = mdMode === "render" || mdMode === "source";
   const resolvedInputs = resolved.map((r) => r.fullId);
-  const command = `${process.env._PROG || "timeline"} ${args.join(" ")}`;
+  const command = `${progName("timeline")} ${args.join(" ")}`;
   const commandComputed = buildCommandComputed(opts, resolvedInputs, filtered, isTty);
   const commandHelp = buildCommandHelp();
   const now = localTimeMs();
@@ -1291,7 +1297,7 @@ async function run(args) {
   console.log(output);
 }
 function printUsage(out = process.stdout) {
-  const prog = process.env._PROG || "timeline";
+  const prog = progName("timeline");
   out.write(`Usage: ${prog} [options] <session_id_or_file> [range]
 
 Options:
@@ -1493,13 +1499,7 @@ function extractFileOpsFullDetail(entries) {
 }
 function buildSnapshotMap(entries) {
   const result = new Map;
-  let sessionCwd = "";
-  for (const e of entries) {
-    if (e.cwd) {
-      sessionCwd = e.cwd;
-      break;
-    }
-  }
+  const sessionCwd = getSessionCwd(entries);
   for (const entry of entries) {
     if (entry.type !== "file-history-snapshot")
       continue;
@@ -1527,31 +1527,9 @@ function buildSnapshotMap(entries) {
   }
   return result;
 }
-function parseJsonl(jsonl) {
-  const entries = [];
-  for (const line of jsonl.split(`
-`)) {
-    if (!line.trim())
-      continue;
-    try {
-      entries.push(JSON.parse(line));
-    } catch {}
-  }
-  return entries;
-}
 
 // src/file-diff/resolve.ts
 import { statSync } from "fs";
-function getClaudeConfigDirs(claudeConfigDir, home) {
-  const defaultDir = `${home}/.claude`;
-  if (!claudeConfigDir) {
-    return [defaultDir];
-  }
-  if (claudeConfigDir === defaultDir) {
-    return [defaultDir];
-  }
-  return [claudeConfigDir, defaultDir];
-}
 async function findSessionDir(sessionId, configDirs) {
   const glob = new Bun.Glob(`${sessionId}*`);
   for (const dir of configDirs) {
@@ -1614,7 +1592,7 @@ async function run2(args) {
   const entries = parseJsonl(text);
   if (detail >= 1) {
     const sessionId = path.basename(sessionFile, ".jsonl");
-    const configDirs = getClaudeConfigDirs(process.env.CLAUDE_CONFIG_DIR, process.env.HOME);
+    const configDirs = getConfigDirs();
     const sessionDir = await findSessionDir(sessionId, configDirs);
     const ops = detail >= 2 ? extractFileOpsFullDetail(entries) : extractFileOpsDetailed(entries);
     const lines = [];
@@ -1634,7 +1612,7 @@ async function run2(args) {
   }
 }
 function printUsage2(out) {
-  const prog = process.env._PROG || "file-ops";
+  const prog = progName("file-ops");
   out.write(`Usage: ${prog} [options] <session_id_or_file>
 
 Options:
@@ -1708,12 +1686,8 @@ function formatDuration(seconds) {
 }
 function formatDateTime(epochSeconds) {
   const d = new Date(epochSeconds * 1000);
-  const off = -d.getTimezoneOffset();
-  const sign = off >= 0 ? "+" : "-";
-  const oh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const om = String(Math.abs(off) % 60).padStart(2, "0");
   const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${formatTzOffset(d)}`;
 }
 function formatSessionLine(session, opts) {
   const endStr = formatDateTime(session.endTime).replace(/[+-]\d{2}:\d{2}$/, "");
@@ -1766,11 +1740,7 @@ function formatSessionsOutput(stats, filtered, opts) {
     const newestAgo = formatAgo(now - stats.newestMtime);
     lines.push(`# ${stats.total} sessions (${oldestAgo} .. ${newestAgo})`);
   }
-  const off = -new Date().getTimezoneOffset();
-  const offSign = off >= 0 ? "+" : "-";
-  const offH = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const offM = String(Math.abs(off) % 60).padStart(2, "0");
-  const tsHeader = `TIMESTAMP_END${offSign}${offH}:${offM}`;
+  const tsHeader = `TIMESTAMP_END${formatTzOffset(new Date)}`;
   lines.push(`${tsHeader.padEnd(19)}  ${"DUR".padStart(3)}  ${"SIZE".padStart(4)}  TURN  SESSION8  PATH`);
   const output = opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
   for (const session of output) {
@@ -1781,9 +1751,8 @@ function formatSessionsOutput(stats, filtered, opts) {
 }
 
 // src/sessions/index.ts
-var DURATION_RE2 = /^(\d+[smhd])+$/;
 function printUsage3(exitCode = 0) {
-  const prog = process.env._PROG || "sessions";
+  const prog = progName("sessions");
   const out = exitCode !== 0 ? process.stderr : process.stdout;
   out.write(`Usage: ${prog} [options] [<session_id_or_file> ...]
 
@@ -1800,7 +1769,7 @@ Options:
   process.exit(exitCode);
 }
 function parseSince(spec) {
-  if (DURATION_RE2.test(spec)) {
+  if (DURATION_RE.test(spec)) {
     const seconds = parseDuration(spec);
     return Math.floor(Date.now() / 1000) - seconds;
   }
@@ -1892,11 +1861,11 @@ function parseOpts(rawArgs) {
   return { keyword, pathFilter, since, tail, format, positionals, sinceExplicit, limitExplicit, grepExplicit };
 }
 function buildCommandHelp2() {
-  const prog = process.env._PROG || "sessions";
+  const prog = progName("sessions");
   return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--format <list|jsonl>] [--help]`;
 }
 function buildCommandComputed2(opts) {
-  const prog = process.env._PROG || "sessions";
+  const prog = progName("sessions");
   const parts = [prog];
   parts.push(`--since ${opts.since}`);
   parts.push(`--limit ${opts.tail}`);
@@ -1914,18 +1883,8 @@ function buildCommandComputed2(opts) {
 async function run3(args) {
   const opts = parseOpts(args);
   const cutoff = parseSince(opts.since);
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
-  const defaultDir = `${process.env.HOME}/.claude`;
-  const configDirs = [];
-  if (configDir) {
-    configDirs.push(configDir);
-    if (configDir !== defaultDir) {
-      configDirs.push(defaultDir);
-    }
-  } else {
-    configDirs.push(defaultDir);
-  }
-  const prog = process.env._PROG || "sessions";
+  const configDirs = getConfigDirs();
+  const prog = progName("sessions");
   const command = `${prog} ${args.join(" ")}`;
   const commandHelp = buildCommandHelp2();
   let sessionFiles;
@@ -1976,7 +1935,7 @@ async function run3(args) {
 import * as path2 from "node:path";
 var UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 function printUsage4(exitCode = 0) {
-  const prog = process.env._PROG || "resolve";
+  const prog = progName("resolve");
   const out = exitCode !== 0 ? process.stderr : process.stdout;
   out.write(`Usage: ${prog} [--path] [--all] <session_id_or_prefix>...
 

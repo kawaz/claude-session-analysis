@@ -1,15 +1,13 @@
 import { searchSessions, parseDuration, type SessionInfo } from "./search.ts";
 import { formatSessionsOutput, formatSessionsJsonl } from "./format.ts";
-import { writeJsonl } from "../lib.ts";
+import { getConfigDirs, writeJsonl, DURATION_RE, progName } from "../lib.ts";
 import { resolveSessionAll } from "../resolve-session.ts";
 import * as path from "node:path";
-
-const DURATION_RE = /^(\d+[smhd])+$/;
 
 type Format = "list" | "jsonl";
 
 function printUsage(exitCode: number = 0): never {
-  const prog = process.env._PROG || "sessions";
+  const prog = progName("sessions");
   const out = exitCode !== 0 ? process.stderr : process.stdout;
   out.write(`Usage: ${prog} [options] [<session_id_or_file> ...]
 
@@ -128,12 +126,12 @@ function parseOpts(rawArgs: string[]) {
 }
 
 function buildCommandHelp(): string {
-  const prog = process.env._PROG || "sessions";
+  const prog = progName("sessions");
   return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--format <list|jsonl>] [--help]`;
 }
 
 function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
-  const prog = process.env._PROG || "sessions";
+  const prog = progName("sessions");
   const parts = [prog];
   parts.push(`--since ${opts.since}`);
   parts.push(`--limit ${opts.tail}`);
@@ -155,21 +153,9 @@ export async function run(args: string[]) {
   const opts = parseOpts(args);
   const cutoff = parseSince(opts.since);
 
-  // 検索ディレクトリの構築（sh版と同じロジック）
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
-  const defaultDir = `${process.env.HOME}/.claude`;
-  const configDirs: string[] = [];
+  const configDirs = getConfigDirs();
 
-  if (configDir) {
-    configDirs.push(configDir);
-    if (configDir !== defaultDir) {
-      configDirs.push(defaultDir);
-    }
-  } else {
-    configDirs.push(defaultDir);
-  }
-
-  const prog = process.env._PROG || "sessions";
+  const prog = progName("sessions");
   const command = `${prog} ${args.join(" ")}`;
   const commandHelp = buildCommandHelp();
 

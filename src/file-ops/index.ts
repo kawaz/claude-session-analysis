@@ -1,7 +1,7 @@
 import { resolveSession } from "../resolve-session.ts";
 import { extractFileOps, extractFileOpsDetailed, extractFileOpsFullDetail, parseJsonl } from "./extract.ts";
-import { getClaudeConfigDirs, findSessionDir } from "../file-diff/resolve.ts";
-import { writeJsonl } from "../lib.ts";
+import { findSessionDir } from "../file-diff/resolve.ts";
+import { getConfigDirs, writeJsonl, progName } from "../lib.ts";
 import * as path from "node:path";
 
 export async function run(args: string[]) {
@@ -47,10 +47,7 @@ export async function run(args: string[]) {
   if (detail >= 1) {
     // スナップショットのフルパス解決用
     const sessionId = path.basename(sessionFile, ".jsonl");
-    const configDirs = getClaudeConfigDirs(
-      process.env.CLAUDE_CONFIG_DIR,
-      process.env.HOME!,
-    );
+    const configDirs = getConfigDirs();
     const sessionDir = await findSessionDir(sessionId, configDirs);
 
     const ops = detail >= 2
@@ -73,7 +70,7 @@ export async function run(args: string[]) {
 }
 
 function printUsage(out: NodeJS.WritableStream) {
-  const prog = process.env._PROG || "file-ops";
+  const prog = progName("file-ops");
   out.write(`Usage: ${prog} [options] <session_id_or_file>
 
 Options:

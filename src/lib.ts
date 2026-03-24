@@ -1,3 +1,23 @@
+/**
+ * Claude の設定ディレクトリ一覧を返す。
+ * CLAUDE_CONFIG_DIR が設定されている場合はそれを優先し、
+ * $HOME/.claude と異なる場合は両方を返す。
+ */
+export function getConfigDirs(
+  claudeConfigDir?: string,
+  home?: string,
+): string[] {
+  const configDir = claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR;
+  const defaultDir = `${home ?? process.env.HOME}/.claude`;
+  if (!configDir) {
+    return [defaultDir];
+  }
+  if (configDir === defaultDir) {
+    return [defaultDir];
+  }
+  return [configDir, defaultDir];
+}
+
 export function truncate(str: string, width: number): string {
   if (width <= 0) return str;
   if (str.length <= width) return str;
@@ -116,6 +136,55 @@ export function lastSegments(path: string, n: number = 2): string {
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n) return path;
   return segments.slice(-n).join("/");
+}
+
+/**
+ * プログラム名を返す。process.env._PROG があればそれを、なければ defaultName を返す。
+ */
+export function progName(defaultName?: string): string {
+  return process.env._PROG || defaultName || "claude-session-analysis";
+}
+
+/**
+ * Date オブジェクトのタイムゾーンオフセットを "+09:00" 形式で返す。
+ */
+export function formatTzOffset(date: Date): string {
+  const off = -date.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm = String(Math.abs(off) % 60).padStart(2, "0");
+  return `${sign}${hh}:${mm}`;
+}
+
+/** duration 文字列のバリデーション用正規表現 (e.g. "5m", "1h30m", "2d") */
+export const DURATION_RE = /^(\d+[smhd])+$/;
+
+/**
+ * エントリ配列から最初の cwd を取得する。
+ */
+export function getSessionCwd(entries: Record<string, unknown>[]): string {
+  for (const e of entries) {
+    if (e.cwd) {
+      return e.cwd as string;
+    }
+  }
+  return "";
+}
+
+/**
+ * JSONL テキストをパースしてエントリ配列を返す。
+ */
+export function parseJsonl(jsonl: string): Record<string, unknown>[] {
+  const entries: Record<string, unknown>[] = [];
+  for (const line of jsonl.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      entries.push(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      // 不正なJSON行をスキップ
+    }
+  }
+  return entries;
 }
 
 /**

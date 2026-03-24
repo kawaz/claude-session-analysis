@@ -1,7 +1,6 @@
 import type { TimelineEvent, RangeMarker } from "./types.ts";
 import { parseDuration } from "../sessions/search.ts";
-
-const DURATION_RE = /^(\d+[smhd])+$/;
+import { DURATION_RE } from "../lib.ts";
 
 /** time+kind+descの組み合わせで重複排除。最初に出現したものを残す */
 export function dedup(events: TimelineEvent[]): TimelineEvent[] {

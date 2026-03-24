@@ -1,21 +1,4 @@
-/**
- * セッションIDの検索ディレクトリを構築する。
- */
-function getSearchDirs(): string[] {
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
-  const defaultDir = `${process.env.HOME}/.claude`;
-  const searchDirs: string[] = [];
-
-  if (configDir) {
-    searchDirs.push(configDir);
-    if (configDir !== defaultDir) {
-      searchDirs.push(defaultDir);
-    }
-  } else {
-    searchDirs.push(defaultDir);
-  }
-  return searchDirs;
-}
+import { getConfigDirs } from "./lib.ts";
 
 /**
  * セッションID（またはファイルパス）からマッチする全セッションファイルのパスを返す。
@@ -31,7 +14,7 @@ export async function resolveSessionAll(input: string): Promise<string[]> {
     throw new Error(`Invalid session ID: ${input}`);
   }
 
-  const searchDirs = getSearchDirs();
+  const searchDirs = getConfigDirs();
   const glob = new Bun.Glob(`projects/*/${input}*.jsonl`);
   const results: string[] = [];
   for (const dir of searchDirs) {

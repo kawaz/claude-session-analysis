@@ -7,7 +7,7 @@ import type {
   SystemEntry,
   FileHistorySnapshotEntry,
 } from "./types.ts";
-import { shortenPath, lastSegments, isUserTurn } from "../lib.ts";
+import { shortenPath, lastSegments, isUserTurn, getSessionCwd } from "../lib.ts";
 
 /** turn 未付与のイベント（内部用） */
 type RawEvent = Omit<TimelineEvent, "turn">;
@@ -30,13 +30,7 @@ export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
   const raw: RawEvent[] = [];
 
   // session_cwd: 最初の cwd を持つエントリから取得（全エントリ型を検索）
-  let sessionCwd = "";
-  for (const e of entries) {
-    if ((e as Record<string, unknown>).cwd) {
-      sessionCwd = (e as Record<string, unknown>).cwd as string;
-      break;
-    }
-  }
+  const sessionCwd = getSessionCwd(entries as unknown as Record<string, unknown>[]);
 
   for (const entry of entries) {
     switch (entry.type) {

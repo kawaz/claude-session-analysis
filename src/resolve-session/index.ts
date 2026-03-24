@@ -1,10 +1,11 @@
 import { resolveSession, resolveSessionAll } from "../resolve-session.ts";
+import { progName } from "../lib.ts";
 import * as path from "node:path";
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
 function printUsage(exitCode: number = 0): never {
-  const prog = process.env._PROG || "resolve";
+  const prog = progName("resolve");
   const out = exitCode !== 0 ? process.stderr : process.stdout;
   out.write(`Usage: ${prog} [--path] [--all] <session_id_or_prefix>...
 
