@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { extractFileOps, extractFileOpsDetailed, extractFileOpsFullDetail, parseJsonl } from "./extract.ts";
+import { extractFileOps, extractFileOpsDetailed, extractFileOpsFullDetail } from "./extract.ts";
+import { parseJsonl } from "../lib.ts";
 
 // --- ヘルパー ---
 function mkAssistant(content: Record<string, unknown>[], uuid = "aabbccdd-1111-2222-3333-444444444444", timestamp = "2025-01-01T00:01:00Z"): Record<string, unknown> {

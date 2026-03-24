@@ -293,6 +293,16 @@ function formatTzOffset(date) {
   return `${sign}${hh}:${mm}`;
 }
 var DURATION_RE = /^(\d+[smhd])+$/;
+function parseDuration(spec) {
+  const units = { s: 1, m: 60, h: 3600, d: 86400 };
+  let total = 0;
+  const re = /(\d+)([smhd])/g;
+  let m;
+  while ((m = re.exec(spec)) !== null) {
+    total += parseInt(m[1], 10) * units[m[2]];
+  }
+  return total;
+}
 function getSessionCwd(entries) {
   for (const e of entries) {
     if (e.cwd) {
@@ -622,149 +632,6 @@ function extractFileSnapshotEvents(entry, sessionCwd, events) {
       desc: `${lastSegments(path)} ${hash}@${version}`
     });
   }
-}
-
-// src/sessions/search.ts
-import { stat } from "node:fs/promises";
-function parseDuration(spec) {
-  const units = { s: 1, m: 60, h: 3600, d: 86400 };
-  let total = 0;
-  const re = /(\d+)([smhd])/g;
-  let match;
-  while ((match = re.exec(spec)) !== null) {
-    total += parseInt(match[1], 10) * units[match[2]];
-  }
-  return total;
-}
-async function searchSessions(opts) {
-  const { configDirs, since, keyword, path, files } = opts;
-  let allFiles;
-  if (files) {
-    allFiles = files;
-  } else {
-    const projectDirs = [];
-    for (const dir of configDirs) {
-      const pDir = `${dir}/projects`;
-      try {
-        const s = await stat(pDir);
-        if (s.isDirectory())
-          projectDirs.push(pDir);
-      } catch {}
-    }
-    const glob = new Bun.Glob("**/*.jsonl");
-    allFiles = [];
-    for (const pDir of projectDirs) {
-      for await (const match of glob.scan(pDir)) {
-        const filename = match.split("/").pop() ?? "";
-        if (filename.startsWith("agent-"))
-          continue;
-        allFiles.push(`${pDir}/${match}`);
-      }
-    }
-  }
-  const statResults = await Promise.all(allFiles.map(async (file) => {
-    try {
-      const s = await stat(file);
-      if (s.size === 0)
-        return null;
-      const mtime = Math.floor(s.mtimeMs / 1000);
-      return { file, size: s.size, mtime };
-    } catch {
-      return null;
-    }
-  }));
-  const allValidFiles = statResults.filter((r) => r != null);
-  const stats = {
-    total: allValidFiles.length,
-    oldestMtime: allValidFiles.length > 0 ? Math.min(...allValidFiles.map((f) => f.mtime)) : 0,
-    newestMtime: allValidFiles.length > 0 ? Math.max(...allValidFiles.map((f) => f.mtime)) : 0
-  };
-  const validFiles = since != null ? allValidFiles.filter((f) => f.mtime >= since) : allValidFiles;
-  const parseFile = async (entry) => {
-    const text = await Bun.file(entry.file).text();
-    const lines = text.split(`
-`);
-    let sessionId = "?";
-    let cwd = "?";
-    let startTime = 0;
-    let endTime = 0;
-    let turns = 0;
-    let lineCount = 0;
-    for (let i = 0;i < lines.length; i++) {
-      const line = lines[i];
-      if (line.trim() === "")
-        continue;
-      lineCount++;
-      let obj;
-      try {
-        obj = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (obj.timestamp) {
-        const ts = Math.floor(new Date(obj.timestamp).getTime() / 1000);
-        if (startTime === 0)
-          startTime = ts;
-        endTime = ts;
-      }
-      if (cwd === "?" && obj.cwd) {
-        if (obj.sessionId)
-          sessionId = obj.sessionId;
-        cwd = obj.cwd;
-      }
-      if (isUserTurn(obj)) {
-        turns++;
-      }
-    }
-    if (startTime === 0)
-      startTime = entry.mtime;
-    if (endTime === 0)
-      endTime = entry.mtime;
-    if (cwd === "?" && sessionId === "?")
-      return null;
-    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount };
-  };
-  const parseResults = await Promise.all(validFiles.map(parseFile));
-  const all = parseResults.filter((r) => r != null);
-  let filtered = all;
-  if (path) {
-    const re = new RegExp(path);
-    filtered = filtered.filter((e) => re.test(e.cwd));
-  }
-  if (keyword) {
-    const re = new RegExp(keyword);
-    const searchFile = async (e) => {
-      const text = await Bun.file(e.file).text();
-      const lines = text.split(`
-`);
-      let firstCtx = "";
-      let matchCount = 0;
-      for (const line of lines) {
-        const m = re.exec(line);
-        if (m) {
-          matchCount++;
-          if (matchCount === 1) {
-            const idx = m.index;
-            const matchLen = m[0].length;
-            const preStart = Math.max(0, idx - 20);
-            let pre = line.slice(preStart, idx);
-            pre = pre.replace(/.*\n/s, "");
-            let post = line.slice(idx + matchLen, idx + matchLen + 50);
-            post = post.replace(/\n.*/s, "");
-            firstCtx = `${pre}${m[0]}${post}`.replace(/[\r\n]/g, " ");
-          }
-        }
-      }
-      if (matchCount === 0)
-        return null;
-      const ctx = `[${matchCount} hit${matchCount > 1 ? "s" : ""}] ${firstCtx}`;
-      return { ...e, context: ctx };
-    };
-    const matchResults = await Promise.all(filtered.map(searchFile));
-    filtered = matchResults.filter((r) => r != null);
-  }
-  filtered.sort((a, b) => a.mtime - b.mtime);
-  return { sessions: filtered, stats };
 }
 
 // src/timeline/filter.ts
@@ -1567,6 +1434,144 @@ Options:
 `);
 }
 
+// src/sessions/search.ts
+import { stat } from "node:fs/promises";
+async function searchSessions(opts) {
+  const { configDirs, since, keyword, path: path2, files } = opts;
+  let allFiles;
+  if (files) {
+    allFiles = files;
+  } else {
+    const projectDirs = [];
+    for (const dir of configDirs) {
+      const pDir = `${dir}/projects`;
+      try {
+        const s = await stat(pDir);
+        if (s.isDirectory())
+          projectDirs.push(pDir);
+      } catch {}
+    }
+    const glob = new Bun.Glob("**/*.jsonl");
+    allFiles = [];
+    for (const pDir of projectDirs) {
+      for await (const match of glob.scan(pDir)) {
+        const filename = match.split("/").pop() ?? "";
+        if (filename.startsWith("agent-"))
+          continue;
+        allFiles.push(`${pDir}/${match}`);
+      }
+    }
+  }
+  const statResults = await Promise.all(allFiles.map(async (file) => {
+    try {
+      const s = await stat(file);
+      if (s.size === 0)
+        return null;
+      const mtime = Math.floor(s.mtimeMs / 1000);
+      return { file, size: s.size, mtime };
+    } catch {
+      return null;
+    }
+  }));
+  const allValidFiles = statResults.filter((r) => r != null);
+  const stats = {
+    total: allValidFiles.length,
+    oldestMtime: allValidFiles.length > 0 ? Math.min(...allValidFiles.map((f) => f.mtime)) : 0,
+    newestMtime: allValidFiles.length > 0 ? Math.max(...allValidFiles.map((f) => f.mtime)) : 0
+  };
+  const validFiles = since != null ? allValidFiles.filter((f) => f.mtime >= since) : allValidFiles;
+  const parseFile = async (entry) => {
+    let text;
+    try {
+      text = await Bun.file(entry.file).text();
+    } catch {
+      return null;
+    }
+    const lines = text.split(`
+`);
+    let sessionId = "?";
+    let cwd = "?";
+    let startTime = 0;
+    let endTime = 0;
+    let turns = 0;
+    let lineCount = 0;
+    for (let i = 0;i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trim() === "")
+        continue;
+      lineCount++;
+      let obj;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (obj.timestamp) {
+        const ts = Math.floor(new Date(obj.timestamp).getTime() / 1000);
+        if (startTime === 0)
+          startTime = ts;
+        endTime = ts;
+      }
+      if (cwd === "?" && obj.cwd) {
+        if (obj.sessionId)
+          sessionId = obj.sessionId;
+        cwd = obj.cwd;
+      }
+      if (isUserTurn(obj)) {
+        turns++;
+      }
+    }
+    if (startTime === 0)
+      startTime = entry.mtime;
+    if (endTime === 0)
+      endTime = entry.mtime;
+    if (cwd === "?" && sessionId === "?")
+      return null;
+    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount };
+  };
+  const parseResults = await Promise.all(validFiles.map(parseFile));
+  const all = parseResults.filter((r) => r != null);
+  let filtered = all;
+  if (path2) {
+    const re = new RegExp(path2);
+    filtered = filtered.filter((e) => re.test(e.cwd));
+  }
+  if (keyword) {
+    const re = new RegExp(keyword);
+    const searchFile = async (e) => {
+      const text = await Bun.file(e.file).text();
+      const lines = text.split(`
+`);
+      let firstCtx = "";
+      let matchCount = 0;
+      for (const line of lines) {
+        const m = re.exec(line);
+        if (m) {
+          matchCount++;
+          if (matchCount === 1) {
+            const idx = m.index;
+            const matchLen = m[0].length;
+            const preStart = Math.max(0, idx - 20);
+            let pre = line.slice(preStart, idx);
+            pre = pre.replace(/.*\n/s, "");
+            let post = line.slice(idx + matchLen, idx + matchLen + 50);
+            post = post.replace(/\n.*/s, "");
+            firstCtx = `${pre}${m[0]}${post}`.replace(/[\r\n]/g, " ");
+          }
+        }
+      }
+      if (matchCount === 0)
+        return null;
+      const ctx = `[${matchCount} hit${matchCount > 1 ? "s" : ""}] ${firstCtx}`;
+      return { ...e, context: ctx };
+    };
+    const matchResults = await Promise.all(filtered.map(searchFile));
+    filtered = matchResults.filter((r) => r != null);
+  }
+  filtered.sort((a, b) => a.mtime - b.mtime);
+  return { sessions: filtered, stats };
+}
+
 // src/sessions/format.ts
 function formatHumanSize(bytes) {
   const WIDTH = 4;
@@ -1867,7 +1872,8 @@ async function run3(args) {
     }
   } catch (e) {
     if (e instanceof SyntaxError) {
-      console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);
+      const pattern = opts.keyword || opts.pathFilter || "";
+      console.error(`Error: Invalid regex pattern: ${pattern} (${e.message})`);
       process.exit(1);
     }
     throw e;

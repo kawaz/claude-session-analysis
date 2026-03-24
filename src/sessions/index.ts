@@ -196,7 +196,8 @@ export async function run(args: string[]) {
     }
   } catch (e) {
     if (e instanceof SyntaxError) {
-      console.error(`Error: Invalid regex pattern: ${opts.keyword} (${e.message})`);
+      const pattern = opts.keyword || opts.pathFilter || "";
+      console.error(`Error: Invalid regex pattern: ${pattern} (${e.message})`);
       process.exit(1);
     }
     throw e;

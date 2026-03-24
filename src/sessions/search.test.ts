@@ -64,7 +64,7 @@ describe("searchSessions", () => {
 
   test("基本: jsonlからsessionIdとcwdを抽出", async () => {
     await createSession("myproject", "abc12345-session.jsonl", [
-      '{"sessionId":"abc12345-6789-0123-4567-890123456789","cwd":"/home/user/project","type":"human"}',
+      '{"sessionId":"abc12345-6789-0123-4567-890123456789","cwd":"/home/user/project","type":"user","message":{"content":"hello"}}',
       '{"type":"assistant","message":"hello"}',
     ]);
 
@@ -73,6 +73,8 @@ describe("searchSessions", () => {
     expect(results[0]!.sessionId).toBe("abc12345-6789-0123-4567-890123456789");
     expect(results[0]!.cwd).toBe("/home/user/project");
     expect(results[0]!.size).toBeGreaterThan(0);
+    // turns検証: type:"user" + message.content ありが1行 → turns=1
+    expect(results[0]!.turns).toBe(1);
     // stats検証
     expect(stats.total).toBe(1);
     expect(stats.oldestMtime).toBe(results[0]!.mtime);
@@ -92,10 +94,10 @@ describe("searchSessions", () => {
 
   test("agent-*.jsonl は除外", async () => {
     await createSession("myproject", "agent-abc123.jsonl", [
-      '{"sessionId":"abc12345","cwd":"/home/user/project","type":"human"}',
+      '{"sessionId":"abc12345","cwd":"/home/user/project","type":"user","message":{"content":"hello"}}',
     ]);
     await createSession("myproject", "normal-session.jsonl", [
-      '{"sessionId":"def67890","cwd":"/home/user/project2","type":"human"}',
+      '{"sessionId":"def67890","cwd":"/home/user/project2","type":"user","message":{"content":"hello"}}',
     ]);
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
@@ -111,13 +113,13 @@ describe("searchSessions", () => {
     await createSession(
       "p1",
       "recent.jsonl",
-      ['{"sessionId":"recent111","cwd":"/a","type":"human"}'],
+      ['{"sessionId":"recent111","cwd":"/a","type":"user","message":{"content":"hello"}}'],
       fiveMinAgo,
     );
     await createSession(
       "p2",
       "old.jsonl",
-      ['{"sessionId":"oldold22","cwd":"/b","type":"human"}'],
+      ['{"sessionId":"oldold22","cwd":"/b","type":"user","message":{"content":"hello"}}'],
       twoHoursAgo,
     );
 
@@ -141,13 +143,13 @@ describe("searchSessions", () => {
     await createSession(
       "p1",
       "recent.jsonl",
-      ['{"sessionId":"recent111","cwd":"/a","type":"human"}'],
+      ['{"sessionId":"recent111","cwd":"/a","type":"user","message":{"content":"hello"}}'],
       fiveMinAgo,
     );
     await createSession(
       "p2",
       "old.jsonl",
-      ['{"sessionId":"oldold22","cwd":"/b","type":"human"}'],
+      ['{"sessionId":"oldold22","cwd":"/b","type":"user","message":{"content":"hello"}}'],
       twoHoursAgo,
     );
 
@@ -163,11 +165,11 @@ describe("searchSessions", () => {
 
   test("キーワード検索: ファイル内容から検索しコンテキスト付き", async () => {
     await createSession("p1", "s1.jsonl", [
-      '{"sessionId":"match1234","cwd":"/a","type":"human"}',
+      '{"sessionId":"match1234","cwd":"/a","type":"user","message":{"content":"hello"}}',
       '{"type":"assistant","message":"the quick brown fox jumps"}',
     ]);
     await createSession("p2", "s2.jsonl", [
-      '{"sessionId":"nomatch12","cwd":"/b","type":"human"}',
+      '{"sessionId":"nomatch12","cwd":"/b","type":"user","message":{"content":"hello"}}',
       '{"type":"assistant","message":"nothing here"}',
     ]);
 
@@ -184,7 +186,7 @@ describe("searchSessions", () => {
     const prefix = "a".repeat(30);
     const suffix = "z".repeat(60);
     await createSession("p1", "s1.jsonl", [
-      '{"sessionId":"ctx12345","cwd":"/a","type":"human"}',
+      '{"sessionId":"ctx12345","cwd":"/a","type":"user","message":{"content":"hello"}}',
       `{"message":"${prefix}KEYWORD${suffix}"}`,
     ]);
 
@@ -206,19 +208,19 @@ describe("searchSessions", () => {
     await createSession(
       "p1",
       "s1.jsonl",
-      ['{"sessionId":"second22","cwd":"/a","type":"human"}'],
+      ['{"sessionId":"second22","cwd":"/a","type":"user","message":{"content":"hello"}}'],
       new Date(now.getTime() - 60 * 1000),
     );
     await createSession(
       "p2",
       "s2.jsonl",
-      ['{"sessionId":"first111","cwd":"/b","type":"human"}'],
+      ['{"sessionId":"first111","cwd":"/b","type":"user","message":{"content":"hello"}}'],
       new Date(now.getTime() - 120 * 1000),
     );
     await createSession(
       "p3",
       "s3.jsonl",
-      ['{"sessionId":"third333","cwd":"/c","type":"human"}'],
+      ['{"sessionId":"third333","cwd":"/c","type":"user","message":{"content":"hello"}}'],
       new Date(now.getTime() - 30 * 1000),
     );
 
@@ -228,6 +230,8 @@ describe("searchSessions", () => {
       "second22",
       "third333",
     ]);
+    // turns検証: 各セッションにtype:"user"が1行ずつ
+    expect(results.map((r) => r.turns)).toEqual([1, 1, 1]);
     // statsのmtime範囲を検証
     expect(stats.total).toBe(3);
     expect(stats.oldestMtime).toBe(results[0]!.mtime);
@@ -241,14 +245,14 @@ describe("searchSessions", () => {
       await mkdir(dir1, { recursive: true });
       await writeFile(
         join(dir1, "s1.jsonl"),
-        '{"sessionId":"from_dir1","cwd":"/a","type":"human"}\n',
+        '{"sessionId":"from_dir1","cwd":"/a","type":"user","message":{"content":"hello"}}\n',
       );
 
       const dir2 = join(tmpDir2, "projects", "p2");
       await mkdir(dir2, { recursive: true });
       await writeFile(
         join(dir2, "s2.jsonl"),
-        '{"sessionId":"from_dir2","cwd":"/b","type":"human"}\n',
+        '{"sessionId":"from_dir2","cwd":"/b","type":"user","message":{"content":"hello"}}\n',
       );
 
       const { sessions: results } = await searchSessions({
@@ -264,7 +268,7 @@ describe("searchSessions", () => {
 
   test("sessionIdが見つからない場合は '?' になる（cwdはある行）", async () => {
     await createSession("p1", "s1.jsonl", [
-      '{"cwd":"/a","type":"human"}',
+      '{"cwd":"/a","type":"user","message":{"content":"hello"}}',
     ]);
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
@@ -275,7 +279,7 @@ describe("searchSessions", () => {
 
   test("cwdを含む行がないファイルはスキップ（sh版grep -m1互換）", async () => {
     await createSession("p1", "s1.jsonl", [
-      '{"sessionId":"abc12345","type":"human"}',
+      '{"sessionId":"abc12345","type":"user","message":{"content":"hello"}}',
     ]);
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
@@ -294,7 +298,7 @@ describe("searchSessions", () => {
 
   test("キーワード検索: 正規表現パターンでマッチ", async () => {
     await createSession("p1", "s1.jsonl", [
-      '{"sessionId":"regex123","cwd":"/a","type":"human"}',
+      '{"sessionId":"regex123","cwd":"/a","type":"user","message":{"content":"hello"}}',
       '{"type":"assistant","message":"the Previous and Next items"}',
     ]);
 
@@ -309,7 +313,7 @@ describe("searchSessions", () => {
 
   test("キーワード検索: 不正な正規表現でエラー", async () => {
     await createSession("p1", "s1.jsonl", [
-      '{"sessionId":"err12345","cwd":"/a","type":"human"}',
+      '{"sessionId":"err12345","cwd":"/a","type":"user","message":{"content":"hello"}}',
       '{"type":"assistant","message":"something"}',
     ]);
 

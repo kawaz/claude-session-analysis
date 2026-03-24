@@ -176,5 +176,3 @@ function buildSnapshotMap(entries: Record<string, unknown>[]): Map<string, Map<s
   return result;
 }
 
-// parseJsonl は lib.ts に移動済み
-export { parseJsonl } from "../lib.ts";

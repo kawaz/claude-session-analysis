@@ -1,7 +1,7 @@
 import { resolveSession } from "../resolve-session.ts";
-import { extractFileOps, extractFileOpsDetailed, extractFileOpsFullDetail, parseJsonl } from "./extract.ts";
+import { extractFileOps, extractFileOpsDetailed, extractFileOpsFullDetail } from "./extract.ts";
 import { findSessionDir } from "../file-diff/resolve.ts";
-import { getConfigDirs, writeJsonl, progName } from "../lib.ts";
+import { getConfigDirs, writeJsonl, progName, parseJsonl } from "../lib.ts";
 import * as path from "node:path";
 
 export async function run(args: string[]) {

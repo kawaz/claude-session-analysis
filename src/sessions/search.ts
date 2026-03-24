@@ -1,21 +1,7 @@
 import { stat } from "node:fs/promises";
-import { isUserTurn } from "../lib.ts";
+import { isUserTurn, parseDuration } from "../lib.ts";
 
-/**
- * duration文字列を秒数に変換する。
- * 対応形式: "5m", "1h", "30s", "2d", "1h30m" など
- * s=秒, m=分, h=時, d=日
- */
-export function parseDuration(spec: string): number {
-  const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
-  let total = 0;
-  const re = /(\d+)([smhd])/g;
-  let match;
-  while ((match = re.exec(spec)) !== null) {
-    total += parseInt(match[1]!, 10) * units[match[2]!]!;
-  }
-  return total;
-}
+export { parseDuration };
 
 export interface SessionInfo {
   file: string;
@@ -121,7 +107,12 @@ export async function searchSessions(
 
   // 4. ファイル内容を並列読み込み + メタ情報抽出（JSON.parseベース）
   const parseFile = async (entry: { file: string; size: number; mtime: number }): Promise<SessionInfo | null> => {
-    const text = await Bun.file(entry.file).text();
+    let text: string;
+    try {
+      text = await Bun.file(entry.file).text();
+    } catch {
+      return null;
+    }
     const lines = text.split("\n");
     let sessionId = "?";
     let cwd = "?";

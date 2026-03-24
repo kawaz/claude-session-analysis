@@ -163,6 +163,22 @@ export function formatTzOffset(date: Date): string {
 export const DURATION_RE = /^(\d+[smhd])+$/;
 
 /**
+ * duration文字列を秒数に変換する。
+ * 対応形式: "5m", "1h", "30s", "2d", "1h30m" など
+ * s=秒, m=分, h=時, d=日
+ */
+export function parseDuration(spec: string): number {
+  const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  let total = 0;
+  const re = /(\d+)([smhd])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(spec)) !== null) {
+    total += parseInt(m[1]!, 10) * units[m[2]!]!;
+  }
+  return total;
+}
+
+/**
  * エントリ配列から最初の cwd を取得する。
  */
 export function getSessionCwd(entries: Record<string, unknown>[]): string {

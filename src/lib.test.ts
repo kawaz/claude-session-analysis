@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { truncate, formatSize, omit, redact, redactWithHint, pick, shortenPath, lastSegments } from "./lib.ts";
+import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { truncate, formatSize, omit, redact, redactWithHint, pick, shortenPath, lastSegments, getSessionCwd, formatTzOffset, progName, parseDuration } from "./lib.ts";
 
 describe("truncate", () => {
   test("returns string as-is when within width", () => {
@@ -102,5 +102,90 @@ describe("lastSegments", () => {
   });
   test("先頭スラッシュ付き1要素", () => {
     expect(lastSegments("/bun")).toBe("/bun");
+  });
+});
+
+describe("getSessionCwd", () => {
+  test("空配列 → 空文字列を返す", () => {
+    expect(getSessionCwd([])).toBe("");
+  });
+
+  test("全エントリに cwd がない → 空文字列を返す", () => {
+    expect(getSessionCwd([{ type: "user" }, { type: "assistant" }])).toBe("");
+  });
+
+  test("最初のエントリに cwd がある → その値を返す", () => {
+    expect(getSessionCwd([
+      { cwd: "/home/user/project", type: "user" },
+      { cwd: "/other", type: "assistant" },
+    ])).toBe("/home/user/project");
+  });
+
+  test("最初のエントリに cwd がないが後続にある → 後続の cwd を返す", () => {
+    expect(getSessionCwd([
+      { type: "user" },
+      { cwd: "/home/user/project2", type: "assistant" },
+    ])).toBe("/home/user/project2");
+  });
+});
+
+describe("formatTzOffset", () => {
+  test("+HH:MM または -HH:MM 形式の文字列を返す", () => {
+    const result = formatTzOffset(new Date());
+    expect(result).toMatch(/^[+-]\d{2}:\d{2}$/);
+  });
+
+  test("異なるDateオブジェクトでも形式が正しい", () => {
+    const result = formatTzOffset(new Date("2024-06-15T12:00:00Z"));
+    expect(result).toMatch(/^[+-]\d{2}:\d{2}$/);
+  });
+});
+
+describe("progName", () => {
+  let originalProg: string | undefined;
+
+  beforeEach(() => {
+    originalProg = process.env._PROG;
+  });
+
+  afterEach(() => {
+    if (originalProg !== undefined) {
+      process.env._PROG = originalProg;
+    } else {
+      delete process.env._PROG;
+    }
+  });
+
+  test("_PROG が設定されている場合はその値を返す", () => {
+    process.env._PROG = "my-custom-prog";
+    expect(progName()).toBe("my-custom-prog");
+  });
+
+  test("未設定でデフォルト名を渡した場合はデフォルト名を返す", () => {
+    delete process.env._PROG;
+    expect(progName("my-default")).toBe("my-default");
+  });
+
+  test("未設定でデフォルト名も渡さない場合は 'claude-session-analysis' を返す", () => {
+    delete process.env._PROG;
+    expect(progName()).toBe("claude-session-analysis");
+  });
+});
+
+describe("parseDuration", () => {
+  test("1h → 3600", () => {
+    expect(parseDuration("1h")).toBe(3600);
+  });
+
+  test("30m → 1800", () => {
+    expect(parseDuration("30m")).toBe(1800);
+  });
+
+  test("1h30m → 5400", () => {
+    expect(parseDuration("1h30m")).toBe(5400);
+  });
+
+  test("2d → 172800", () => {
+    expect(parseDuration("2d")).toBe(172800);
   });
 });
