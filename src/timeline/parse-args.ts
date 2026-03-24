@@ -4,7 +4,7 @@ import type { ParsedArgs } from "./types.ts";
 const SESSION_ID_RE = /^[0-9a-f][0-9a-f-]*$/;
 
 /** 純粋な数字のみ（turn range として扱う。5桁以上はセッションIDの可能性が高いため除外） */
-const PURE_NUMBER_RE = /^\d{1,4}$/;
+export const PURE_NUMBER_RE = /^\d{1,4}$/;
 
 /**
  * positional arg が入力（sessionId or ファイルパス）かどうかを判定。

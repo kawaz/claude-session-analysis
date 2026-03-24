@@ -99,7 +99,7 @@ function eventEmoji(event: TimelineEvent): string {
 /** 単一イベントをフォーマット: {emoji?} {timestamp?} {kind}{ref} {turn} {content} */
 export function formatEvent(
   event: TimelineEvent,
-  opts: { jsonlMode: string; width: number; timestamps: boolean; mdMode?: "none" | "render" | "source"; emoji?: boolean },
+  opts: { jsonlMode: "none" | "redact" | "full"; width: number; timestamps: boolean; mdMode?: "none" | "render" | "source"; emoji?: boolean },
 ): string {
   const useEmoji = opts.emoji ?? false;
   const emojiPrefix = useEmoji ? `${eventEmoji(event)} ` : "";
@@ -131,7 +131,7 @@ export function formatEvent(
 
 /** formatEvents のオプション型 */
 export interface FormatEventsOpts {
-  jsonlMode: string;
+  jsonlMode: "none" | "redact" | "full";
   width: number;
   timestamps: boolean;
   colors: boolean;
@@ -154,7 +154,7 @@ export function formatEvents(
   const output: string[] = [];
   let mdQtruSeen = false;
   for (const e of events) {
-    let line = formatEvent(e, { ...opts, emoji: opts.emoji });
+    let line = formatEvent(e, opts);
     if (opts.colors) {
       line = colorize(line, { colors: opts.colors, emoji: opts.emoji });
     }

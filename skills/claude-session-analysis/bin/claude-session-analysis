@@ -1092,7 +1092,7 @@ function formatEvents(events, opts) {
   const output = [];
   let mdQtruSeen = false;
   for (const e of events) {
-    let line = formatEvent(e, { ...opts, emoji: opts.emoji });
+    let line = formatEvent(e, opts);
     if (opts.colors) {
       line = colorize(line, { colors: opts.colors, emoji: opts.emoji });
     }
@@ -1134,15 +1134,6 @@ var OMIT_KEYS = [
   "thinkingMetadata"
 ];
 var REDACT_KEYS = ["data"];
-async function getStartTime(sessionFile) {
-  const text = await Bun.file(sessionFile).text();
-  const firstLine = text.slice(0, text.indexOf(`
-`) || text.length);
-  const m = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
-  if (m)
-    return new Date(m[1]).getTime();
-  return Infinity;
-}
 async function loadSession(sessionFile) {
   const text = await Bun.file(sessionFile).text();
   const rawLines = text.split(`
@@ -1154,11 +1145,6 @@ async function loadSession(sessionFile) {
     } catch {}
   }
   return entries;
-}
-async function resolveFullId(input) {
-  const file = await resolveSession(input);
-  const basename = file.split("/").pop() || "";
-  return basename.replace(/\.jsonl$/, "");
 }
 function buildCommandHelp() {
   const prog = process.env._PROG || "timeline";
@@ -1184,7 +1170,7 @@ function buildCommandComputed(opts, resolvedInputs, filtered, isTty) {
 }
 async function run(args) {
   const opts = parseArgs(args);
-  if (opts.inputs.length === 0 && !args.includes("--help") && opts.from && opts.from === opts.to && /^\d{1,4}$/.test(opts.from)) {
+  if (opts.inputs.length === 0 && !args.includes("--help") && opts.from && opts.from === opts.to && PURE_NUMBER_RE.test(opts.from)) {
     try {
       await resolveSession(opts.from);
       opts.inputs.push(opts.from);
@@ -1202,16 +1188,18 @@ async function run(args) {
   const resolved = [];
   for (const input of opts.inputs) {
     const file = await resolveSession(input);
-    const startTime = await getStartTime(file);
-    const fullId = await resolveFullId(input);
-    resolved.push({ file, startTime, fullId });
+    const entries = await loadSession(file);
+    const fullId = (file.split("/").pop() || "").replace(/\.jsonl$/, "");
+    const startTime = entries.length > 0 && "timestamp" in entries[0] ? new Date(entries[0].timestamp).getTime() : Infinity;
+    resolved.push({ file, startTime, fullId, entries });
   }
   resolved.sort((a, b) => a.startTime - b.startTime);
-  let allEntries = [];
+  let allEntries;
   let allEvents = [];
-  for (const { file } of resolved) {
-    const entries = await loadSession(file);
-    allEntries = allEntries.concat(entries);
+  for (const { entries } of resolved) {
+    if (opts.jsonlMode !== "none") {
+      allEntries = (allEntries || []).concat(entries);
+    }
     allEvents = allEvents.concat(extractEvents(entries));
   }
   let filtered;
@@ -1674,9 +1662,7 @@ function formatHumanSize(bytes) {
     u = "K";
   }
   let str;
-  if (v >= 100) {
-    str = `${Math.floor(v)}${u}`;
-  } else if (v >= 10) {
+  if (v >= 10) {
     str = `${Math.floor(v)}${u}`;
   } else {
     str = `${v.toFixed(1)}${u}`;
@@ -1729,16 +1715,13 @@ function formatDateTime(epochSeconds) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`;
 }
-function formatProjectPath(cwd) {
-  return cwd;
-}
 function formatSessionLine(session, opts) {
   const endStr = formatDateTime(session.endTime).replace(/[+-]\d{2}:\d{2}$/, "");
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
   const turnStr = String(session.turns).padStart(4);
-  const path2 = formatProjectPath(session.cwd);
+  const path2 = session.cwd;
   const ctx = session.context ? `  ${session.context}` : "";
   return `${endStr}  ${durStr}  ${sizeStr}  ${turnStr}  ${session.sessionId.slice(0, 8)}  ${path2}${ctx}`;
 }

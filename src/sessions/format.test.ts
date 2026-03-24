@@ -4,7 +4,7 @@ import {
   formatAgo,
   formatDuration,
   formatDateTime,
-  formatProjectPath,
+
   formatSessionLine,
   formatSessionsOutput,
   formatSessionsJsonl,
@@ -124,12 +124,6 @@ describe("formatDateTime", () => {
   });
 });
 
-describe("formatProjectPath", () => {
-  test("フルパスを返す", () => {
-    expect(formatProjectPath("/Users/kawaz/.local/share/repos/github.com/kawaz/project"))
-      .toBe("/Users/kawaz/.local/share/repos/github.com/kawaz/project");
-  });
-});
 
 describe("formatSessionLine", () => {
   const now = Math.floor(new Date(2026, 2, 6, 12, 0, 0).getTime() / 1000);

@@ -32,9 +32,7 @@ export function formatHumanSize(bytes: number): string {
   }
 
   let str: string;
-  if (v >= 100) {
-    str = `${Math.floor(v)}${u}`;
-  } else if (v >= 10) {
+  if (v >= 10) {
     str = `${Math.floor(v)}${u}`;
   } else {
     str = `${v.toFixed(1)}${u}`;
@@ -102,12 +100,6 @@ export function formatDateTime(epochSeconds: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`;
 }
 
-/**
- * cwdからプロジェクトパスを抽出（フルパス）。
- */
-export function formatProjectPath(cwd: string): string {
-  return cwd;
-}
 
 /**
  * 1セッションの出力行をフォーマット。
@@ -122,7 +114,7 @@ export function formatSessionLine(
   const durStr = formatDuration(duration);
   const sizeStr = formatHumanSize(session.size);
   const turnStr = String(session.turns).padStart(4);
-  const path = formatProjectPath(session.cwd);
+  const path = session.cwd;
   const ctx = session.context ? `  ${session.context}` : "";
   return `${endStr}  ${durStr}  ${sizeStr}  ${turnStr}  ${session.sessionId.slice(0, 8)}  ${path}${ctx}`;
 }

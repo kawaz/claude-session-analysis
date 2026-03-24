@@ -1,4 +1,4 @@
-import { parseArgs } from "./parse-args.ts";
+import { parseArgs, PURE_NUMBER_RE } from "./parse-args.ts";
 import { resolveSession } from "../resolve-session.ts";
 import { extractEvents } from "./extract.ts";
 import { pipeline } from "./filter.ts";
@@ -13,15 +13,6 @@ const OMIT_KEYS = [
 ];
 const REDACT_KEYS = ["data"];
 
-/** セッションファイルの先頭行から timestamp を取得（start時刻でソート用） */
-async function getStartTime(sessionFile: string): Promise<number> {
-  const text = await Bun.file(sessionFile).text();
-  const firstLine = text.slice(0, text.indexOf("\n") || text.length);
-  const m = firstLine.match(/"timestamp"\s*:\s*"([^"]+)"/);
-  if (m) return new Date(m[1]!).getTime();
-  return Infinity; // timestamp なしは末尾に
-}
-
 /** 1つのセッションファイルを処理し、イベント・エントリを返す */
 async function loadSession(sessionFile: string) {
   const text = await Bun.file(sessionFile).text();
@@ -35,13 +26,6 @@ async function loadSession(sessionFile: string) {
     }
   }
   return entries;
-}
-
-/** resolveSession で得た完全セッションIDを取得 */
-async function resolveFullId(input: string): Promise<string> {
-  const file = await resolveSession(input);
-  const basename = file.split("/").pop() || "";
-  return basename.replace(/\.jsonl$/, "");
 }
 
 /** 静的なコマンドヘルプ文字列を構築 */
@@ -91,7 +75,7 @@ export async function run(args: string[]) {
 
   // フォールバック: inputs が空で range に4桁以下の数字がある場合、session ID として試す
   // (例: "timeline 1234" → "1234" は turn range と判定されるが、セッションIDの可能性もある)
-  if (opts.inputs.length === 0 && !args.includes("--help") && opts.from && opts.from === opts.to && /^\d{1,4}$/.test(opts.from)) {
+  if (opts.inputs.length === 0 && !args.includes("--help") && opts.from && opts.from === opts.to && PURE_NUMBER_RE.test(opts.from)) {
     try {
       await resolveSession(opts.from);
       opts.inputs.push(opts.from);
@@ -111,24 +95,26 @@ export async function run(args: string[]) {
 
   const isTty = process.stdout.isTTY ?? false;
 
-  // セッション解決（複数入力対応）
-  const resolved: { file: string; startTime: number; fullId: string }[] = [];
+  // セッション解決（複数入力対応）+ エントリ読み込みを一括で行う
+  const resolved: { file: string; startTime: number; fullId: string; entries: SessionEntry[] }[] = [];
   for (const input of opts.inputs) {
     const file = await resolveSession(input);
-    const startTime = await getStartTime(file);
-    const fullId = await resolveFullId(input);
-    resolved.push({ file, startTime, fullId });
+    const entries = await loadSession(file);
+    const fullId = (file.split("/").pop() || "").replace(/\.jsonl$/, "");
+    const startTime = entries.length > 0 && "timestamp" in entries[0] ? new Date((entries[0] as any).timestamp).getTime() : Infinity;
+    resolved.push({ file, startTime, fullId, entries });
   }
 
   // start時刻の古い順にソート
   resolved.sort((a, b) => a.startTime - b.startTime);
 
-  // 全セッションのエントリとイベントを結合
-  let allEntries: SessionEntry[] = [];
+  // 全セッションのイベントを結合（allEntries は jsonl モード時のみ構築）
+  let allEntries: SessionEntry[] | undefined;
   let allEvents: ReturnType<typeof extractEvents> = [];
-  for (const { file } of resolved) {
-    const entries = await loadSession(file);
-    allEntries = allEntries.concat(entries);
+  for (const { entries } of resolved) {
+    if (opts.jsonlMode !== "none") {
+      allEntries = (allEntries || []).concat(entries);
+    }
     allEvents = allEvents.concat(extractEvents(entries));
   }
 
