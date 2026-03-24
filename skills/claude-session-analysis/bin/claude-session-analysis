@@ -4,7 +4,7 @@
 
 // src/timeline/parse-args.ts
 var SESSION_ID_RE = /^[0-9a-f][0-9a-f-]*$/;
-var PURE_NUMBER_RE = /^\d+$/;
+var PURE_NUMBER_RE = /^\d{1,4}$/;
 function isInputArg(arg) {
   if (PURE_NUMBER_RE.test(arg))
     return false;
@@ -1184,6 +1184,15 @@ function buildCommandComputed(opts, resolvedInputs, filtered, isTty) {
 }
 async function run(args) {
   const opts = parseArgs(args);
+  if (opts.inputs.length === 0 && !args.includes("--help") && opts.from && opts.from === opts.to && /^\d{1,4}$/.test(opts.from)) {
+    try {
+      await resolveSession(opts.from);
+      opts.inputs.push(opts.from);
+      opts.from = "";
+      opts.to = "";
+      opts.help = false;
+    } catch {}
+  }
   if (opts.help) {
     const explicit = args.includes("--help");
     printUsage(explicit ? process.stdout : process.stderr);

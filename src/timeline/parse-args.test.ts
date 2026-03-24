@@ -371,4 +371,24 @@ describe("parseArgs", () => {
     const args = parseArgs(["a2119bae"]);
     expect(args.inputs).toEqual(["a2119bae"]);
   });
+
+  test("5桁以上の純粋な数字は session ID として扱われる", () => {
+    const args = parseArgs(["45051418"]);
+    expect(args.inputs).toEqual(["45051418"]);
+  });
+
+  test("4桁以下の純粋な数字は turn range として扱われる", () => {
+    const args = parseArgs(["abc12345", "999"]);
+    expect(args.inputs).toEqual(["abc12345"]);
+    expect(args.from).toBe("999");
+    expect(args.to).toBe("999");
+  });
+
+  test("4桁以下の純粋な数字のみの場合は inputs 空で help", () => {
+    const args = parseArgs(["1234"]);
+    expect(args.inputs).toEqual([]);
+    expect(args.from).toBe("1234");
+    expect(args.to).toBe("1234");
+    expect(args.help).toBe(true);
+  });
 });

@@ -89,6 +89,20 @@ function buildCommandComputed(
 export async function run(args: string[]) {
   const opts = parseArgs(args);
 
+  // フォールバック: inputs が空で range に4桁以下の数字がある場合、session ID として試す
+  // (例: "timeline 1234" → "1234" は turn range と判定されるが、セッションIDの可能性もある)
+  if (opts.inputs.length === 0 && !args.includes("--help") && opts.from && opts.from === opts.to && /^\d{1,4}$/.test(opts.from)) {
+    try {
+      await resolveSession(opts.from);
+      opts.inputs.push(opts.from);
+      opts.from = "";
+      opts.to = "";
+      opts.help = false;
+    } catch {
+      // resolve 失敗 → range のまま
+    }
+  }
+
   if (opts.help) {
     const explicit = args.includes("--help");
     printUsage(explicit ? process.stdout : process.stderr);
