@@ -6,11 +6,13 @@ import { formatEvents, mdFrontMatter, localTimeMs } from "./format.ts";
 import { omit, redact, redactWithHint, writeJsonl, parseJsonl, progName } from "../lib.ts";
 import type { SessionEntry, TimelineEvent } from "./types.ts";
 
+// OMIT: タイムライン分析に不要なメタデータ系フィールド。出力のノイズになるため完全除去
 const OMIT_KEYS = [
   "signature", "isSidechain", "userType", "version", "slug",
   "requestId", "sessionId", "stop_reason", "stop_sequence",
   "usage", "id", "role", "parentUuid", "uuid", "thinkingMetadata",
 ];
+// REDACT: バイナリや大きなペイロードを含みうるが、存在自体は情報として有用なのでサイズ表示に置換
 const REDACT_KEYS = ["data"];
 
 /** 1つのセッションファイルを処理し、イベント・エントリを返す */

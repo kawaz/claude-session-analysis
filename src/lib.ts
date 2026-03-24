@@ -102,11 +102,15 @@ export function pick(
 
 /**
  * user エントリがターン開始（U イベント）になるか判定する。
- * isMeta, isCompactSummary, task-notification, teammate-message, Request interrupted は除外。
+ *
+ * Claude Code の JSONL ではシステムが自動挿入するメッセージも type:"user" になる。
+ * これらはユーザーの意思による入力ではないため、ターンカウントから除外する。
  */
 export function isUserTurn(entry: Record<string, unknown>): boolean {
   if (entry.type !== "user") return false;
+  // isMeta: セッション初期化時のシステムメタデータ。ユーザー入力ではない
   if (entry.isMeta === true) return false;
+  // isCompactSummary: コンテキスト圧縮時にClaude Codeが自動生成する要約。ユーザー入力ではない
   if (entry.isCompactSummary === true) return false;
 
   const message = entry.message as Record<string, unknown> | undefined;
@@ -121,8 +125,11 @@ export function isUserTurn(entry: Record<string, unknown>): boolean {
       : undefined;
 
   if (!text) return false;
+  // ユーザーが中断した際にClaude Codeが自動挿入する通知。ユーザーの発言ではない
   if (text.startsWith("[Request interrupted")) return false;
+  // サブエージェント(Task)の完了通知。Claude Codeが自動挿入する
   if (text.startsWith("<task-notification>")) return false;
+  // チーム機能でエージェント間通信に使われる自動メッセージ
   if (text.startsWith("<teammate-message")) return false;
 
   return true;

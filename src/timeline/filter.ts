@@ -58,7 +58,8 @@ export function parseRangeMarker(s: string): RangeMarker {
 
   let rest = s;
 
-  // 先頭がA-Z + hex なら先頭1文字を除去
+  // timeline 出力の各行は "<Kind><ref>" 形式（例: Uabc1234）で表示される。
+  // ユーザーがそのままコピペしてレンジ指定できるよう、EventKind プレフィックスを自動除去する。
   if (/^[A-Z][a-f0-9]/.test(rest)) {
     rest = rest.slice(1);
   }
@@ -248,7 +249,19 @@ export function filterByGrepContext(
   return sorted.flatMap((i) => turns[i]);
 }
 
-/** pipeline */
+/**
+ * フィルタパイプライン。
+ *
+ * 適用順序はユーザーの直感に合うよう設計されている:
+ * 1. dedup + removeNoBackup + sort — データクリーニング（全フィルタの前提条件）
+ * 2. since — 絶対時刻で粗くフィルタ
+ * 3. lastSince / lastTurn — 末尾からの相対フィルタ（since の結果に対して適用）
+ * 4. range — マーカーまたはターン番号による範囲指定
+ * 5. type — 種別フィルタ（range の中から特定種別を抽出）
+ * 6. grep — パターンマッチ（最後に適用して前段の絞り込み結果に対して検索）
+ *
+ * 例: `--last-turn 3 -t U` は「最後の3ターンの中からUだけ」であり「最後のU3件」ではない。
+ */
 export function pipeline(
   events: TimelineEvent[],
   opts: {

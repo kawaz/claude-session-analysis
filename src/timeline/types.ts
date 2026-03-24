@@ -1,4 +1,7 @@
 // イベントの種類
+// U=User  T=Think  R=Response  F=File(read/write/backup)
+// W=Web(fetch/search)  B=Bash  G=Grep/Glob  A=Agent(sub-agent)
+// S=Skill  Q=Question(AskUser)  D=toDo(task)  I=Info(system/notification)
 export type EventKind = "U" | "T" | "R" | "F" | "W" | "B" | "G" | "A" | "S" | "Q" | "D" | "I";
 
 // タイムラインイベント
