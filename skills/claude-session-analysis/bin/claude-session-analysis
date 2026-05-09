@@ -174,14 +174,25 @@ function parseArgs(argv) {
 // src/lib.ts
 function getConfigDirs(claudeConfigDir, home) {
   const configDir = claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR;
-  const defaultDir = `${home ?? process.env.HOME}/.claude`;
-  if (!configDir) {
-    return [defaultDir];
+  const homeDir = home ?? process.env.HOME;
+  const dirs = [];
+  const seen = new Set;
+  const add = (d) => {
+    if (!seen.has(d)) {
+      seen.add(d);
+      dirs.push(d);
+    }
+  };
+  if (configDir)
+    add(configDir);
+  if (homeDir) {
+    const glob = new Bun.Glob(".claude*/settings.json");
+    for (const match of glob.scanSync({ cwd: homeDir, dot: true })) {
+      const dir = `${homeDir}/${match.replace(/\/settings\.json$/, "")}`;
+      add(dir);
+    }
   }
-  if (configDir === defaultDir) {
-    return [defaultDir];
-  }
-  return [configDir, defaultDir];
+  return dirs;
 }
 function truncate(str, width) {
   if (width <= 0)

@@ -10,19 +10,62 @@ import {
 import { getConfigDirs } from "../lib.ts";
 
 describe("getConfigDirs", () => {
-  test("CLAUDE_CONFIG_DIR 未設定 -> $HOME/.claude のみ", () => {
-    const dirs = getConfigDirs(undefined, "/home/user");
-    expect(dirs).toEqual(["/home/user/.claude"]);
+  let fakeHome: string;
+  let savedConfigDir: string | undefined;
+
+  beforeAll(async () => {
+    // getConfigDirs は引数省略時 process.env.CLAUDE_CONFIG_DIR を見る。
+    // テスト実行環境の env がテスト結果を壊さないよう、テスト中は退避する (HOME は触らない)。
+    savedConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.CLAUDE_CONFIG_DIR;
+
+    fakeHome = await mkdtemp(join(tmpdir(), "config-dirs-test-"));
+    // .claude / .claude-personal / .claude-work の 3 つを用意。
+    // settings.json があるディレクトリだけ拾われることを検証する。
+    await mkdir(join(fakeHome, ".claude"), { recursive: true });
+    await writeFile(join(fakeHome, ".claude", "settings.json"), "{}");
+    await mkdir(join(fakeHome, ".claude-personal"), { recursive: true });
+    await writeFile(join(fakeHome, ".claude-personal", "settings.json"), "{}");
+    await mkdir(join(fakeHome, ".claude-work"), { recursive: true });
+    await writeFile(join(fakeHome, ".claude-work", "settings.json"), "{}");
+    // settings.json なしのディレクトリ -> 拾われないはず
+    await mkdir(join(fakeHome, ".claude-empty"), { recursive: true });
   });
 
-  test("CLAUDE_CONFIG_DIR が $HOME/.claude と同じ -> 重複なし", () => {
-    const dirs = getConfigDirs("/home/user/.claude", "/home/user");
-    expect(dirs).toEqual(["/home/user/.claude"]);
+  afterAll(async () => {
+    await rm(fakeHome, { recursive: true });
+    if (savedConfigDir !== undefined) {
+      process.env.CLAUDE_CONFIG_DIR = savedConfigDir;
+    }
   });
 
-  test("CLAUDE_CONFIG_DIR が別パス -> 両方含む", () => {
-    const dirs = getConfigDirs("/custom/config", "/home/user");
-    expect(dirs).toEqual(["/custom/config", "/home/user/.claude"]);
+  test("CLAUDE_CONFIG_DIR 未設定 -> ~/.claude*/settings.json の dirname を全部拾う", () => {
+    const dirs = getConfigDirs(undefined, fakeHome);
+    expect(dirs.sort()).toEqual(
+      [
+        join(fakeHome, ".claude"),
+        join(fakeHome, ".claude-work"),
+        join(fakeHome, ".claude-personal"),
+      ].sort(),
+    );
+  });
+
+  test("CLAUDE_CONFIG_DIR がマッチ済みディレクトリ -> 重複なし", () => {
+    const target = join(fakeHome, ".claude-personal");
+    const dirs = getConfigDirs(target, fakeHome);
+    expect(dirs[0]).toBe(target);
+    expect(new Set(dirs).size).toBe(dirs.length);
+  });
+
+  test("CLAUDE_CONFIG_DIR が glob でマッチしない別パス -> 先頭に追加", () => {
+    const dirs = getConfigDirs("/custom/config", fakeHome);
+    expect(dirs[0]).toBe("/custom/config");
+    expect(dirs).toContain(join(fakeHome, ".claude-personal"));
+  });
+
+  test("settings.json なしのディレクトリは拾わない", () => {
+    const dirs = getConfigDirs(undefined, fakeHome);
+    expect(dirs).not.toContain(join(fakeHome, ".claude-empty"));
   });
 });
 

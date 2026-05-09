@@ -1,21 +1,41 @@
 /**
  * Claude の設定ディレクトリ一覧を返す。
- * CLAUDE_CONFIG_DIR が設定されている場合はそれを優先し、
- * $HOME/.claude と異なる場合は両方を返す。
+ *
+ * 優先順位:
+ *   1. CLAUDE_CONFIG_DIR (環境変数 or 引数)
+ *   2. $HOME/.claude*\/settings.json の dirname (glob でマッチした全ディレクトリ)
+ *
+ * 2. はユーザが `.claude-personal` / `.claude-work` のように複数の
+ * Claude 環境を切り替えて使っているケースを拾うため。settings.json の存在を
+ * 持って「実体ある Claude 設定ディレクトリ」と判定する。
  */
 export function getConfigDirs(
   claudeConfigDir?: string,
   home?: string,
 ): string[] {
   const configDir = claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR;
-  const defaultDir = `${home ?? process.env.HOME}/.claude`;
-  if (!configDir) {
-    return [defaultDir];
+  const homeDir = home ?? process.env.HOME;
+
+  const dirs: string[] = [];
+  const seen = new Set<string>();
+  const add = (d: string) => {
+    if (!seen.has(d)) {
+      seen.add(d);
+      dirs.push(d);
+    }
+  };
+
+  if (configDir) add(configDir);
+
+  if (homeDir) {
+    const glob = new Bun.Glob(".claude*/settings.json");
+    for (const match of glob.scanSync({ cwd: homeDir, dot: true })) {
+      const dir = `${homeDir}/${match.replace(/\/settings\.json$/, "")}`;
+      add(dir);
+    }
   }
-  if (configDir === defaultDir) {
-    return [defaultDir];
-  }
-  return [configDir, defaultDir];
+
+  return dirs;
 }
 
 export function truncate(str: string, width: number): string {
