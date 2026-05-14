@@ -155,14 +155,16 @@ export function isUserTurn(entry: Record<string, unknown>): boolean {
   return true;
 }
 
-export function shortenPath(path: string, n: number = 2): string {
+export function shortenPath(path: string | undefined | null, n: number = 2): string {
+  if (!path) return "";
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n) return path;
   return `\u2026/${segments.slice(-n).join("/")}`;
 }
 
 /** パスの末尾 n セグメントを返す（省略記号なし） */
-export function lastSegments(path: string, n: number = 2): string {
+export function lastSegments(path: string | undefined | null, n: number = 2): string {
+  if (!path) return "";
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n) return path;
   return segments.slice(-n).join("/");

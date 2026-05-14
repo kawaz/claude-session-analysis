@@ -282,12 +282,16 @@ function isUserTurn(entry) {
   return true;
 }
 function shortenPath(path, n = 2) {
+  if (!path)
+    return "";
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n)
     return path;
   return `…/${segments.slice(-n).join("/")}`;
 }
 function lastSegments(path, n = 2) {
+  if (!path)
+    return "";
   const segments = path.split("/").filter((s) => s !== "");
   if (segments.length <= n)
     return path;

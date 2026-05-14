@@ -84,6 +84,12 @@ describe("shortenPath", () => {
   test("returns path as-is when split results in <= n non-empty segments", () => {
     expect(shortenPath("/a", 2)).toBe("/a");
   });
+  test("undefined → 空文字列", () => {
+    expect(shortenPath(undefined)).toBe("");
+  });
+  test("null → 空文字列", () => {
+    expect(shortenPath(null)).toBe("");
+  });
 });
 
 describe("redactWithHint", () => {
@@ -102,6 +108,12 @@ describe("lastSegments", () => {
   });
   test("先頭スラッシュ付き1要素", () => {
     expect(lastSegments("/bun")).toBe("/bun");
+  });
+  test("undefined → 空文字列", () => {
+    expect(lastSegments(undefined)).toBe("");
+  });
+  test("null → 空文字列", () => {
+    expect(lastSegments(null)).toBe("");
   });
 });
 
