@@ -14,9 +14,8 @@ all: test build validate
 version:
     @jq -r '.version' .claude-plugin/plugin.json
 
-# バンドルをリビルドして差分があればエラー
+# バンドルに未コミットの差分があればエラー (build 後に呼ぶ前提)
 check-bundle:
-    @bun run scripts/build.ts >/dev/null 2>&1
     @test -z "$(jj diff --summary skills/claude-session-analysis/bin/claude-session-analysis 2>/dev/null)" \
         || { echo "ERROR: バンドルが最新ではありません。ビルド結果をコミットしてください。" >&2; exit 1; }
 
@@ -33,13 +32,13 @@ check-version-bump:
             echo "ERROR: 変更がありますがバージョンが未更新です。bump不要なら: just push-without-bump" >&2; exit 1; \
         fi
 
-push: check-bundle check-versions check-version-bump validate
+push: build check-bundle check-versions check-version-bump validate
     jj bookmark set main -r @-
     jj git push
     claude plugin marketplace update claude-session-analysis
     claude plugin update claude-session-analysis@claude-session-analysis
 
-push-without-bump: check-bundle
+push-without-bump: build check-bundle
     jj bookmark set main -r @-
     jj git push
     claude plugin marketplace update claude-session-analysis
