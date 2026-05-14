@@ -18,14 +18,14 @@ _claude-session-analysis() {
 
   case "$subcmd" in
     sessions)
-      _arguments \
+      _arguments -s \
         '--grep[Filter by content (regex)]:pattern:' \
         '--path[Filter by path (regex)]:pattern:' \
-        '--all[Show all projects (disable auto-detect)]' \
         '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \
         '--limit[Show last N sessions]:count:' \
         '--format[Output format]:format:(list jsonl)' \
-        '--help[Show help]'
+        '--help[Show help]' \
+        '*:session:_files'
       ;;
     timeline)
       _arguments -s \
@@ -53,14 +53,17 @@ _claude-session-analysis() {
       ;;
     file-ops)
       _arguments -s \
+        '*-d[Detail level (repeatable: -d, -dd)]' \
+        '--detail=-[Detail level (0/1/2)]::level:(0 1 2)' \
         '--help[Show help]' \
         ':session:_files'
       ;;
     resolve)
       _arguments -s \
-        '--path[Output full file path instead of session ID]' \
+        '--path[Force file path output]' \
+        '--all[Show all matches per prefix]' \
         '--help[Show help]' \
-        ':session_id_prefix:'
+        '*:session_id_prefix:'
       ;;
     completion)
       _arguments -s \

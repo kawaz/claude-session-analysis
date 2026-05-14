@@ -88,6 +88,6 @@ claude-session-analysis timeline -t B <session-id>
 # 期待: `…/dir/prog` 形式（`/full/path/...` ではない）
 
 # 幅指定
-claude-session-analysis timeline -w 100 <session-id>
+claude-session-analysis timeline --width 100 <session-id>
 # 期待: 100文字幅で出力
 ```
