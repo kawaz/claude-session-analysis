@@ -1979,13 +1979,10 @@ var _claude_session_analysis_default = `#compdef claude-session-analysis
 
 _claude-session-analysis() {
   local -a subcommands=(
-    'timeline:Display session events with filtering and formatting options'
-    'summaries:Extract summary information from a session'
-    'file-ops:Extract file operations from a session'
-    'get-by-marker:Retrieve session entries by marker with optional context'
-    'file-diff:Compare backup file versions or backup vs current file'
     'sessions:List available Claude sessions with filtering and search'
-    'resolve-session:Resolve session ID prefix to full ID or file path'
+    'timeline:Display session events with filtering and formatting options'
+    'file-ops:Extract file operations from a session'
+    'resolve:Resolve session ID prefix to full ID or file path'
     'completion:Output shell completion script'
   )
 
@@ -1997,6 +1994,16 @@ _claude-session-analysis() {
   local subcmd="$words[2]"
 
   case "$subcmd" in
+    sessions)
+      _arguments \\
+        '--grep[Filter by content (regex)]:pattern:' \\
+        '--path[Filter by path (regex)]:pattern:' \\
+        '--all[Show all projects (disable auto-detect)]' \\
+        '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \\
+        '--limit[Show last N sessions]:count:' \\
+        '--format[Output format]:format:(list jsonl)' \\
+        '--help[Show help]'
+      ;;
     timeline)
       _arguments -s \\
         '-t[Filter by type (UTRFWBGASQDI)]:types:' \\
@@ -2021,46 +2028,12 @@ _claude-session-analysis() {
         '--help[Show help]' \\
         '*:session:_files'
       ;;
-    summaries)
-      _arguments -s \\
-        '--help[Show help]' \\
-        ':session:_files'
-      ;;
     file-ops)
       _arguments -s \\
         '--help[Show help]' \\
         ':session:_files'
       ;;
-    get-by-marker)
-      _arguments -s \\
-        '--raw[Output with omit + redact]' \\
-        '--raw2[Output with redact only]' \\
-        '-A[Lines after match]:count:' \\
-        '-B[Lines before match]:count:' \\
-        '-C[Lines before and after match]:count:' \\
-        '--help[Show help]' \\
-        ':session:_files' \\
-        ':marker:'
-      ;;
-    file-diff)
-      _arguments -s \\
-        '--help[Show help]' \\
-        ':session_id_prefix:' \\
-        ':backup_hash_prefix:' \\
-        ':v1:' \\
-        '::v2:'
-      ;;
-    sessions)
-      _arguments \\
-        '--grep[Filter by content (regex)]:pattern:' \\
-        '--path[Filter by path (regex)]:pattern:' \\
-        '--all[Show all projects (disable auto-detect)]' \\
-        '--since[Time filter (duration: 5m,1h,2d or date string)]:spec:' \\
-        '--limit[Show last N sessions]:count:' \\
-        '--format[Output format]:format:(list jsonl)' \\
-        '--help[Show help]'
-      ;;
-    resolve-session)
+    resolve)
       _arguments -s \\
         '--path[Output full file path instead of session ID]' \\
         '--help[Show help]' \\

@@ -60,19 +60,19 @@ claude-session-analysis sessions --since 1h
 # 期待: 直近1時間のセッション
 ```
 
-### resolve-session
+### resolve
 
 ```bash
 # セッションIDプレフィックスからフルID解決
-claude-session-analysis resolve-session <session-id-prefix>
+claude-session-analysis resolve <session-id-prefix>
 # 期待: フルセッションIDを出力
 
 # ファイルパス出力
-claude-session-analysis resolve-session --path <session-id-prefix>
+claude-session-analysis resolve --path <session-id-prefix>
 # 期待: セッションファイルのフルパスを出力
 
 # 未知オプション
-claude-session-analysis resolve-session --unknown 2>&1
+claude-session-analysis resolve --unknown 2>&1
 # 期待: エラーメッセージとusage表示
 ```
 

@@ -13,9 +13,8 @@ My session ID: `${CLAUDE_SESSION_ID}`
 |--------|-------------|
 | `sessions [--since <2d>] [--limit <N>] [--path REGEXP] [--grep REGEXP]` | セッション検索（デフォルト全プロジェクト） |
 | `timeline <id> [options]` | タイムライン表示（`--help` で全オプション確認可） |
-| `resolve-session [--path] <id_prefix>` | セッションID補完・パス解決 |
+| `resolve [--path] <id_prefix>` | セッションID補完・パス解決 |
 | `file-ops <id>` | ファイル操作一覧 |
-| `file-diff <id> <hash> <v1> [v2]` | バージョン間差分（v2 省略時は現在と比較） |
 
 ## Paths
 
