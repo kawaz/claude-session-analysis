@@ -745,8 +745,10 @@ function filterByRange(events, from, to) {
       toIdx = lastIdx + toMarker.offset;
     }
   }
-  fromIdx = Math.max(0, Math.min(fromIdx, events.length - 1));
-  toIdx = Math.max(0, Math.min(toIdx, events.length - 1));
+  if (fromIdx < 0 || fromIdx > events.length - 1)
+    return [];
+  if (toIdx < 0 || toIdx > events.length - 1)
+    return [];
   return events.slice(fromIdx, toIdx + 1);
 }
 function filterByGrep(events, pattern) {

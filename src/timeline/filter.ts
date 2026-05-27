@@ -133,9 +133,11 @@ export function filterByRange(
     }
   }
 
-  // クランプ
-  fromIdx = Math.max(0, Math.min(fromIdx, events.length - 1));
-  toIdx = Math.max(0, Math.min(toIdx, events.length - 1));
+  // オフセットで範囲外に出たケースは空配列で返す（クランプしない）。
+  // 例: `Umarker+1..` で marker が末尾 -> fromIdx >= length -> 空（cursor 用途）。
+  // marker-N で先頭超え、..marker+N で末尾超え、..marker-N で先頭超えも対称的に空。
+  if (fromIdx < 0 || fromIdx > events.length - 1) return [];
+  if (toIdx < 0 || toIdx > events.length - 1) return [];
 
   return events.slice(fromIdx, toIdx + 1);
 }

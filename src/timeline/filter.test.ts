@@ -186,10 +186,56 @@ describe("filterByRange", () => {
     expect(result[0].ref).toBe("ccc33333");
   });
 
-  test("範囲外はクランプ", () => {
-    // from=aaa-10 -> max(0, -10)=0, to=eee+100 -> min(4, 104)=4
+  test("オフセットが範囲外 -> 空配列", () => {
+    // from=aaa-10 -> -10 (events.length=5 範囲外), to=eee+100 -> 104 (範囲外)
+    // 旧仕様: クランプして全件返却。新仕様: 範囲外は空配列
     const result = filterByRange(events, "aaa11111-10", "eee55555+100");
-    expect(result).toHaveLength(5);
+    expect(result).toHaveLength(0);
+  });
+
+  test("marker+1.. で末尾 marker -> 空配列 (cursor 用途)", () => {
+    // eee55555 は末尾(idx=4)。+1 で fromIdx=5 となり範囲外 -> 空
+    const result = filterByRange(events, "eee55555+1", "");
+    expect(result).toHaveLength(0);
+  });
+
+  test("marker+N.. で 0 < N <= 残件数 のとき N 件減", () => {
+    // ddd44444 は idx=3。+1 で fromIdx=4 -> 末尾 eee55555 のみ
+    const result = filterByRange(events, "ddd44444+1", "");
+    expect(result).toHaveLength(1);
+    expect(result[0].ref).toBe("eee55555");
+  });
+
+  test("marker+N.. で N が残件数ちょうど -> 空配列", () => {
+    // ccc33333 は idx=2。+3 で fromIdx=5 -> 範囲外 -> 空
+    const result = filterByRange(events, "ccc33333+3", "");
+    expect(result).toHaveLength(0);
+  });
+
+  test("..marker-1 で先頭 marker -> 空配列", () => {
+    // aaa11111 は先頭(idx=0)。-1 で toIdx=-1 -> 空
+    const result = filterByRange(events, "", "aaa11111-1");
+    expect(result).toHaveLength(0);
+  });
+
+  test("..marker-N で N が先頭までの距離以内 -> 正しく N 件減", () => {
+    // ccc33333 は idx=2。-1 で toIdx=1 -> idx 0..1 の 2 件
+    const result = filterByRange(events, "", "ccc33333-1");
+    expect(result).toHaveLength(2);
+    expect(result[0].ref).toBe("aaa11111");
+    expect(result[1].ref).toBe("bbb22222");
+  });
+
+  test("marker-N.. で N が先頭までの距離を超える -> 空配列 (対称)", () => {
+    // aaa11111 は idx=0。-1 で fromIdx=-1 -> 範囲外 -> 空 (対称仕様)
+    const result = filterByRange(events, "aaa11111-1", "");
+    expect(result).toHaveLength(0);
+  });
+
+  test("..marker+N で末尾を超える -> 空配列 (対称)", () => {
+    // eee55555 は末尾(idx=4)。+1 で toIdx=5 -> 範囲外 -> 空 (対称仕様)
+    const result = filterByRange(events, "", "eee55555+1");
+    expect(result).toHaveLength(0);
   });
 
   test("マッチなし -> 全範囲", () => {
