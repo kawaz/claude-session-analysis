@@ -1,6 +1,55 @@
 import { describe, test, expect } from "bun:test";
-import { cleanTime, localTime, colorize, formatEvent, formatEvents, mdFrontMatter, type FormatEventsOpts } from "./format.ts";
+import { cleanTime, localTime, colorize, formatEvent, formatEvents, mdFrontMatter, computeRangeMarker, buildForkValues, type FormatEventsOpts } from "./format.ts";
 import type { TimelineEvent } from "./types.ts";
+
+describe("buildForkValues (修正5/6: forked_from ヒント値 `<親> ..<marker>`)", () => {
+  test("正常: `<親sessionId> ..<marker>` 形式（コピペで `timeline <親> ..<marker>` 実行可能）", () => {
+    const values = buildForkValues([{ parentSessionId: "parent-abc", marker: "Rdeadbeef" }]);
+    expect(values).toEqual(["parent-abc ..Rdeadbeef"]);
+  });
+
+  test("複数 fork は各 fork ごとに値を生成", () => {
+    const values = buildForkValues([
+      { parentSessionId: "p1", marker: "U11111111" },
+      { parentSessionId: "p2", marker: "R22222222" },
+    ]);
+    expect(values).toEqual(["p1 ..U11111111", "p2 ..R22222222"]);
+  });
+
+  test("marker が空ならヒント行を出さない（壊れた `<親> ..` を避ける）", () => {
+    expect(buildForkValues([{ parentSessionId: "parent-abc", marker: "" }])).toEqual([]);
+  });
+
+  test("parentSessionId が空ならヒント行を出さない", () => {
+    expect(buildForkValues([{ parentSessionId: "", marker: "Rdeadbeef" }])).toEqual([]);
+  });
+});
+
+describe("computeRangeMarker (command_computed の range; turn 昇順 min/max ベース)", () => {
+  const ev = (turn: number, kind: string, ref: string): TimelineEvent =>
+    ({ kind, ref, turn, time: "2025-01-01T00:00:00Z", desc: "" } as TimelineEvent);
+
+  test("空配列なら空文字", () => {
+    expect(computeRangeMarker([])).toBe("");
+  });
+
+  test("表示順が turn 昇順なら先頭/末尾そのまま", () => {
+    const events = [ev(1, "U", "aaaaaaaa"), ev(1, "R", "bbbbbbbb"), ev(2, "U", "cccccccc")];
+    expect(computeRangeMarker(events)).toBe("1 Uaaaaaaaa..2 Ucccccccc");
+  });
+
+  test("fork で F が古い backupTime により先頭に来ても min/max turn ベースで正しい range", () => {
+    // 表示順先頭は turn 5 の F（古い backupTime）、その後 turn 1..3 の本体。
+    // 表示順ベースだと "5 F..3 R" と嘘 range になるが、turn 昇順 min/max なら正しい。
+    const events = [
+      ev(5, "F", "ffffffff"),
+      ev(1, "U", "aaaaaaaa"),
+      ev(2, "R", "bbbbbbbb"),
+      ev(3, "U", "cccccccc"),
+    ];
+    expect(computeRangeMarker(events)).toBe("1 Uaaaaaaaa..5 Fffffffff");
+  });
+});
 
 describe("cleanTime", () => {
   test("サフィックスあり", () => {

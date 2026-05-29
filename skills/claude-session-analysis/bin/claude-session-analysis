@@ -269,8 +269,7 @@ function isUserTurn(entry) {
   const message = entry.message;
   if (!message)
     return false;
-  const content = message.content;
-  const text = typeof content === "string" ? content : Array.isArray(content) ? content.find((b) => b.type === "text")?.text : undefined;
+  const text = extractUserTurnText(entry);
   if (!text)
     return false;
   if (text.startsWith("[Request interrupted"))
@@ -280,6 +279,95 @@ function isUserTurn(entry) {
   if (text.startsWith("<teammate-message"))
     return false;
   return true;
+}
+var SYSTEM_TAGS = ["system-reminder", "user-prompt-submit-hook", "local-command-stdout"];
+var HIDDEN_TAG_RESIDUE_MAX = 20;
+function isAsciiOnly(text) {
+  return /^[\x00-\x7f]*$/.test(text);
+}
+function isHiddenTag(text) {
+  let remaining = text;
+  let stripped = false;
+  for (const tag of SYSTEM_TAGS) {
+    const re = new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, "g");
+    if (re.test(remaining)) {
+      stripped = true;
+      remaining = remaining.replace(re, "");
+    }
+  }
+  if (!stripped)
+    return false;
+  const residue = remaining.trim();
+  if (residue.length === 0)
+    return true;
+  return residue.length <= HIDDEN_TAG_RESIDUE_MAX && isAsciiOnly(residue);
+}
+function isShortAscii(text) {
+  const t = text.trim();
+  if (t.length === 0 || !isAsciiOnly(t))
+    return false;
+  return t.split(/\s+/).filter((w) => w.length > 0).length <= 2;
+}
+function classifyUserTurnKind(text) {
+  if (isHiddenTag(text))
+    return "hidden_tag";
+  if (isShortAscii(text))
+    return "short_ascii";
+  return "effective";
+}
+function isSlashCommandContent(text) {
+  const trimmed = text.trim();
+  return trimmed.startsWith("<") && trimmed.endsWith(">") && trimmed.includes("<command-name>");
+}
+function extractUserTurnText(entry) {
+  const message = entry.message;
+  const content = message?.content;
+  if (typeof content === "string")
+    return content;
+  if (Array.isArray(content)) {
+    return content.filter((b) => b.type === "text").map((b) => b.text ?? "").join(`
+`);
+  }
+  return "";
+}
+function classifyUserTurn(entry) {
+  const text = extractUserTurnText(entry);
+  if (isSlashCommandContent(text))
+    return "slash_only";
+  return classifyUserTurnKind(text);
+}
+function getForkedFromSessionId(entry) {
+  const ff = entry.forkedFrom;
+  if (ff && typeof ff.sessionId === "string")
+    return ff.sessionId;
+  return null;
+}
+function findForkSplit(entries) {
+  let parentSessionId = null;
+  let lastCopyIndex = -1;
+  let splitIndex = entries.length;
+  let forkFirstNewUuid = null;
+  let sawCopy = false;
+  for (let i = 0;i < entries.length; i++) {
+    const entry = entries[i];
+    const ff = getForkedFromSessionId(entry);
+    if (ff !== null) {
+      if (parentSessionId === null)
+        parentSessionId = ff;
+      lastCopyIndex = i;
+      sawCopy = true;
+    } else if (sawCopy && forkFirstNewUuid === null && entry.type === "user" && typeof entry.uuid === "string") {
+      forkFirstNewUuid = entry.uuid;
+      splitIndex = i;
+    }
+  }
+  return {
+    hasFork: sawCopy,
+    parentSessionId,
+    lastCopyIndex,
+    splitIndex,
+    forkFirstNewUuid
+  };
 }
 function shortenPath(path, n = 2) {
   if (!path)
@@ -397,7 +485,7 @@ function extractAttr(xml, attr) {
   const m = xml.match(re);
   return m ? m[1] : "";
 }
-function extractEvents(entries) {
+function extractRawEvents(entries) {
   const raw = [];
   const sessionCwd = getSessionCwd(entries);
   for (const entry of entries) {
@@ -416,6 +504,9 @@ function extractEvents(entries) {
         break;
     }
   }
+  return raw;
+}
+function assignTurns(raw) {
   let turn = 0;
   const events = [];
   for (const r of raw) {
@@ -425,6 +516,29 @@ function extractEvents(entries) {
     events.push({ ...r, turn });
   }
   return events;
+}
+function extractEvents(entries) {
+  return assignTurns(extractRawEvents(entries));
+}
+function extractEventsWithFork(entries) {
+  const split = findForkSplit(entries);
+  if (!split.hasFork) {
+    return { events: extractEvents(entries), fork: null };
+  }
+  const copyEntries = entries.slice(0, split.lastCopyIndex + 1);
+  const forkedEntries = entries.slice(split.splitIndex);
+  const events = assignTurns(extractRawEvents(forkedEntries));
+  const copyEvents = extractRawEvents(copyEntries);
+  let marker = "";
+  if (copyEvents.length > 0) {
+    const last = copyEvents[copyEvents.length - 1];
+    marker = `${last.kind}${last.ref}`;
+  }
+  const fork = {
+    parentSessionId: split.parentSessionId ?? "",
+    marker
+  };
+  return { events, fork };
 }
 function extractUserEvents(entry, events) {
   const ref = entry.uuid.slice(0, 8);
@@ -455,8 +569,7 @@ function extractUserEvents(entry, events) {
   }
 }
 function extractUserStringContent(content, ref, time, events) {
-  const trimmed = content.trim();
-  if (trimmed.startsWith("<") && trimmed.endsWith(">") && trimmed.includes("<command-name>")) {
+  if (isSlashCommandContent(content)) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
     events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });
@@ -954,13 +1067,33 @@ function formatEvent(event, opts) {
   }
   return `${head} ${desc}`;
 }
-function mdFrontMatter(command, commandComputed, commandHelp, now) {
+function computeRangeMarker(events) {
+  if (events.length === 0)
+    return "";
+  let lo = events[0];
+  let hi = events[0];
+  for (const e of events) {
+    if (e.turn < lo.turn)
+      lo = e;
+    if (e.turn > hi.turn)
+      hi = e;
+  }
+  return `${lo.turn} ${lo.kind}${lo.ref}..${hi.turn} ${hi.kind}${hi.ref}`;
+}
+function buildForkValues(forkInfos) {
+  return forkInfos.filter((f) => f.parentSessionId !== "" && f.marker !== "").map((f) => `${f.parentSessionId} ..${f.marker}`);
+}
+function mdFrontMatter(command, commandComputed, commandHelp, now, forkHints = []) {
+  const forkBlock = forkHints.length > 0 ? `forked_from:
+${forkHints.map((h) => `  - ${h}`).join(`
+`)}
+` : "";
   return `---
 command: ${command}
 command_computed: ${commandComputed}
 command_help: ${commandHelp}
 now: ${now}
----
+${forkBlock}---
 
 `;
 }
@@ -1023,11 +1156,9 @@ function buildCommandComputed(opts, resolvedInputs, filtered, isTty) {
   const prog = progName("timeline");
   const parts = [prog];
   parts.push(resolvedInputs.join(" "));
-  if (filtered.length > 0) {
-    const first = filtered[0];
-    const last = filtered[filtered.length - 1];
-    parts.push(`${first.turn} ${first.kind}${first.ref}..${last.turn} ${last.kind}${last.ref}`);
-  }
+  const range = computeRangeMarker(filtered);
+  if (range)
+    parts.push(range);
   parts.push(`-t ${opts.types}`);
   parts.push(`--width 0`);
   const colorResolved = opts.color === "auto" ? isTty ? "always" : "none" : opts.color;
@@ -1065,11 +1196,15 @@ async function run(args) {
   resolved.sort((a, b) => a.startTime - b.startTime);
   let allEntries;
   let allEvents = [];
+  const forkInfos = [];
   for (const { entries } of resolved) {
     if (opts.jsonlMode !== "none") {
       allEntries = (allEntries || []).concat(entries);
     }
-    allEvents = allEvents.concat(extractEvents(entries));
+    const { events, fork } = extractEventsWithFork(entries);
+    allEvents = allEvents.concat(events);
+    if (fork)
+      forkInfos.push(fork);
   }
   let filtered;
   try {
@@ -1127,11 +1262,13 @@ async function run(args) {
   const commandComputed = buildCommandComputed(opts, resolvedInputs, filtered, isTty);
   const commandHelp = buildCommandHelp();
   const now = localTimeMs();
-  const metaBlock = isMd ? mdFrontMatter(command, commandComputed, commandHelp, now) : `# command: ${command}
+  const forkValues = buildForkValues(forkInfos);
+  const metaBlock = isMd ? mdFrontMatter(command, commandComputed, commandHelp, now, forkValues) : `# command: ${command}
 # command_computed: ${commandComputed}
 # command_help: ${commandHelp}
 # now: ${now}
-`;
+` + forkValues.map((v) => `# forked_from: ${v}
+`).join("");
   const output = metaBlock + formatEvents(filtered, {
     jsonlMode: opts.jsonlMode,
     width: opts.width,
@@ -1511,7 +1648,9 @@ async function searchSessions(opts) {
     let startTime = 0;
     let endTime = 0;
     let turns = 0;
+    let effectiveUserTurns = 0;
     let lineCount = 0;
+    const forkEntries = [];
     for (let i = 0;i < lines.length; i++) {
       const line = lines[i];
       if (line.trim() === "")
@@ -1534,8 +1673,12 @@ async function searchSessions(opts) {
           sessionId = obj.sessionId;
         cwd = obj.cwd;
       }
+      forkEntries.push({ type: obj.type, uuid: obj.uuid, forkedFrom: obj.forkedFrom });
       if (isUserTurn(obj)) {
         turns++;
+        if (classifyUserTurn(obj) === "effective") {
+          effectiveUserTurns++;
+        }
       }
     }
     if (startTime === 0)
@@ -1544,7 +1687,10 @@ async function searchSessions(opts) {
       endTime = entry.mtime;
     if (cwd === "?" && sessionId === "?")
       return null;
-    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount };
+    const split = findForkSplit(forkEntries);
+    const forkedFrom = split.parentSessionId;
+    const forkFirstNewUuid = split.forkFirstNewUuid;
+    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount, effectiveUserTurns, forkedFrom, forkFirstNewUuid };
   };
   const parseResults = await Promise.all(validFiles.map(parseFile));
   const all = parseResults.filter((r) => r != null);
@@ -1679,7 +1825,10 @@ function formatSessionsJsonl(filtered, opts) {
       duration_ms: Math.max(0, s.endTime - s.startTime) * 1000,
       bytes: s.size,
       lines: s.lines,
-      turns: s.turns
+      turns: s.turns,
+      effectiveUserTurns: s.effectiveUserTurns,
+      forkedFrom: s.forkedFrom,
+      forkFirstNewUuid: s.forkFirstNewUuid
     };
     if (s.context) {
       obj.context = s.context;

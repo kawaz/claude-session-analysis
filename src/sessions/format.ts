@@ -145,6 +145,11 @@ export function formatSessionsJsonl(
       bytes: s.size,
       lines: s.lines,
       turns: s.turns,
+      // 後方互換: 既存フィールドは維持しつつフラットな列として追加（issue PR②）。
+      // forkedFrom / forkFirstNewUuid は fork でなくても null を必ず出力（キーは常に存在）。
+      effectiveUserTurns: s.effectiveUserTurns,
+      forkedFrom: s.forkedFrom,
+      forkFirstNewUuid: s.forkFirstNewUuid,
     };
     if (s.context) {
       obj.context = s.context;

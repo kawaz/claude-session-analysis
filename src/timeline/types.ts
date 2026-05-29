@@ -33,6 +33,12 @@ export type SessionEntry =
   | SystemEntry
   | FileHistorySnapshotEntry;
 
+// fork したセッションで親からコピーされた entry に付与される。
+// findings 2026-05-29-btw-fork-session-recording 参照。
+export interface ForkedFrom {
+  sessionId: string;
+}
+
 export interface UserEntry {
   type: "user";
   uuid: string;
@@ -41,6 +47,7 @@ export interface UserEntry {
   isMeta?: boolean;
   isCompactSummary?: boolean;
   cwd?: string;
+  forkedFrom?: ForkedFrom;
 }
 
 export interface AssistantEntry {
@@ -48,6 +55,7 @@ export interface AssistantEntry {
   uuid: string;
   timestamp: string;
   message: { content: ContentBlock[] };
+  forkedFrom?: ForkedFrom;
 }
 
 export interface SystemEntry {
@@ -55,6 +63,7 @@ export interface SystemEntry {
   uuid: string;
   timestamp: string;
   content: string;
+  forkedFrom?: ForkedFrom;
 }
 
 export interface FileHistorySnapshotEntry {
@@ -63,6 +72,19 @@ export interface FileHistorySnapshotEntry {
   snapshot: {
     trackedFileBackups: Record<string, BackupEntry>;
   };
+}
+
+// fork ヘッダ情報。fork したセッション（forkedFrom を持つ entry がある）でのみ非 null。
+// 親で `timeline <parentSessionId> ..<marker>` すると fork 前を見られる、という案内に使う。
+export interface ForkInfo {
+  parentSessionId: string; // forkedFrom.sessionId（コピー元の親 sessionId）
+  marker: string;          // 親 timeline 上での「コピーされた最後の entry」の marker（kind+ref 形式、例: Rabc1234）
+}
+
+// fork を考慮したイベント抽出結果。
+export interface ExtractResult {
+  events: TimelineEvent[];
+  fork: ForkInfo | null; // fork でなければ null
 }
 
 // 範囲マーカー（パース済み）

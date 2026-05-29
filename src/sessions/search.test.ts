@@ -321,4 +321,191 @@ describe("searchSessions", () => {
       searchSessions({ configDirs: [tmpDir], keyword: "[invalid" })
     ).rejects.toThrow();
   });
+
+  test("effectiveUserTurns: effective のみ数える（hidden_tag/short_ascii/slash は除外）", async () => {
+    await createSession("p1", "eff.jsonl", [
+      '{"sessionId":"eff12345","cwd":"/a","type":"user","message":{"content":"これを直して下さい"}}', // effective
+      '{"type":"user","message":{"content":"ok"}}', // short_ascii → 除外
+      '{"type":"user","message":{"content":"<system-reminder>x</system-reminder>"}}', // hidden_tag → 除外
+      '{"type":"user","message":{"content":"<command-name>/clear</command-name><command-args></command-args>"}}', // slash → 除外
+      '{"type":"user","message":{"content":"fix this bug please"}}', // effective
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    // turns は isUserTurn を通過した全 user ターン
+    expect(results[0]!.turns).toBe(5);
+    // effective は 2 件のみ
+    expect(results[0]!.effectiveUserTurns).toBe(2);
+  });
+
+  test("effectiveUserTurns: 複数 text ブロックの user は連結して1ターンとして分類", async () => {
+    await createSession("p1", "multi.jsonl", [
+      '{"sessionId":"multi123","cwd":"/a","type":"user","message":{"content":[{"type":"text","text":"これは"},{"type":"text","text":"日本語の指示"}]}}', // effective
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    expect(results[0]!.turns).toBe(1);
+    expect(results[0]!.effectiveUserTurns).toBe(1);
+  });
+
+  test("fork なしセッション: forkedFrom / forkFirstNewUuid は null", async () => {
+    await createSession("p1", "nofork.jsonl", [
+      '{"sessionId":"nofork12","cwd":"/a","type":"user","uuid":"u1","message":{"content":"hello there friend"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    expect(results[0]!.forkedFrom).toBeNull();
+    expect(results[0]!.forkFirstNewUuid).toBeNull();
+  });
+
+  test("fork セッション: forkedFrom は親 sessionId、forkFirstNewUuid は最初の非コピー entry uuid", async () => {
+    await createSession("p1", "fork.jsonl", [
+      // 親からのコピー entry（forkedFrom 付与）
+      '{"sessionId":"child123","cwd":"/a","type":"user","uuid":"copy-1","forkedFrom":{"sessionId":"parent-abc"},"message":{"content":"親の発言1"}}',
+      '{"type":"assistant","uuid":"copy-2","forkedFrom":{"sessionId":"parent-abc"},"message":{"content":[{"type":"text","text":"親の応答"}]}}',
+      // fork 後最初の新規 entry（forkedFrom 無し）
+      '{"type":"user","uuid":"new-first","message":{"content":"fork 後の最初の発言"}}',
+      '{"type":"assistant","uuid":"new-second","message":{"content":[{"type":"text","text":"応答"}]}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    expect(results[0]!.forkedFrom).toBe("parent-abc");
+    expect(results[0]!.forkFirstNewUuid).toBe("new-first");
+  });
+
+  // 修正2/4: 実機 /fork の境界構造を模した fixture。
+  // findings 仕様: forkFirstNewUuid は type:"user" の entry（fork args が最初の user prompt になる）。
+  // 境界直後に attachment→system→assistant が挟まっても、assistant ではなく最初の user を拾うこと。
+  test("fork: 境界直後に attachment/system/assistant が挟まっても forkFirstNewUuid は最初の user", async () => {
+    await createSession("p1", "fork-realistic.jsonl", [
+      // 親からのコピー entry（forkedFrom 付与）
+      '{"sessionId":"child999","cwd":"/a","type":"user","uuid":"copy-1","forkedFrom":{"sessionId":"parent-xyz"},"message":{"content":"親の発言"}}',
+      '{"type":"assistant","uuid":"copy-2","forkedFrom":{"sessionId":"parent-xyz"},"message":{"content":[{"type":"text","text":"親の応答"}]}}',
+      // fork 境界直後の非 user entry 群（forkedFrom 無し）
+      '{"type":"attachment","uuid":"att-1","message":{"content":"添付"}}',
+      '{"type":"system","subtype":"local_command","uuid":"sys-1","content":"<command-name>/fork</command-name><command-args></command-args>"}',
+      '{"type":"assistant","uuid":"asst-1","message":{"content":[{"type":"text","text":"先に喋る assistant"}]}}',
+      // 真の最初の user prompt（fork args）
+      '{"type":"user","uuid":"user-first","message":{"content":"fork 後の最初のユーザー発言"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    expect(results[0]!.forkedFrom).toBe("parent-xyz");
+    // assistant(asst-1) や system(sys-1) を拾わず、最初の user(user-first) を指すこと
+    expect(results[0]!.forkFirstNewUuid).toBe("user-first");
+  });
+
+  // 修正2: /btw fork 模擬（custom-title→assistant→user 境界）でも user を拾う
+  test("fork: btw 模擬境界（custom-title→assistant→user）でも forkFirstNewUuid は user", async () => {
+    await createSession("p1", "fork-btw.jsonl", [
+      '{"sessionId":"btwchild","cwd":"/a","type":"user","uuid":"c1","forkedFrom":{"sessionId":"parent-btw"},"message":{"content":"親"}}',
+      '{"type":"system","subtype":"custom-title","uuid":"ct-1","content":"btw: 質問"}',
+      '{"type":"assistant","uuid":"a1","message":{"content":[{"type":"text","text":"btw 応答"}]}}',
+      '{"type":"user","uuid":"btw-user-first","message":{"content":"btw の質問内容"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    expect(results[0]!.forkFirstNewUuid).toBe("btw-user-first");
+  });
+
+  // 修正5(c): forkedFrom が複数の異なる親を指す異常系 → 最初を採用
+  test("fork: forkedFrom が複数の異なる親を指しても最初の値を採用", async () => {
+    await createSession("p1", "fork-multiparent.jsonl", [
+      '{"sessionId":"mp1","cwd":"/a","type":"user","uuid":"c1","forkedFrom":{"sessionId":"parent-A"},"message":{"content":"x"}}',
+      '{"type":"user","uuid":"c2","forkedFrom":{"sessionId":"parent-B"},"message":{"content":"y"}}',
+      '{"type":"user","uuid":"first-new","message":{"content":"新規発言"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    expect(results[0]!.forkedFrom).toBe("parent-A");
+    expect(results[0]!.forkFirstNewUuid).toBe("first-new");
+  });
+
+  // 修正5(d): forkFirstNewUuid 算出後にさらに forkedFrom 付き entry が出る順序乱れ → 最初の確定値を維持
+  test("fork: forkFirstNewUuid 確定後に forkedFrom 付き entry が再出現しても上書きしない", async () => {
+    await createSession("p1", "fork-reorder.jsonl", [
+      '{"sessionId":"ro1","cwd":"/a","type":"user","uuid":"c1","forkedFrom":{"sessionId":"parent-R"},"message":{"content":"親"}}',
+      '{"type":"user","uuid":"first-new","message":{"content":"新規発言"}}',
+      // 順序乱れ: 後からまた forkedFrom 付き entry
+      '{"type":"user","uuid":"late-copy","forkedFrom":{"sessionId":"parent-R"},"message":{"content":"遅れて来たコピー"}}',
+      '{"type":"user","uuid":"another-new","message":{"content":"別の新規"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
+    expect(results.length).toBe(1);
+    expect(results[0]!.forkFirstNewUuid).toBe("first-new");
+  });
+});
+
+describe("effectiveUserTurns 異常系 (修正5)", () => {
+  let tmpDir2: string;
+
+  beforeEach(async () => {
+    tmpDir2 = await mkdtemp(join(tmpdir(), "sessions-eff-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir2, { recursive: true, force: true });
+  });
+
+  async function createSession2(filename: string, lines: string[]): Promise<void> {
+    const dir = join(tmpDir2, "projects", "p1");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, filename), lines.join("\n") + "\n");
+  }
+
+  // 修正5(a): 空文字/空白のみ user は effective に数える（安全側フォールバック）
+  test("空文字 user は effective に数える", async () => {
+    await createSession2("empty.jsonl", [
+      '{"sessionId":"emp12345","cwd":"/a","type":"user","message":{"content":""}}',
+    ]);
+    const { sessions } = await searchSessions({ configDirs: [tmpDir2] });
+    expect(sessions.length).toBe(1);
+    // isUserTurn は空文字を除外する（text falsy）が、もし turn になれば effective 側
+    // 実機準拠: 空文字 content は isUserTurn=false（text なし）なので turn にもならない
+    expect(sessions[0]!.effectiveUserTurns).toBe(0);
+  });
+
+  test("空白のみ user は isUserTurn を通過し effective に数える", async () => {
+    await createSession2("space.jsonl", [
+      '{"sessionId":"spc12345","cwd":"/a","type":"user","message":{"content":"   "}}',
+    ]);
+    const { sessions } = await searchSessions({ configDirs: [tmpDir2] });
+    expect(sessions.length).toBe(1);
+    // 空白のみは text truthy なので isUserTurn=true、classify は effective（安全側）
+    expect(sessions[0]!.turns).toBe(1);
+    expect(sessions[0]!.effectiveUserTurns).toBe(1);
+  });
+
+  // 修正5(b): hidden_tag 残文字閾値の境界は classifyUserTurnKind 単体テスト（lib.test.ts）で検証。
+  // ここでは search 経由で「閾値超過 → effective に数える」end-to-end を 1 本だけ担保する。
+  // 残文字を複数 word にして short_ascii(word≤2) と干渉させず、純粋に residue 長で分岐させる。
+  test("hidden_tag 残文字が閾値超過（21文字・複数word）なら effective に数える", async () => {
+    // "aa bb cc dd ee ff" = 17文字, " aa bb cc dd ee fff" 形式で 21 文字 / word>2 にする
+    const residue = "aa bb cc dd ee ff ggg"; // 21 文字, 7 word
+    await createSession2("b21.jsonl", [
+      `{"sessionId":"b2112345","cwd":"/a","type":"user","message":{"content":"<system-reminder>x</system-reminder> ${residue}"}}`,
+    ]);
+    const { sessions } = await searchSessions({ configDirs: [tmpDir2] });
+    expect(sessions[0]!.effectiveUserTurns).toBe(1);
+  });
+
+  // effectiveUserTurns <= turns の不変条件
+  test("effectiveUserTurns <= turns が常に成立", async () => {
+    await createSession2("inv.jsonl", [
+      '{"sessionId":"inv12345","cwd":"/a","type":"user","message":{"content":"これを直して下さい"}}',
+      '{"type":"user","message":{"content":"ok"}}',
+      '{"type":"user","message":{"content":"<system-reminder>x</system-reminder>"}}',
+      '{"type":"user","message":{"content":"<command-name>/clear</command-name><command-args></command-args>"}}',
+    ]);
+    const { sessions } = await searchSessions({ configDirs: [tmpDir2] });
+    expect(sessions[0]!.effectiveUserTurns).toBeLessThanOrEqual(sessions[0]!.turns);
+  });
 });

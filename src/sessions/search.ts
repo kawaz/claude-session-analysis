@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { isUserTurn, parseDuration } from "../lib.ts";
+import { isUserTurn, classifyUserTurn, parseDuration, findForkSplit } from "../lib.ts";
 
 export { parseDuration };
 
@@ -13,6 +13,9 @@ export interface SessionInfo {
   cwd: string;
   turns: number; // Uイベント（ユーザーターン）の数
   lines: number; // JSONLファイルの行数（空行除く）
+  effectiveUserTurns: number; // turns のうち classifyUserTurn が "effective" のもの（hidden_tag/short_ascii/slash_only は除外）
+  forkedFrom: string | null; // フォーク元 session ID（entry の forkedFrom.sessionId。fork でなければ null）
+  forkFirstNewUuid: string | null; // フォーク後最初の新規 entry の uuid（fork でなければ null）
   context?: string; // keyword search context
 }
 
@@ -119,7 +122,13 @@ export async function searchSessions(
     let startTime = 0;
     let endTime = 0;
     let turns = 0;
+    let effectiveUserTurns = 0;
     let lineCount = 0;
+    // fork 検出（findings 2026-05-29-btw-fork-session-recording に従う）。
+    // 境界判定ロジックは lib.ts の findForkSplit に集約（timeline / sessions の単一の正）。
+    // ここでは fork 判定に必要な最小情報（type / uuid / forkedFrom）だけを軽量に蓄積し、
+    // ループ後に findForkSplit へ渡す（全 obj を保持してメモリを増やさないため）。
+    const forkEntries: Record<string, unknown>[] = [];
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
@@ -145,16 +154,26 @@ export async function searchSessions(
         cwd = obj.cwd;
       }
 
+      // fork 判定用に最小情報を蓄積（境界判定は findForkSplit が行う）
+      forkEntries.push({ type: obj.type, uuid: obj.uuid, forkedFrom: obj.forkedFrom });
+
       // ターンカウント: isUserTurn() で統一判定
       if (isUserTurn(obj as Record<string, unknown>)) {
         turns++;
+        if (classifyUserTurn(obj as Record<string, unknown>) === "effective") {
+          effectiveUserTurns++;
+        }
       }
     }
 
     if (startTime === 0) startTime = entry.mtime;
     if (endTime === 0) endTime = entry.mtime;
     if (cwd === "?" && sessionId === "?") return null;
-    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount };
+
+    const split = findForkSplit(forkEntries);
+    const forkedFrom = split.parentSessionId;
+    const forkFirstNewUuid = split.forkFirstNewUuid;
+    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount, effectiveUserTurns, forkedFrom, forkFirstNewUuid };
   };
 
   const parseResults = await Promise.all(validFiles.map(parseFile));

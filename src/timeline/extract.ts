@@ -6,8 +6,10 @@ import type {
   AssistantEntry,
   SystemEntry,
   FileHistorySnapshotEntry,
+  ExtractResult,
+  ForkInfo,
 } from "./types.ts";
-import { shortenPath, lastSegments, isUserTurn, getSessionCwd } from "../lib.ts";
+import { shortenPath, lastSegments, isUserTurn, getSessionCwd, isSlashCommandContent, findForkSplit } from "../lib.ts";
 
 /** turn 未付与のイベント（内部用） */
 type RawEvent = Omit<TimelineEvent, "turn">;
@@ -26,7 +28,8 @@ function extractAttr(xml: string, attr: string): string {
   return m ? m[1] : "";
 }
 
-export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
+/** エントリ列から RawEvent 列（turn 未付与）を生成する */
+function extractRawEvents(entries: SessionEntry[]): RawEvent[] {
   const raw: RawEvent[] = [];
 
   // session_cwd: 最初の cwd を持つエントリから取得（全エントリ型を検索）
@@ -49,7 +52,11 @@ export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
     }
   }
 
-  // ターン番号を付与: U イベントが来たら turn をインクリメント
+  return raw;
+}
+
+/** RawEvent 列に turn 番号を付与: U イベントが来たら turn をインクリメント（1 始まり） */
+function assignTurns(raw: RawEvent[]): TimelineEvent[] {
   let turn = 0;
   const events: TimelineEvent[] = [];
   for (const r of raw) {
@@ -58,8 +65,60 @@ export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
     }
     events.push({ ...r, turn });
   }
-
   return events;
+}
+
+export function extractEvents(entries: SessionEntry[]): TimelineEvent[] {
+  return assignTurns(extractRawEvents(entries));
+}
+
+/**
+ * fork を考慮したイベント抽出。
+ *
+ * forked セッション（jsonl 内に forkedFrom を持つ entry がある）の場合:
+ * - fork 前（親からのコピー entry 群）を除外し、fork 後のみを返す。
+ * - turn は fork 後の最初の U を 1 として振り直す（assignTurns が fork 後 raw に対して走るため）。
+ * - ForkInfo を返す。marker は「親 timeline で `..marker` 指定すれば fork 前を見られる値」=
+ *   親にコピーされた最後の entry（= 子の最後の forkedFrom 付き entry。uuid は親と共通）に
+ *   対応する timeline marker（kind+ref）。コピー entry 群だけで extract したときに
+ *   timeline 上に現れる最後のイベントの kind+ref を採用する（その entry が複数イベントを
+ *   生む場合は最後のイベント。timeline に現れないなら直前のコピー entry のイベントに遡る）。
+ *
+ * 通常セッション（forkedFrom なし）は extractEvents と完全に同一の events を返し、fork は null。
+ */
+export function extractEventsWithFork(entries: SessionEntry[]): ExtractResult {
+  // fork 境界判定は lib.ts の findForkSplit に集約（timeline / sessions の単一の正）。
+  // findings 仕様: fork 後の開始は「最初の forkedFrom 無し type:"user" entry」。
+  // 境界の非 user（custom-title / 自動応答 assistant / system / file-history-snapshot）は
+  // fork 後に含めない（含めると turn 0 の孤立イベントが出てしまう）。
+  const split = findForkSplit(entries as unknown as Record<string, unknown>[]);
+  if (!split.hasFork) {
+    return { events: extractEvents(entries), fork: null };
+  }
+
+  const copyEntries = entries.slice(0, split.lastCopyIndex + 1);
+  const forkedEntries = entries.slice(split.splitIndex);
+
+  // fork 後イベント（turn は 1 から振り直し）
+  const events = assignTurns(extractRawEvents(forkedEntries));
+
+  // marker 算出: コピー entry 群だけで extract し、timeline 上に現れる最後のイベントの kind+ref。
+  // コピー entry の中には timeline にイベントを生まないもの（isMeta 等）もあるため、
+  // 「最後に実際に現れたイベント」を採用する（末尾コピー entry が無イベントなら手前に遡る）。
+  const copyEvents = extractRawEvents(copyEntries);
+  let marker = "";
+  if (copyEvents.length > 0) {
+    const last = copyEvents[copyEvents.length - 1];
+    marker = `${last.kind}${last.ref}`;
+  }
+
+  const fork: ForkInfo = {
+    // splitIndex が見つからない（fork 後 user が無い）異常系では parentSessionId が null のことは無いが、
+    // null の場合は index.ts 側でヒント抑制する（修正5）。
+    parentSessionId: split.parentSessionId ?? "",
+    marker,
+  };
+  return { events, fork };
 }
 
 function extractUserEvents(entry: UserEntry, events: RawEvent[]): void {
@@ -105,9 +164,8 @@ function extractUserStringContent(
 ): void {
   // isUserTurn ガード通過済み: I 分類対象はここに来ない
 
-  // XML風スラッシュコマンド
-  const trimmed = content.trim();
-  if (trimmed.startsWith("<") && trimmed.endsWith(">") && trimmed.includes("<command-name>")) {
+  // XML風スラッシュコマンド（判定基準は lib.ts の共通関数に集約）
+  if (isSlashCommandContent(content)) {
     const cmd = extractTag(content, "command-name");
     const args = extractTag(content, "command-args");
     events.push({ kind: "U", ref, time, desc: `${cmd} ${args}` });

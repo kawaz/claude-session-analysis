@@ -1,4 +1,4 @@
-import type { TimelineEvent } from "./types.ts";
+import type { TimelineEvent, ForkInfo } from "./types.ts";
 import { truncate, formatTzOffset } from "../lib.ts";
 
 /** ソートサフィックス _NNNNN を除去 */
@@ -132,9 +132,54 @@ export interface FormatEventsOpts {
   mdMode: "none" | "render" | "source";
 }
 
-/** mdモード用 YAML front matter を生成 */
-export function mdFrontMatter(command: string, commandComputed: string, commandHelp: string, now: string): string {
-  return `---\ncommand: ${command}\ncommand_computed: ${commandComputed}\ncommand_help: ${commandHelp}\nnow: ${now}\n---\n\n`;
+/**
+ * command_computed 用の range マーカー文字列 `<minTurn> <kind><ref>..<maxTurn> <kind><ref>` を返す。
+ *
+ * Design rationale: 表示順の先頭/末尾ではなく **turn 昇順の min/max turn** を端に採用する。
+ * fork セッションでは file-history-snapshot 由来の F イベントが古い backupTime で time ソート
+ * 先頭に来る（turn は大きい）ため、表示順ベースだと `5 F..3 R` のような嘘 range になり、
+ * その文字列をコピペ再実行すると別範囲になってしまう。turn 昇順 min/max なら範囲が正しく閉じる。
+ * 同一 turn 内では表示順で最初/最後のイベントを端に採用する。
+ */
+export function computeRangeMarker(events: TimelineEvent[]): string {
+  if (events.length === 0) return "";
+  let lo = events[0]!;
+  let hi = events[0]!;
+  for (const e of events) {
+    if (e.turn < lo.turn) lo = e;
+    if (e.turn > hi.turn) hi = e;
+  }
+  return `${lo.turn} ${lo.kind}${lo.ref}..${hi.turn} ${hi.kind}${hi.ref}`;
+}
+
+/**
+ * forked_from ヒントの値リストを生成する。
+ *
+ * 値は `<親sessionId> ..<marker>` 形式。そのまま `timeline <親> ..<marker>` でコピペ実行でき、
+ * 親 timeline の fork 地点までを表示できる（marker は子の最後の forkedFrom コピー entry の kind+ref）。
+ *
+ * marker または parentSessionId が空のときはヒント行を出さない（修正5）。
+ * 空のまま出すと `<親> ..` や ` ..<marker>` という壊れた・実行不能な行になるため。
+ */
+export function buildForkValues(forkInfos: ForkInfo[]): string[] {
+  return forkInfos
+    .filter((f) => f.parentSessionId !== "" && f.marker !== "")
+    .map((f) => `${f.parentSessionId} ..${f.marker}`);
+}
+
+/** mdモード用 YAML front matter を生成。forkHints があれば forked_from キー（YAML list）を追加 */
+export function mdFrontMatter(
+  command: string,
+  commandComputed: string,
+  commandHelp: string,
+  now: string,
+  forkHints: string[] = [],
+): string {
+  const forkBlock =
+    forkHints.length > 0
+      ? `forked_from:\n${forkHints.map((h) => `  - ${h}`).join("\n")}\n`
+      : "";
+  return `---\ncommand: ${command}\ncommand_computed: ${commandComputed}\ncommand_help: ${commandHelp}\nnow: ${now}\n${forkBlock}---\n\n`;
 }
 
 /** 複数イベントをフォーマットして結合 */

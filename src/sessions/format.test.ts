@@ -137,6 +137,9 @@ describe("formatSessionLine", () => {
     cwd: "/Users/kawaz/.local/share/repos/github.com/kawaz/myproject",
     turns: 42,
     lines: 200,
+    effectiveUserTurns: 30,
+    forkedFrom: null,
+    forkFirstNewUuid: null,
   };
 
   test("end, duration, full sessionId, turns, full path を含む", () => {
@@ -177,6 +180,9 @@ describe("formatSessionsOutput", () => {
         cwd: "/x/y",
         turns: 5,
         lines: 50,
+        effectiveUserTurns: 4,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
       },
       {
         file: "/a/c.jsonl",
@@ -188,6 +194,9 @@ describe("formatSessionsOutput", () => {
         cwd: "/x/z",
         turns: 10,
         lines: 100,
+        effectiveUserTurns: 8,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
       },
     ];
     const output = formatSessionsOutput(stats, filtered, {
@@ -215,6 +224,9 @@ describe("formatSessionsOutput", () => {
         cwd: "/x/y",
         turns: i + 1,
         lines: (i + 1) * 10,
+        effectiveUserTurns: i + 1,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
       });
     }
     const stats: SessionStats = {
@@ -267,6 +279,9 @@ describe("formatSessionsJsonl", () => {
         cwd: "/x/y",
         turns: 5,
         lines: 50,
+        effectiveUserTurns: 4,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
       },
       {
         file: "/a/c.jsonl",
@@ -278,6 +293,9 @@ describe("formatSessionsJsonl", () => {
         cwd: "/x/z",
         turns: 10,
         lines: 100,
+        effectiveUserTurns: 8,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
       },
     ];
     const output = formatSessionsJsonl(sessions, { tail: 10 });
@@ -314,6 +332,9 @@ describe("formatSessionsJsonl", () => {
         cwd: "/x/y",
         turns: i + 1,
         lines: (i + 1) * 10,
+        effectiveUserTurns: i + 1,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
       });
     }
     const output = formatSessionsJsonl(sessions, { tail: 2 });
@@ -335,6 +356,9 @@ describe("formatSessionsJsonl", () => {
         cwd: "/x/y",
         turns: 3,
         lines: 30,
+        effectiveUserTurns: 2,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
         context: "[2 hits] some match context",
       },
     ];
@@ -355,6 +379,9 @@ describe("formatSessionsJsonl", () => {
         cwd: "/x/y",
         turns: 3,
         lines: 30,
+        effectiveUserTurns: 2,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
       },
     ];
     const output = formatSessionsJsonl(sessions, { tail: 10 });
@@ -365,5 +392,55 @@ describe("formatSessionsJsonl", () => {
   test("空配列なら空文字列", () => {
     const output = formatSessionsJsonl([], { tail: 10 });
     expect(output).toBe("");
+  });
+
+  test("新フィールド effectiveUserTurns / forkedFrom / forkFirstNewUuid を出力する", () => {
+    const sessions: SessionInfo[] = [
+      {
+        file: "/a/b.jsonl",
+        mtime: now - 300,
+        startTime: now - 600,
+        endTime: now - 300,
+        size: 5000,
+        sessionId: "aaaaaaaa",
+        cwd: "/x/y",
+        turns: 10,
+        lines: 100,
+        effectiveUserTurns: 6,
+        forkedFrom: "parent-session-id",
+        forkFirstNewUuid: "first-new-uuid",
+      },
+    ];
+    const output = formatSessionsJsonl(sessions, { tail: 10 });
+    const obj = JSON.parse(output.trim());
+    expect(obj.effectiveUserTurns).toBe(6);
+    expect(obj.forkedFrom).toBe("parent-session-id");
+    expect(obj.forkFirstNewUuid).toBe("first-new-uuid");
+  });
+
+  test("fork でない場合 forkedFrom / forkFirstNewUuid は null として出力（キーは存在）", () => {
+    const sessions: SessionInfo[] = [
+      {
+        file: "/a/b.jsonl",
+        mtime: now - 300,
+        startTime: now - 600,
+        endTime: now - 300,
+        size: 5000,
+        sessionId: "aaaaaaaa",
+        cwd: "/x/y",
+        turns: 3,
+        lines: 30,
+        effectiveUserTurns: 3,
+        forkedFrom: null,
+        forkFirstNewUuid: null,
+      },
+    ];
+    const output = formatSessionsJsonl(sessions, { tail: 10 });
+    const obj = JSON.parse(output.trim());
+    expect(obj).toHaveProperty("forkedFrom");
+    expect(obj).toHaveProperty("forkFirstNewUuid");
+    expect(obj.forkedFrom).toBeNull();
+    expect(obj.forkFirstNewUuid).toBeNull();
+    expect(obj.effectiveUserTurns).toBe(3);
   });
 });

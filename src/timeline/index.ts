@@ -1,10 +1,10 @@
 import { parseArgs, PURE_NUMBER_RE } from "./parse-args.ts";
 import { resolveSession } from "../resolve-session.ts";
-import { extractEvents } from "./extract.ts";
+import { extractEventsWithFork } from "./extract.ts";
 import { pipeline } from "./filter.ts";
-import { formatEvents, mdFrontMatter, localTimeMs } from "./format.ts";
+import { formatEvents, mdFrontMatter, localTimeMs, computeRangeMarker, buildForkValues } from "./format.ts";
 import { omit, redact, redactWithHint, writeJsonl, parseJsonl, progName } from "../lib.ts";
-import type { SessionEntry, TimelineEvent } from "./types.ts";
+import type { SessionEntry, TimelineEvent, ForkInfo } from "./types.ts";
 
 // OMIT: タイムライン分析に不要なメタデータ系フィールド。出力のノイズになるため完全除去
 const OMIT_KEYS = [
@@ -40,12 +40,10 @@ function buildCommandComputed(
   // 解決済みセッションID
   parts.push(resolvedInputs.join(" "));
 
-  // 実際のイベント範囲
-  if (filtered.length > 0) {
-    const first = filtered[0];
-    const last = filtered[filtered.length - 1];
-    parts.push(`${first.turn} ${first.kind}${first.ref}..${last.turn} ${last.kind}${last.ref}`);
-  }
+  // 実際のイベント範囲（turn 昇順 min/max ベース。fork の F が古い backupTime で先頭に来ても
+  // 嘘 range にならないよう、表示順ではなく turn の最小/最大を端に採用する）
+  const range = computeRangeMarker(filtered);
+  if (range) parts.push(range);
 
   parts.push(`-t ${opts.types}`);
   parts.push(`--width 0`); // md mode では width 無視
@@ -102,13 +100,18 @@ export async function run(args: string[]) {
   resolved.sort((a, b) => a.startTime - b.startTime);
 
   // 全セッションのイベントを結合（allEntries は jsonl モード時のみ構築）
+  // forked セッション（forkedFrom を持つ entry がある）は fork 前をスキップし fork 後のみ抽出。
+  // 通常セッションは挙動不変。fork 情報はヘッダ（# forked from ...）出力用に集める。
   let allEntries: SessionEntry[] | undefined;
-  let allEvents: ReturnType<typeof extractEvents> = [];
+  let allEvents: TimelineEvent[] = [];
+  const forkInfos: ForkInfo[] = [];
   for (const { entries } of resolved) {
     if (opts.jsonlMode !== "none") {
       allEntries = (allEntries || []).concat(entries);
     }
-    allEvents = allEvents.concat(extractEvents(entries));
+    const { events, fork } = extractEventsWithFork(entries);
+    allEvents = allEvents.concat(events);
+    if (fork) forkInfos.push(fork);
   }
 
   // フィルタリング
@@ -202,10 +205,20 @@ export async function run(args: string[]) {
   const commandHelp = buildCommandHelp();
   const now = localTimeMs();
 
-  // md時: YAML front matter / 非md時: "# " 付きヘッダ
+  // forked セッションのヒント。各 fork について「親で `..marker` 指定すれば fork 前を見られる」
+  // という案内を出す。fork が無ければ空配列。値は `<親sessionId> ..<marker>`（そのまま
+  // `timeline <親> ..<marker>` でコピペ実行できる形）。
+  // marker / parentSessionId が空の異常系はヒント行を出さない（buildForkValues 内で抑制）。
+  // 既存 # ヘッダ群は `# key: value`（snake_case）形式なので、text は `# forked_from: <値>`、
+  // md は front matter の forked_from list として既存スタイルに揃える。
+  const forkValues = buildForkValues(forkInfos);
+
+  // md時: YAML front matter / 非md時: "# key: value" ヘッダ。
+  // fork ヒントは既存ヒント機構に相乗り（md は front matter キー、text は "# key: value" 行）。
   const metaBlock = isMd
-    ? mdFrontMatter(command, commandComputed, commandHelp, now)
-    : `# command: ${command}\n# command_computed: ${commandComputed}\n# command_help: ${commandHelp}\n# now: ${now}\n`;
+    ? mdFrontMatter(command, commandComputed, commandHelp, now, forkValues)
+    : `# command: ${command}\n# command_computed: ${commandComputed}\n# command_help: ${commandHelp}\n# now: ${now}\n` +
+      forkValues.map((v) => `# forked_from: ${v}\n`).join("");
 
   // 出力生成
   const output = metaBlock + formatEvents(filtered, {
