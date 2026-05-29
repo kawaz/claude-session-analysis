@@ -32,6 +32,71 @@ CSA は既に `src/lib.ts:109` の `isUserTurn()` で `isMeta` / `isCompactSumma
 - **SHORT_ASCII の閾値**: 「2 word 以下」を厳密に何と定義する？ ASCII の判定範囲（`[\x00-\x7F]` で良いか、絵文字や記号扱いは？）
 - **isUserTurn() との整合**: 既存の除外ルールと重複しないことの確認
 
+#### 決定（2026-05-29 設計検討で確定 / PR① 着手前の仕様）
+
+3視点（実装シンプルさ / 厳密性 / idea-storage 互換）で起案し統合した結果、以下に確定。
+
+**最大の判断: SLASH_ONLY を関数の責務から外す。**
+`extractUserStringContent`（extract.ts:110-115）でスラッシュコマンドは**既に分離**され `desc` が `cmd args` に正規化済み。関数内に XML 再パースを持ち込むのは責務の二重化（ワークアラウンド禁止に該当）。よって:
+
+- `classifyUserTurnKind(text)` は **通常テキスト本文**を受け取り `"hidden_tag" | "short_ascii" | "effective"` の3値を返す純粋関数とする
+- `SLASH_ONLY` は呼び出し元（extract.ts のスラッシュ分岐）が `userTurnKind: "slash_only"` を直接付与
+- これにより「SLASH_ONLY と SHORT_ASCII の優先度競合」テストが不要になり関数が単純化
+
+**各論点の決定:**
+
+| 論点 | 決定 | 根拠 |
+|---|---|---|
+| word 区切り | `text.trim().split(/\s+/).filter(w => w.length>0)` の長さ。句読点は区切らない | JS の `\s` は全角空白 U+3000 を含むと検証済み。追加正規化不要 |
+| HIDDEN_TAG 境界 | システム注入タグ群を除去 → trim 後の残文字が **空 or (≤20文字 かつ ASCII のみ)** なら hidden_tag | 「タグ+`ok thanks`」はノイズ、閾値50だと短い実指示まで誤判定。20 で相槌のみ拾う（**実セッションで分布実測して確定が望ましい＝暫定値**） |
+| HIDDEN_TAG 対象タグ | `system-reminder` `user-prompt-submit-hook` `local-command-stdout` | `task-notification`/`teammate-message` は isUserTurn で除外済み |
+| SHORT_ASCII 閾値 | ASCII のみ かつ word ≤ 2 | 3案一致 |
+| ASCII 範囲 | `/^[\x00-\x7f]*$/`（絵文字・全角・CJK は非ASCII → effective） | 3案一致 |
+| 空文字列 / 空白のみ | `effective`（安全側フォールバック。isUserTurn 通過時点でほぼ来ないが、来たら情報欠落を防ぐため残す側） | short_ascii は意味的に誤り |
+| 優先度 | hidden_tag > short_ascii > effective のカスケード | — |
+
+**擬似コード:**
+
+```typescript
+export function classifyUserTurnKind(
+  text: string,
+): "hidden_tag" | "short_ascii" | "effective" {
+  if (isHiddenTag(text)) return "hidden_tag";
+  if (isShortAscii(text)) return "short_ascii";
+  return "effective";
+}
+
+const SYSTEM_TAGS = ["system-reminder", "user-prompt-submit-hook", "local-command-stdout"];
+const HIDDEN_TAG_RESIDUE_MAX = 20;
+
+function isHiddenTag(text: string): boolean {
+  let remaining = text, stripped = false;
+  for (const tag of SYSTEM_TAGS) {
+    const re = new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`, "g");
+    if (re.test(remaining)) { stripped = true; remaining = remaining.replace(re, ""); }
+  }
+  if (!stripped) return false;
+  const residue = remaining.trim();
+  if (residue.length === 0) return true;
+  return residue.length <= HIDDEN_TAG_RESIDUE_MAX && isAsciiOnly(residue);
+}
+
+function isShortAscii(text: string): boolean {
+  const t = text.trim();
+  if (t.length === 0 || !isAsciiOnly(t)) return false;
+  return t.split(/\s+/).filter((w) => w.length > 0).length <= 2;
+}
+
+function isAsciiOnly(text: string): boolean { return /^[\x00-\x7f]*$/.test(text); }
+```
+
+**注意するテストケース:** `<message>hello</message>`（SYSTEM_TAGS 非該当）は stripped=false → hidden_tag にならず、`<` `>` は word を区切らないので 1 word の **short_ascii**。期待値を明示しておくこと。
+
+**残る要確認点:**
+1. HIDDEN_TAG 残文字閾値 20 は暫定。実セッションの `<system-reminder>` 後続テキスト長分布を実測して確定（empirical-verification）
+2. `extractUserArrayContent`（extract.ts:121-133）の複数 text ブロックを1ターンに集約する場合の `userTurnKind` 決定ルール（PR② の論点）
+3. `--effective-only` で hidden_tag/short_ascii/slash_only のどれを除外するかは idea-storage 消費側の設定。CSA は分類を付けるだけという責務境界
+
 ### 2. `sessions --format jsonl` の出力フィールド拡張
 
 現状の出力フィールド: `sessionId, file, cwd, startTime, endTime, duration_ms, bytes, lines, turns, context`。
