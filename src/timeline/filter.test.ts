@@ -238,10 +238,36 @@ describe("filterByRange", () => {
     expect(result).toHaveLength(0);
   });
 
-  test("マッチなし -> 全範囲", () => {
-    const result = filterByRange(events, "zzz99999", "zzz99999");
-    // from.id matches nothing -> from_idx=0, to.id matches nothing -> to_idx=4
-    expect(result).toHaveLength(5);
+  test("両 marker 未発見 -> 空配列 + warning", () => {
+    // marker を指定したのにマッチしない = ユーザーが見たいものが存在しない。
+    // 全件返すと指定無視で意図に反するため空を返す (typo 検知)。
+    const warnings: string[] = [];
+    const result = filterByRange(events, "zzz99999", "zzz99999", (m) => warnings.push(m));
+    expect(result).toHaveLength(0);
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings.some((w) => w.includes("zzz99999"))).toBe(true);
+  });
+
+  test("from のみ未発見 -> 空配列 + warning", () => {
+    const warnings: string[] = [];
+    const result = filterByRange(events, "zzz99999", "ddd44444", (m) => warnings.push(m));
+    expect(result).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("zzz99999"))).toBe(true);
+  });
+
+  test("to のみ未発見 -> 空配列 + warning", () => {
+    const warnings: string[] = [];
+    const result = filterByRange(events, "aaa11111", "zzz99999", (m) => warnings.push(m));
+    expect(result).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("zzz99999"))).toBe(true);
+  });
+
+  test("marker 発見済みなら warning なし (offset で範囲外は別レイヤ)", () => {
+    // marker 自体は発見済みで offset により範囲外 -> 空だが marker-not-found warning は出ない
+    const warnings: string[] = [];
+    const result = filterByRange(events, "aaa11111-10", "eee55555+100", (m) => warnings.push(m));
+    expect(result).toHaveLength(0);
+    expect(warnings).toHaveLength(0);
   });
 
   test("from空 -> 先頭から", () => {

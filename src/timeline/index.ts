@@ -124,7 +124,7 @@ export async function run(args: string[]) {
       lastSince: opts.lastSince,
       before: opts.before,
       after: opts.after,
-    });
+    }, (msg) => console.error(msg));
   } catch (e) {
     if (e instanceof SyntaxError) {
       console.error(`Error: Invalid regex pattern: ${opts.grep} (${e.message})`);

@@ -80,11 +80,21 @@ function isNumeric(s: string): boolean {
   return /^\d+$/.test(s);
 }
 
-/** from..to の範囲でイベントをフィルタ */
+/**
+ * from..to の範囲でイベントをフィルタ。
+ *
+ * Design rationale: warning 出力は `onWarn` コールバックの依存性注入で扱う。
+ * filterByRange は本来 events -> events の純粋関数であり、console.error を直に
+ * 呼ぶ (案A) と純粋性が壊れてテストもしづらくなる。戻り値で未発見情報を返す (案B) と
+ * 戻り型が変わり pipeline / index.ts まで波及して侵襲が大きい。marker マッチ判定を
+ * CLI 層に再実装する (案C) はロジック重複を生む。onWarn 注入なら、副作用の有無を
+ * 呼び出し側が選べて (省略時は no-op で純粋)、マッチ判定も 1 箇所に保てる。
+ */
 export function filterByRange(
   events: TimelineEvent[],
   from: string,
   to: string,
+  onWarn: (msg: string) => void = () => {},
 ): TimelineEvent[] {
   if (events.length === 0) return [];
 
@@ -108,10 +118,12 @@ export function filterByRange(
   } else {
     const idx = events.findIndex((e) => e.ref.startsWith(fromMarker.id));
     if (idx === -1) {
-      fromIdx = 0;
-    } else {
-      fromIdx = idx + fromMarker.offset;
+      // marker を指定したのにマッチしない = ユーザーが見たいものが存在しない。
+      // 全件返すと指定無視で意図に反するため空を返す (typo は空で検知できる)。
+      onWarn(`timeline: range marker not found: "${fromMarker.id}"`);
+      return [];
     }
+    fromIdx = idx + fromMarker.offset;
   }
 
   let toIdx: number;
@@ -127,10 +139,10 @@ export function filterByRange(
       }
     }
     if (lastIdx === -1) {
-      toIdx = events.length - 1;
-    } else {
-      toIdx = lastIdx + toMarker.offset;
+      onWarn(`timeline: range marker not found: "${toMarker.id}"`);
+      return [];
     }
+    toIdx = lastIdx + toMarker.offset;
   }
 
   // オフセットで範囲外に出たケースは空配列で返す（クランプしない）。
@@ -272,6 +284,7 @@ export function pipeline(
     lastTurn?: number; lastSince?: string;
     before?: number; after?: number;
   },
+  onWarn: (msg: string) => void = () => {},
 ): TimelineEvent[] {
   let result = dedup(events);
   result = removeNoBackup(result);
@@ -293,7 +306,7 @@ export function pipeline(
   } else if (opts.lastTurn && opts.lastTurn > 0) {
     result = filterByLastTurn(result, opts.lastTurn);
   }
-  result = filterByRange(result, opts.from, opts.to);
+  result = filterByRange(result, opts.from, opts.to, onWarn);
   result = filterByType(result, opts.types);
   // grep: A/B/C が指定されていればターン単位コンテキスト、なければ行フィルタ
   if (opts.grep) {
