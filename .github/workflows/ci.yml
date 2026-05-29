@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
       - name: Install Claude Code via bun (for `claude plugin validate`)
         run: |
           bun add -g @anthropic-ai/claude-code
