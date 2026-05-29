@@ -9,10 +9,19 @@ build: mdp-copy
 validate:
     claude plugin validate .
 
-all: test build validate
+# CI とローカルの検査範囲を完全一致させる単一エントリ
+ci: test build check-bundle check-versions validate
 
 version:
     @jq -r '.version' .claude-plugin/plugin.json
+
+# バージョン bump (kawaz/* 横断: レシピ名はツール名 bump-semver に統一)
+# package.json は private: true で version を持たないため対象外。
+# plugin.json / marketplace.json の 2 ファイルを一括 bump。
+bump-semver level="patch": ci
+    bump-semver "{{level}}" .claude-plugin/plugin.json .claude-plugin/marketplace.json --write
+    @echo "Version: -> $(bump-semver get .claude-plugin/plugin.json .claude-plugin/marketplace.json)"
+    jj split -m "chore: bump version" .claude-plugin/plugin.json .claude-plugin/marketplace.json
 
 # バンドルに未コミットの差分があればエラー (build 後に呼ぶ前提)
 check-bundle:
@@ -32,7 +41,7 @@ check-version-bump:
             echo "ERROR: 変更がありますがバージョンが未更新です。bump不要なら: just push-without-bump" >&2; exit 1; \
         fi
 
-push: build check-bundle check-versions check-version-bump validate
+push: ci check-version-bump
     jj bookmark set main -r @-
     jj git push
     claude plugin marketplace update claude-session-analysis

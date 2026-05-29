@@ -1,0 +1,19 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: extractions/setup-just@v3
+      - name: Install Claude Code via bun (for `claude plugin validate`)
+        run: |
+          bun add -g @anthropic-ai/claude-code
+          echo "$(bun pm bin -g)" >> "$GITHUB_PATH"
+      - run: just ci
