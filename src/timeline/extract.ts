@@ -9,7 +9,14 @@ import type {
   ExtractResult,
   ForkInfo,
 } from "./types.ts";
-import { shortenPath, lastSegments, isUserTurn, getSessionCwd, isSlashCommandContent, findForkSplit } from "../lib.ts";
+import {
+  shortenPath,
+  lastSegments,
+  isUserTurn,
+  getSessionCwd,
+  isSlashCommandContent,
+  findForkSplit,
+} from "../lib.ts";
 
 /** turn 未付与のイベント（内部用） */
 type RawEvent = Omit<TimelineEvent, "turn">;
@@ -18,14 +25,14 @@ type RawEvent = Omit<TimelineEvent, "turn">;
 function extractTag(xml: string, tag: string): string {
   const re = new RegExp(`<${tag}>(.*?)</${tag}>`, "s");
   const m = xml.match(re);
-  return m ? m[1] : "";
+  return m?.[1] ?? "";
 }
 
 // XML属性値を取得するヘルパー
 function extractAttr(xml: string, attr: string): string {
   const re = new RegExp(`${attr}="([^"]*)"`, "s");
   const m = xml.match(re);
-  return m ? m[1] : "";
+  return m?.[1] ?? "";
 }
 
 /** エントリ列から RawEvent 列（turn 未付与）を生成する */
@@ -33,7 +40,7 @@ function extractRawEvents(entries: SessionEntry[]): RawEvent[] {
   const raw: RawEvent[] = [];
 
   // session_cwd: 最初の cwd を持つエントリから取得（全エントリ型を検索）
-  const sessionCwd = getSessionCwd(entries as unknown as Record<string, unknown>[]);
+  const sessionCwd = getSessionCwd(entries);
 
   for (const entry of entries) {
     switch (entry.type) {
@@ -91,7 +98,7 @@ export function extractEventsWithFork(entries: SessionEntry[]): ExtractResult {
   // findings 仕様: fork 後の開始は「最初の forkedFrom 無し type:"user" entry」。
   // 境界の非 user（custom-title / 自動応答 assistant / system / file-history-snapshot）は
   // fork 後に含めない（含めると turn 0 の孤立イベントが出てしまう）。
-  const split = findForkSplit(entries as unknown as Record<string, unknown>[]);
+  const split = findForkSplit(entries);
   if (!split.hasFork) {
     return { events: extractEvents(entries), fork: null };
   }
@@ -106,11 +113,8 @@ export function extractEventsWithFork(entries: SessionEntry[]): ExtractResult {
   // コピー entry の中には timeline にイベントを生まないもの（isMeta 等）もあるため、
   // 「最後に実際に現れたイベント」を採用する（末尾コピー entry が無イベントなら手前に遡る）。
   const copyEvents = extractRawEvents(copyEntries);
-  let marker = "";
-  if (copyEvents.length > 0) {
-    const last = copyEvents[copyEvents.length - 1];
-    marker = `${last.kind}${last.ref}`;
-  }
+  const last = copyEvents[copyEvents.length - 1];
+  const marker = last ? `${last.kind}${last.ref}` : "";
 
   const fork: ForkInfo = {
     // splitIndex が見つからない（fork 後 user が無い）異常系では parentSessionId が null のことは無いが、
@@ -126,7 +130,7 @@ function extractUserEvents(entry: UserEntry, events: RawEvent[]): void {
   const time = entry.timestamp;
 
   // isUserTurn で判定: true なら U イベント処理
-  if (isUserTurn(entry as Record<string, unknown>)) {
+  if (isUserTurn(entry)) {
     const content = entry.message.content;
     if (typeof content === "string") {
       extractUserStringContent(content, ref, time, events);
@@ -231,6 +235,7 @@ function extractAssistantEvents(entry: AssistantEntry, events: RawEvent[]): void
 
   for (let i = 0; i < content.length; i++) {
     const block = content[i];
+    if (block === undefined) continue;
     const timeSuffix = `${timestamp}_${String(i).padStart(5, "0")}`;
 
     if (block.type === "thinking") {
@@ -402,8 +407,8 @@ function extractFileSnapshotEvents(
       path = `${sessionCwd}/${path}`;
     }
     const bfn = backup.backupFileName;
-    const hash = bfn.split("@")[0].slice(0, 8);
-    const version = bfn.split("@")[1];
+    const [hashFull = "", version = ""] = bfn.split("@");
+    const hash = hashFull.slice(0, 8);
     events.push({
       kind: "F",
       ref,

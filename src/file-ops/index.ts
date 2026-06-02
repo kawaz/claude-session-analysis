@@ -10,6 +10,7 @@ export async function run(args: string[]) {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === undefined) break;
     if (arg === "--help") {
       printUsage(process.stdout);
       process.exit(0);
@@ -50,9 +51,7 @@ export async function run(args: string[]) {
     const configDirs = getConfigDirs();
     const sessionDir = await findSessionDir(sessionId, configDirs);
 
-    const ops = detail >= 2
-      ? extractFileOpsFullDetail(entries)
-      : extractFileOpsDetailed(entries);
+    const ops = detail >= 2 ? extractFileOpsFullDetail(entries) : extractFileOpsDetailed(entries);
     const lines: string[] = [];
     for (const op of ops) {
       if (op.snapshot && sessionDir) {
@@ -64,7 +63,7 @@ export async function run(args: string[]) {
   } else {
     // detail=0: パス毎サマリ
     const result = extractFileOps(entries);
-    const lines = result.map(entry => JSON.stringify(entry));
+    const lines = result.map((entry) => JSON.stringify(entry));
     await writeJsonl(lines.join("\n"));
   }
 }

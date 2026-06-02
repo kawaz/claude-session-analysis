@@ -20,7 +20,12 @@ describe("resolveSession", () => {
   });
 
   test("ファイルパスが存在する → そのまま返す", async () => {
-    const filePath = join(tmpDir, "projects", "test-project", "abc12345-6789-0000-0000-000000000000.jsonl");
+    const filePath = join(
+      tmpDir,
+      "projects",
+      "test-project",
+      "abc12345-6789-0000-0000-000000000000.jsonl",
+    );
     expect(await resolveSession(filePath)).toBe(filePath);
   });
 

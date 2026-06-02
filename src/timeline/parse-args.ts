@@ -43,6 +43,32 @@ export function parseRange(range: string): { from: string; to: string } {
   };
 }
 
+/** 次の引数を取得 (なければエラー)。`name` はエラーメッセージ用のオプション名。 */
+function takeValue(argv: string[], i: number, name: string): string {
+  const v = argv[i];
+  if (v === undefined) throw new Error(`${name} requires a value`);
+  return v;
+}
+
+/** 次の引数を数値として取得。10 進整数のみ受理 ("10abc" / "0x10" / "1.5" は弾く)。 */
+function takeNumber(argv: string[], i: number, name: string): number {
+  const v = takeValue(argv, i, name);
+  if (!/^-?\d+$/.test(v)) throw new Error(`${name} requires an integer, got: ${v}`);
+  return Number(v);
+}
+
+const COLOR_MODES = ["auto", "always", "none"] as const;
+type ColorMode = (typeof COLOR_MODES)[number];
+const isColorMode = (v: string): v is ColorMode => (COLOR_MODES as readonly string[]).includes(v);
+
+const MD_MODES = ["auto", "source", "render", "none"] as const;
+type MdMode = (typeof MD_MODES)[number];
+const isMdMode = (v: string): v is MdMode => (MD_MODES as readonly string[]).includes(v);
+
+const JSONL_MODES = ["none", "redact", "full"] as const;
+type JsonlMode = (typeof JSONL_MODES)[number];
+const isJsonlMode = (v: string): v is JsonlMode => (JSONL_MODES as readonly string[]).includes(v);
+
 /**
  * CLI引数をパースする。
  * argv はサブコマンド以降の引数（bun/scriptパス・サブコマンド名除去済み）。
@@ -69,21 +95,17 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 
   const positional: string[] = [];
-  let i = 0;
 
-  while (i < argv.length) {
+  for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === undefined) break;
 
     if (arg === "-t") {
       i++;
-      if (i >= argv.length) throw new Error("-t requires a value");
-      result.types = argv[i];
+      result.types = takeValue(argv, i, arg);
     } else if (arg === "--width") {
       i++;
-      if (i >= argv.length) throw new Error("--width requires a value");
-      const w = parseInt(argv[i], 10);
-      if (isNaN(w)) throw new Error(`--width requires a number, got: ${argv[i]}`);
-      result.width = w;
+      result.width = takeNumber(argv, i, arg);
     } else if (arg === "--timestamps") {
       result.timestamps = true;
     } else if (arg === "--no-timestamps") {
@@ -92,20 +114,18 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.color = "always";
     } else if (arg.startsWith("--color=")) {
       const value = arg.slice("--color=".length);
-      const validColors = ["auto", "always", "none"];
-      if (!validColors.includes(value)) {
-        throw new Error(`Invalid --color value: ${value} (expected: auto, always, none)`);
+      if (!isColorMode(value)) {
+        throw new Error(`Invalid --color value: ${value} (expected: ${COLOR_MODES.join(", ")})`);
       }
-      result.color = value as "auto" | "always" | "none";
+      result.color = value;
     } else if (arg === "--md") {
       result.mdMode = "auto";
     } else if (arg.startsWith("--md=")) {
       const value = arg.slice("--md=".length);
-      const validMdModes = ["auto", "source", "render", "none"];
-      if (!validMdModes.includes(value)) {
-        throw new Error(`Invalid --md value: ${value} (expected: auto, source, render, none)`);
+      if (!isMdMode(value)) {
+        throw new Error(`Invalid --md value: ${value} (expected: ${MD_MODES.join(", ")})`);
       }
-      result.mdMode = value as "auto" | "source" | "render" | "none";
+      result.mdMode = value;
     } else if (arg === "--emoji") {
       result.emoji = "always";
     } else if (arg === "--no-emoji") {
@@ -114,46 +134,31 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.jsonlMode = "redact";
     } else if (arg.startsWith("--jsonl=")) {
       const value = arg.slice("--jsonl=".length);
-      const validJsonl = ["none", "redact", "full"];
-      if (!validJsonl.includes(value)) {
-        throw new Error(`Invalid --jsonl value: ${value} (expected: none, redact, full)`);
+      if (!isJsonlMode(value)) {
+        throw new Error(`Invalid --jsonl value: ${value} (expected: ${JSONL_MODES.join(", ")})`);
       }
-      result.jsonlMode = value as "none" | "redact" | "full";
+      result.jsonlMode = value;
     } else if (arg === "--grep") {
       i++;
-      if (i >= argv.length) throw new Error("--grep requires a value");
-      result.grep = argv[i];
+      result.grep = takeValue(argv, i, arg);
     } else if (arg === "--since") {
       i++;
-      if (i >= argv.length) throw new Error("--since requires a value");
-      result.since = argv[i];
+      result.since = takeValue(argv, i, arg);
     } else if (arg === "--last-turn") {
       i++;
-      if (i >= argv.length) throw new Error("--last-turn requires a value");
-      const n = parseInt(argv[i], 10);
-      if (isNaN(n)) throw new Error(`--last-turn requires a number, got: ${argv[i]}`);
-      result.lastTurn = n;
+      result.lastTurn = takeNumber(argv, i, arg);
     } else if (arg === "--last-since") {
       i++;
-      if (i >= argv.length) throw new Error("--last-since requires a value");
-      result.lastSince = argv[i];
+      result.lastSince = takeValue(argv, i, arg);
     } else if (arg === "-A" || arg === "--after") {
       i++;
-      if (i >= argv.length) throw new Error(`${arg} requires a value`);
-      const n = parseInt(argv[i], 10);
-      if (isNaN(n)) throw new Error(`${arg} requires a number, got: ${argv[i]}`);
-      result.after = n;
+      result.after = takeNumber(argv, i, arg);
     } else if (arg === "-B" || arg === "--before") {
       i++;
-      if (i >= argv.length) throw new Error(`${arg} requires a value`);
-      const n = parseInt(argv[i], 10);
-      if (isNaN(n)) throw new Error(`${arg} requires a number, got: ${argv[i]}`);
-      result.before = n;
+      result.before = takeNumber(argv, i, arg);
     } else if (arg === "-C" || arg === "--context") {
       i++;
-      if (i >= argv.length) throw new Error(`${arg} requires a value`);
-      const n = parseInt(argv[i], 10);
-      if (isNaN(n)) throw new Error(`${arg} requires a number, got: ${argv[i]}`);
+      const n = takeNumber(argv, i, arg);
       result.before = n;
       result.after = n;
     } else if (arg === "--help") {
@@ -163,7 +168,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else {
       positional.push(arg);
     }
-    i++;
   }
 
   // positional args を inputs と range に分類

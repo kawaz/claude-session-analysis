@@ -28,9 +28,8 @@ export async function run(args: string[]) {
   let showAll = false;
   const inputs: string[] = [];
 
-  let i = 0;
-  while (i < args.length) {
-    switch (args[i]) {
+  for (const arg of args) {
+    switch (arg) {
       case "--help":
         printUsage(0);
         break; // unreachable
@@ -41,14 +40,13 @@ export async function run(args: string[]) {
         showAll = true;
         break;
       default:
-        if (args[i].startsWith("-")) {
-          process.stderr.write(`Unknown option: ${args[i]}\n`);
+        if (arg.startsWith("-")) {
+          process.stderr.write(`Unknown option: ${arg}\n`);
           printUsage(1);
         }
-        inputs.push(args[i]);
+        inputs.push(arg);
         break;
     }
-    i++;
   }
 
   if (inputs.length === 0) {

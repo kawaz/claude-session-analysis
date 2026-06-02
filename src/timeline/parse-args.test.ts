@@ -141,7 +141,7 @@ describe("parseArgs", () => {
   });
 
   test("--width に非数値を渡した場合エラー", () => {
-    expect(() => parseArgs(["--width", "abc", "abc12345"])).toThrow(/--width requires a number/);
+    expect(() => parseArgs(["--width", "abc", "abc12345"])).toThrow(/--width requires an integer/);
   });
 
   // mdMode tests
@@ -276,7 +276,9 @@ describe("parseArgs", () => {
   });
 
   test("--last-turn に非数値を渡した場合エラー", () => {
-    expect(() => parseArgs(["--last-turn", "abc", "abc12345"])).toThrow(/--last-turn requires a number/);
+    expect(() => parseArgs(["--last-turn", "abc", "abc12345"])).toThrow(
+      /--last-turn requires an integer/,
+    );
   });
 
   // last-since tests

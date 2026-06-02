@@ -1,8 +1,7 @@
-import { searchSessions, parseDuration, type SessionInfo } from "./search.ts";
+import { searchSessions, parseDuration } from "./search.ts";
 import { formatSessionsOutput, formatSessionsJsonl } from "./format.ts";
 import { getConfigDirs, writeJsonl, DURATION_RE, progName } from "../lib.ts";
 import { resolveSessionAll } from "../resolve-session.ts";
-import * as path from "node:path";
 
 type Format = "list" | "jsonl";
 
@@ -12,7 +11,7 @@ function printUsage(exitCode: number = 0): never {
   out.write(`Usage: ${prog} [options] [<session_id_or_file> ...]
 
 Options:
-  --grep <pattern>      Filter sessions by content (regex)
+  --grep <pattern>      Filter sessions by content (regex). 複数指定可（AND: 全キーワードを含むセッションのみ）
   --path <pattern>      Filter sessions by path (regex)
   --since <spec>        Time filter. Duration: 5m, 1h, 2d, 1h30m
                         or date string: 2024-01-01, 2024-01-01T12:00:00
@@ -46,7 +45,7 @@ const DEFAULT_SINCE = "2d";
 const DEFAULT_LIMIT = 20;
 
 function parseOpts(rawArgs: string[]) {
-  let keyword = "";
+  const keywords: string[] = [];
   let pathFilter = "";
   let since = DEFAULT_SINCE;
   let tail = DEFAULT_LIMIT;
@@ -67,7 +66,7 @@ function parseOpts(rawArgs: string[]) {
           console.error("Error: --grep requires a value");
           printUsage(1);
         }
-        keyword = rawArgs[i] ?? "";
+        keywords.push(rawArgs[i] ?? "");
         grepExplicit = true;
         break;
       case "--path":
@@ -111,23 +110,36 @@ function parseOpts(rawArgs: string[]) {
           format = v;
         }
         break;
-      default:
-        if (rawArgs[i]!.startsWith("-")) {
-          console.error(`Unknown option: ${rawArgs[i]}`);
+      default: {
+        const cur = rawArgs[i];
+        if (cur === undefined) break; // ループ条件 i < length なので到達しない
+        if (cur.startsWith("-")) {
+          console.error(`Unknown option: ${cur}`);
           printUsage(1);
         }
-        positionals.push(rawArgs[i]!);
+        positionals.push(cur);
         break;
+      }
     }
     i++;
   }
 
-  return { keyword, pathFilter, since, tail, format, positionals, sinceExplicit, limitExplicit, grepExplicit };
+  return {
+    keywords,
+    pathFilter,
+    since,
+    tail,
+    format,
+    positionals,
+    sinceExplicit,
+    limitExplicit,
+    grepExplicit,
+  };
 }
 
 function buildCommandHelp(): string {
   const prog = progName("sessions");
-  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>] [--format <list|jsonl>] [--help]`;
+  return `${prog} [--since <=${DEFAULT_SINCE}>] [--limit <N=${DEFAULT_LIMIT}>] [--path <REGEXP>] [--grep <REGEXP>]... [--format <list|jsonl>] [--help]`;
 }
 
 function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
@@ -138,16 +150,14 @@ function buildCommandComputed(opts: ReturnType<typeof parseOpts>): string {
   if (opts.pathFilter) {
     parts.push(`--path ${opts.pathFilter}`);
   }
-  if (opts.keyword) {
-    parts.push(`--grep ${opts.keyword}`);
+  for (const k of opts.keywords) {
+    parts.push(`--grep ${k}`);
   }
   if (opts.format !== "list") {
     parts.push(`--format ${opts.format}`);
   }
   return parts.join(" ");
 }
-
-
 
 export async function run(args: string[]) {
   const opts = parseOpts(args);
@@ -178,7 +188,7 @@ export async function run(args: string[]) {
     const { sessions: filtered, stats } = await searchSessions({
       configDirs,
       since: sessionFiles ? undefined : cutoff,
-      keyword: opts.keyword || undefined,
+      keywords: opts.keywords.length > 0 ? opts.keywords : undefined,
       path: opts.pathFilter || undefined,
       files: sessionFiles ? [...sessionFiles] : undefined,
     });
@@ -196,7 +206,7 @@ export async function run(args: string[]) {
     }
   } catch (e) {
     if (e instanceof SyntaxError) {
-      const pattern = opts.keyword || opts.pathFilter || "";
+      const pattern = opts.keywords.join(", ") || opts.pathFilter || "";
       console.error(`Error: Invalid regex pattern: ${pattern} (${e.message})`);
       process.exit(1);
     }

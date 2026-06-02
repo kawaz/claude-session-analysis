@@ -18,10 +18,10 @@ export interface FileOpEntry {
   path: string;
   snapshot?: string; // backupFileName ("hash@vN"), index.ts でフルパスに解決
   // --ops-detail 用の追加フィールド
-  offset?: number;       // Read: 開始行
-  limit?: number;        // Read: 行数制限
-  old_string?: string;   // Edit: 置換前
-  new_string?: string;   // Edit: 置換後
+  offset?: number; // Read: 開始行
+  limit?: number; // Read: 行数制限
+  old_string?: string; // Edit: 置換前
+  new_string?: string; // Edit: 置換後
   content_lines?: number; // Write: content の行数
 }
 
@@ -56,7 +56,7 @@ export function extractFileOps(entries: Record<string, unknown>[]): FileOpSummar
         pathMap.set(filePath, rec);
       }
 
-      const category = name === "Edit" ? "Write" : name as "Read" | "Write";
+      const category = name === "Edit" ? "Write" : (name as "Read" | "Write");
       rec[category]++;
     }
   }
@@ -75,7 +75,10 @@ export function extractFileOps(entries: Record<string, unknown>[]): FileOpSummar
  * fullDetail=true の場合、各ツールの入力詳細（offset, limit, old_string, new_string, content_lines）を含む。
  * 時系列順（エントリ出現順）。
  */
-export function extractFileOpsDetailed(entries: Record<string, unknown>[], opts?: { fullDetail?: boolean }): FileOpEntry[] {
+export function extractFileOpsDetailed(
+  entries: Record<string, unknown>[],
+  opts?: { fullDetail?: boolean },
+): FileOpEntry[] {
   const fullDetail = opts?.fullDetail ?? false;
   const snapshotMap = buildSnapshotMap(entries);
   const result: FileOpEntry[] = [];
@@ -88,7 +91,7 @@ export function extractFileOpsDetailed(entries: Record<string, unknown>[], opts?
     }
     if (entry.type !== "assistant") continue;
     const uuid = entry.uuid as string | undefined;
-    const timestamp = entry.timestamp as string || "";
+    const timestamp = (entry.timestamp as string) || "";
     const message = entry.message as Record<string, unknown> | undefined;
     if (!message) continue;
     const content = message.content as Record<string, unknown>[] | undefined;
@@ -151,9 +154,11 @@ function buildSnapshotMap(entries: Record<string, unknown>[]): Map<string, Map<s
     const messageId = entry.messageId as string | undefined;
     if (!messageId) continue;
 
-    const snapshot = entry.snapshot as {
-      trackedFileBackups?: Record<string, { backupFileName?: string }>;
-    } | undefined;
+    const snapshot = entry.snapshot as
+      | {
+          trackedFileBackups?: Record<string, { backupFileName?: string }>;
+        }
+      | undefined;
     const backups = snapshot?.trackedFileBackups;
     if (!backups) continue;
 
@@ -175,4 +180,3 @@ function buildSnapshotMap(entries: Record<string, unknown>[]): Map<string, Map<s
 
   return result;
 }
-

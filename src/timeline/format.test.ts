@@ -1,5 +1,15 @@
 import { describe, test, expect } from "bun:test";
-import { cleanTime, localTime, colorize, formatEvent, formatEvents, mdFrontMatter, computeRangeMarker, buildForkValues, type FormatEventsOpts } from "./format.ts";
+import {
+  cleanTime,
+  localTime,
+  colorize,
+  formatEvent,
+  formatEvents,
+  mdFrontMatter,
+  computeRangeMarker,
+  buildForkValues,
+  type FormatEventsOpts,
+} from "./format.ts";
 import type { TimelineEvent } from "./types.ts";
 
 describe("buildForkValues (修正5/6: forked_from ヒント値 `<親> ..<marker>`)", () => {
@@ -27,7 +37,7 @@ describe("buildForkValues (修正5/6: forked_from ヒント値 `<親> ..<marker>
 
 describe("computeRangeMarker (command_computed の range; turn 昇順 min/max ベース)", () => {
   const ev = (turn: number, kind: string, ref: string): TimelineEvent =>
-    ({ kind, ref, turn, time: "2025-01-01T00:00:00Z", desc: "" } as TimelineEvent);
+    ({ kind, ref, turn, time: "2025-01-01T00:00:00Z", desc: "" }) as TimelineEvent;
 
   test("空配列なら空文字", () => {
     expect(computeRangeMarker([])).toBe("");
@@ -223,7 +233,14 @@ describe("formatEvent", () => {
   });
 
   test("notrunc時は改行を除去しない", () => {
-    const event: TimelineEvent = { kind: "W", turn: 1, ref: "abc12345", time: "2024-01-01T00:00:00", desc: "line1\nline2", notrunc: true };
+    const event: TimelineEvent = {
+      kind: "W",
+      turn: 1,
+      ref: "abc12345",
+      time: "2024-01-01T00:00:00",
+      desc: "line1\nline2",
+      notrunc: true,
+    };
     const result = formatEvent(event, { jsonlMode: "none", width: 55, timestamps: false });
     expect(result).toContain("line1\nline2");
   });
@@ -235,7 +252,14 @@ describe("formatEvents", () => {
     { kind: "R", turn: 1, ref: "def67890", time: "2024-01-01T10:00:01_00002", desc: "response" },
   ];
 
-  const defaultOpts: FormatEventsOpts = { jsonlMode: "none", width: 55, timestamps: false, colors: false, emoji: false, mdMode: "none" };
+  const defaultOpts: FormatEventsOpts = {
+    jsonlMode: "none",
+    width: 55,
+    timestamps: false,
+    colors: false,
+    emoji: false,
+    mdMode: "none",
+  };
 
   test("カラーなし", () => {
     const result = formatEvents(events, { ...defaultOpts });
@@ -270,12 +294,48 @@ describe("formatEvents", () => {
 
   test("mdMode=source: QTRUはマーカー行+本文展開", () => {
     const mdEvents: TimelineEvent[] = [
-      { kind: "U", turn: 1, ref: "abc12345", time: "2024-01-01T10:00:00_00001", desc: "hello\nworld" },
-      { kind: "T", turn: 1, ref: "bbb12345", time: "2024-01-01T10:00:01_00002", desc: "thinking\nabout it" },
-      { kind: "R", turn: 1, ref: "ccc12345", time: "2024-01-01T10:00:02_00003", desc: "response\ntext" },
-      { kind: "F", turn: 1, ref: "ddd12345", time: "2024-01-01T10:00:03_00004", desc: "src/lib.ts hash@v1" },
-      { kind: "B", turn: 1, ref: "eee12345", time: "2024-01-01T10:00:04_00005", desc: "git status" },
-      { kind: "Q", turn: 1, ref: "fff12345", time: "2024-01-01T10:00:05_00006", desc: "question\nfor user" },
+      {
+        kind: "U",
+        turn: 1,
+        ref: "abc12345",
+        time: "2024-01-01T10:00:00_00001",
+        desc: "hello\nworld",
+      },
+      {
+        kind: "T",
+        turn: 1,
+        ref: "bbb12345",
+        time: "2024-01-01T10:00:01_00002",
+        desc: "thinking\nabout it",
+      },
+      {
+        kind: "R",
+        turn: 1,
+        ref: "ccc12345",
+        time: "2024-01-01T10:00:02_00003",
+        desc: "response\ntext",
+      },
+      {
+        kind: "F",
+        turn: 1,
+        ref: "ddd12345",
+        time: "2024-01-01T10:00:03_00004",
+        desc: "src/lib.ts hash@v1",
+      },
+      {
+        kind: "B",
+        turn: 1,
+        ref: "eee12345",
+        time: "2024-01-01T10:00:04_00005",
+        desc: "git status",
+      },
+      {
+        kind: "Q",
+        turn: 1,
+        ref: "fff12345",
+        time: "2024-01-01T10:00:05_00006",
+        desc: "question\nfor user",
+      },
     ];
     const result = formatEvents(mdEvents, {
       ...defaultOpts,

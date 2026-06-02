@@ -35,5 +35,11 @@ export async function resolveSessionAll(input: string): Promise<string[]> {
  */
 export async function resolveSession(input: string): Promise<string> {
   const results = await resolveSessionAll(input);
-  return results[0];
+  const first = results[0];
+  if (first === undefined) {
+    // resolveSessionAll は空配列にならない設計 (空なら自身が throw する)。
+    // ここに来たら invariant 違反なので、上流の throw とは区別可能な message にする。
+    throw new Error(`Internal error: resolveSessionAll returned empty for "${input}"`);
+  }
+  return first;
 }

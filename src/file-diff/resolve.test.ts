@@ -2,11 +2,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import {
-  findSessionDir,
-  findBackupFile,
-  findOriginalPath,
-} from "./resolve.ts";
+import { findSessionDir, findBackupFile, findOriginalPath } from "./resolve.ts";
 import { getConfigDirs } from "../lib.ts";
 
 describe("getConfigDirs", () => {
@@ -86,19 +82,12 @@ describe("findSessionDir", () => {
 
   test("前方一致でセッションディレクトリを検索", async () => {
     const result = await findSessionDir("abc12345", [tmpDir]);
-    expect(result).toBe(
-      join(tmpDir, "file-history", "abc12345-6789-0000-0000-000000000000"),
-    );
+    expect(result).toBe(join(tmpDir, "file-history", "abc12345-6789-0000-0000-000000000000"));
   });
 
   test("完全一致でも検索可能", async () => {
-    const result = await findSessionDir(
-      "abc12345-6789-0000-0000-000000000000",
-      [tmpDir],
-    );
-    expect(result).toBe(
-      join(tmpDir, "file-history", "abc12345-6789-0000-0000-000000000000"),
-    );
+    const result = await findSessionDir("abc12345-6789-0000-0000-000000000000", [tmpDir]);
+    expect(result).toBe(join(tmpDir, "file-history", "abc12345-6789-0000-0000-000000000000"));
   });
 
   test("存在しないセッションID -> null", async () => {
@@ -109,9 +98,7 @@ describe("findSessionDir", () => {
   test("複数ディレクトリを検索", async () => {
     const nonExistentDir = join(tmpDir, "nonexistent");
     const result = await findSessionDir("abc12345", [nonExistentDir, tmpDir]);
-    expect(result).toBe(
-      join(tmpDir, "file-history", "abc12345-6789-0000-0000-000000000000"),
-    );
+    expect(result).toBe(join(tmpDir, "file-history", "abc12345-6789-0000-0000-000000000000"));
   });
 });
 
@@ -157,7 +144,12 @@ describe("findBackupFile", () => {
 describe("findOriginalPath", () => {
   test("file-history-snapshot からオリジナルパスを検索", () => {
     const jsonlContent = [
-      JSON.stringify({ type: "user", uuid: "u1", timestamp: "2024-01-01T00:00:00Z", message: { content: "hello" } }),
+      JSON.stringify({
+        type: "user",
+        uuid: "u1",
+        timestamp: "2024-01-01T00:00:00Z",
+        message: { content: "hello" },
+      }),
       JSON.stringify({
         type: "file-history-snapshot",
         messageId: "m1",

@@ -100,15 +100,11 @@ export function formatDateTime(epochSeconds: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${formatTzOffset(d)}`;
 }
 
-
 /**
  * 1セッションの出力行をフォーマット。
  * format: end dur size sid path [context]
  */
-export function formatSessionLine(
-  session: SessionInfo,
-  opts: FormatOptions & { now: number },
-): string {
+export function formatSessionLine(session: SessionInfo): string {
   const endStr = formatDateTime(session.endTime).replace(/[+-]\d{2}:\d{2}$/, "");
   const duration = Math.max(0, session.endTime - session.startTime);
   const durStr = formatDuration(duration);
@@ -123,13 +119,9 @@ export function formatSessionLine(
  * セッション一覧をJSONL形式でフォーマット。
  * 各行は1セッションの集計情報を含むJSON。
  */
-export function formatSessionsJsonl(
-  filtered: SessionInfo[],
-  opts: { tail: number },
-): string {
-  const output = opts.tail > 0 && filtered.length > opts.tail
-    ? filtered.slice(-opts.tail)
-    : filtered;
+export function formatSessionsJsonl(filtered: SessionInfo[], opts: { tail: number }): string {
+  const output =
+    opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
 
   if (output.length === 0) return "";
 
@@ -181,9 +173,7 @@ export function formatSessionsOutput(
   if (stats.total > 0) {
     const oldestAgo = formatAgo(now - stats.oldestMtime);
     const newestAgo = formatAgo(now - stats.newestMtime);
-    lines.push(
-      `# ${stats.total} sessions (${oldestAgo} .. ${newestAgo})`,
-    );
+    lines.push(`# ${stats.total} sessions (${oldestAgo} .. ${newestAgo})`);
   }
 
   // カラムヘッダ（タイムゾーンオフセット付き）
@@ -193,12 +183,11 @@ export function formatSessionsOutput(
   );
 
   // tail 制限
-  const output = opts.tail > 0 && filtered.length > opts.tail
-    ? filtered.slice(-opts.tail)
-    : filtered;
+  const output =
+    opts.tail > 0 && filtered.length > opts.tail ? filtered.slice(-opts.tail) : filtered;
 
   for (const session of output) {
-    lines.push(formatSessionLine(session, { now }));
+    lines.push(formatSessionLine(session));
   }
 
   return lines.join("\n");

@@ -49,8 +49,8 @@ describe("dedup", () => {
     ];
     const result = dedup(events);
     expect(result).toHaveLength(2);
-    expect(result[0].ref).toBe("aaa11111");
-    expect(result[1].ref).toBe("bbb22222");
+    expect(result[0]?.ref).toBe("aaa11111");
+    expect(result[1]?.ref).toBe("bbb22222");
   });
 
   test("空配列", () => {
@@ -66,7 +66,7 @@ describe("removeNoBackup", () => {
     ];
     const result = removeNoBackup(events);
     expect(result).toHaveLength(1);
-    expect(result[0].desc).toContain("@v1");
+    expect(result[0]?.desc).toContain("@v1");
   });
 
   test("バックアップなし -> no-backup残す", () => {
@@ -102,8 +102,8 @@ describe("removeNoBackup", () => {
     // bbb: @vあり -> no-backup除去 -> bbb t3 残る
     // aaa: @vあり -> no-backup除去対象なし -> aaa t1 残る
     expect(result).toHaveLength(2);
-    expect(result[0].time).toBe("t1");
-    expect(result[1].time).toBe("t3");
+    expect(result[0]?.time).toBe("t1");
+    expect(result[1]?.time).toBe("t3");
   });
 
   test("空配列", () => {
@@ -168,22 +168,22 @@ describe("filterByRange", () => {
   test("from..to (marker)", () => {
     const result = filterByRange(events, "bbb22222", "ddd44444");
     expect(result).toHaveLength(3);
-    expect(result[0].ref).toBe("bbb22222");
-    expect(result[2].ref).toBe("ddd44444");
+    expect(result[0]?.ref).toBe("bbb22222");
+    expect(result[2]?.ref).toBe("ddd44444");
   });
 
   test("前方一致（短縮マーカー）", () => {
     const result = filterByRange(events, "bbb", "ddd");
     expect(result).toHaveLength(3);
-    expect(result[0].ref).toBe("bbb22222");
-    expect(result[2].ref).toBe("ddd44444");
+    expect(result[0]?.ref).toBe("bbb22222");
+    expect(result[2]?.ref).toBe("ddd44444");
   });
 
   test("オフセット", () => {
     // from=bbb+1 -> idx1+1=idx2, to=ddd-1 -> idx3-1=idx2
     const result = filterByRange(events, "bbb22222+1", "ddd44444-1");
     expect(result).toHaveLength(1);
-    expect(result[0].ref).toBe("ccc33333");
+    expect(result[0]?.ref).toBe("ccc33333");
   });
 
   test("オフセットが範囲外 -> 空配列", () => {
@@ -203,7 +203,7 @@ describe("filterByRange", () => {
     // ddd44444 は idx=3。+1 で fromIdx=4 -> 末尾 eee55555 のみ
     const result = filterByRange(events, "ddd44444+1", "");
     expect(result).toHaveLength(1);
-    expect(result[0].ref).toBe("eee55555");
+    expect(result[0]?.ref).toBe("eee55555");
   });
 
   test("marker+N.. で N が残件数ちょうど -> 空配列", () => {
@@ -222,8 +222,8 @@ describe("filterByRange", () => {
     // ccc33333 は idx=2。-1 で toIdx=1 -> idx 0..1 の 2 件
     const result = filterByRange(events, "", "ccc33333-1");
     expect(result).toHaveLength(2);
-    expect(result[0].ref).toBe("aaa11111");
-    expect(result[1].ref).toBe("bbb22222");
+    expect(result[0]?.ref).toBe("aaa11111");
+    expect(result[1]?.ref).toBe("bbb22222");
   });
 
   test("marker-N.. で N が先頭までの距離を超える -> 空配列 (対称)", () => {
@@ -273,15 +273,15 @@ describe("filterByRange", () => {
   test("from空 -> 先頭から", () => {
     const result = filterByRange(events, "", "ccc33333");
     expect(result).toHaveLength(3);
-    expect(result[0].ref).toBe("aaa11111");
-    expect(result[2].ref).toBe("ccc33333");
+    expect(result[0]?.ref).toBe("aaa11111");
+    expect(result[2]?.ref).toBe("ccc33333");
   });
 
   test("to空 -> 末尾まで", () => {
     const result = filterByRange(events, "ccc33333", "");
     expect(result).toHaveLength(3);
-    expect(result[0].ref).toBe("ccc33333");
-    expect(result[2].ref).toBe("eee55555");
+    expect(result[0]?.ref).toBe("ccc33333");
+    expect(result[2]?.ref).toBe("eee55555");
   });
 
   test("両方空 -> 全範囲", () => {
@@ -315,29 +315,29 @@ describe("filterByRange", () => {
   test("turn range: 単一ターン (from=to)", () => {
     const result = filterByRange(events, "2", "2");
     expect(result).toHaveLength(2);
-    expect(result[0].ref).toBe("ccc33333");
-    expect(result[1].ref).toBe("ddd44444");
+    expect(result[0]?.ref).toBe("ccc33333");
+    expect(result[1]?.ref).toBe("ddd44444");
   });
 
   test("turn range: from..to", () => {
     const result = filterByRange(events, "1", "2");
     expect(result).toHaveLength(4);
-    expect(result[0].ref).toBe("aaa11111");
-    expect(result[3].ref).toBe("ddd44444");
+    expect(result[0]?.ref).toBe("aaa11111");
+    expect(result[3]?.ref).toBe("ddd44444");
   });
 
   test("turn range: from.. (to空)", () => {
     const result = filterByRange(events, "2", "");
     expect(result).toHaveLength(3);
-    expect(result[0].ref).toBe("ccc33333");
-    expect(result[2].ref).toBe("eee55555");
+    expect(result[0]?.ref).toBe("ccc33333");
+    expect(result[2]?.ref).toBe("eee55555");
   });
 
   test("turn range: ..to (from空)", () => {
     const result = filterByRange(events, "", "2");
     expect(result).toHaveLength(4);
-    expect(result[0].ref).toBe("aaa11111");
-    expect(result[3].ref).toBe("ddd44444");
+    expect(result[0]?.ref).toBe("aaa11111");
+    expect(result[3]?.ref).toBe("ddd44444");
   });
 
   test("turn range: 範囲外のターンは空", () => {
@@ -357,8 +357,8 @@ describe("filterByType", () => {
   test("指定タイプのみフィルタ", () => {
     const result = filterByType(events, "UR");
     expect(result).toHaveLength(2);
-    expect(result[0].kind).toBe("U");
-    expect(result[1].kind).toBe("R");
+    expect(result[0]?.kind).toBe("U");
+    expect(result[1]?.kind).toBe("R");
   });
 
   test("全タイプ指定 -> 全件", () => {
@@ -383,13 +383,13 @@ describe("filterByGrep", () => {
   test("正規表現でdescをフィルタ", () => {
     const result = filterByGrep(events, "README");
     expect(result).toHaveLength(1);
-    expect(result[0].kind).toBe("U");
+    expect(result[0]?.kind).toBe("U");
   });
 
   test("正規表現パターンでマッチ", () => {
     const result = filterByGrep(events, "src.*\\.ts");
     expect(result).toHaveLength(1);
-    expect(result[0].ref).toBe("ccc33333");
+    expect(result[0]?.ref).toBe("ccc33333");
   });
 
   test("マッチなし → 空配列", () => {
@@ -417,8 +417,8 @@ describe("filterBySince", () => {
   test("ISO8601日時文字列でフィルタ", () => {
     const result = filterBySince(events, "2024-01-01T00:30:00Z");
     expect(result).toHaveLength(2);
-    expect(result[0].ref).toBe("bbb22222");
-    expect(result[1].ref).toBe("ccc33333");
+    expect(result[0]?.ref).toBe("bbb22222");
+    expect(result[1]?.ref).toBe("ccc33333");
   });
 
   test("duration文字列でフィルタ (1h)", () => {
@@ -426,14 +426,32 @@ describe("filterBySince", () => {
     // → duration テストは相対的なので、現在時刻に近いイベントを使う
     const now = new Date();
     const recentEvents: TimelineEvent[] = [
-      { kind: "U", turn: 1, ref: "aaa11111", time: new Date(now.getTime() - 7200000).toISOString(), desc: "2h ago" },
-      { kind: "R", turn: 1, ref: "bbb22222", time: new Date(now.getTime() - 1800000).toISOString(), desc: "30m ago" },
-      { kind: "U", turn: 2, ref: "ccc33333", time: new Date(now.getTime() - 600000).toISOString(), desc: "10m ago" },
+      {
+        kind: "U",
+        turn: 1,
+        ref: "aaa11111",
+        time: new Date(now.getTime() - 7200000).toISOString(),
+        desc: "2h ago",
+      },
+      {
+        kind: "R",
+        turn: 1,
+        ref: "bbb22222",
+        time: new Date(now.getTime() - 1800000).toISOString(),
+        desc: "30m ago",
+      },
+      {
+        kind: "U",
+        turn: 2,
+        ref: "ccc33333",
+        time: new Date(now.getTime() - 600000).toISOString(),
+        desc: "10m ago",
+      },
     ];
     const result = filterBySince(recentEvents, "1h");
     expect(result).toHaveLength(2);
-    expect(result[0].desc).toBe("30m ago");
-    expect(result[1].desc).toBe("10m ago");
+    expect(result[0]?.desc).toBe("30m ago");
+    expect(result[1]?.desc).toBe("10m ago");
   });
 
   test("ソートサフィックス _NNNNN 付きの time も正しく処理", () => {
@@ -445,7 +463,7 @@ describe("filterBySince", () => {
       "2024-01-01T01:00:00Z",
     );
     expect(result).toHaveLength(1);
-    expect(result[0].ref).toBe("bbb22222");
+    expect(result[0]?.ref).toBe("bbb22222");
   });
 });
 
@@ -473,7 +491,7 @@ describe("splitTurns", () => {
     const turns = splitTurns(events);
     expect(turns).toHaveLength(2); // [I], [U, R]
     expect(turns[0]).toHaveLength(1);
-    expect(turns[0][0].kind).toBe("I");
+    expect(turns[0]?.[0]?.kind).toBe("I");
     expect(turns[1]).toHaveLength(2);
   });
 
@@ -505,13 +523,13 @@ describe("filterByLastTurn", () => {
   test("末尾1ターン", () => {
     const result = filterByLastTurn(events, 1);
     expect(result).toHaveLength(2); // U3, R3
-    expect(result[0].desc).toBe("user3");
+    expect(result[0]?.desc).toBe("user3");
   });
 
   test("末尾2ターン", () => {
     const result = filterByLastTurn(events, 2);
     expect(result).toHaveLength(4); // U2, R2, U3, R3
-    expect(result[0].desc).toBe("user2");
+    expect(result[0]?.desc).toBe("user2");
   });
 
   test("N=0 は全件返す", () => {
@@ -541,8 +559,8 @@ describe("filterByLastSince", () => {
     // mid(01:00) と new(02:00) が残る
     const result = filterByLastSince(events, "1h30m");
     expect(result).toHaveLength(2);
-    expect(result[0].desc).toBe("mid");
-    expect(result[1].desc).toBe("new");
+    expect(result[0]?.desc).toBe("mid");
+    expect(result[1]?.desc).toBe("new");
   });
 
   test("30m → 末尾から30分以内", () => {
@@ -550,7 +568,7 @@ describe("filterByLastSince", () => {
     // new(02:00) のみ残る
     const result = filterByLastSince(events, "30m");
     expect(result).toHaveLength(1);
-    expect(result[0].desc).toBe("new");
+    expect(result[0]?.desc).toBe("new");
   });
 
   test("空イベントでエラーにならない", () => {
@@ -576,14 +594,14 @@ describe("filterByGrepContext", () => {
     // target はターン1(0-indexed), before=1 → ターン0, after=1 → ターン2
     // → ターン0,1,2 = 6イベント
     expect(result).toHaveLength(6);
-    expect(result[0].desc).toBe("user1");
-    expect(result[5].desc).toBe("resp3");
+    expect(result[0]?.desc).toBe("user1");
+    expect(result[5]?.desc).toBe("resp3");
   });
 
   test("grep マッチターンのみ (A=0, B=0)", () => {
     const result = filterByGrepContext(events, "target", 0, 0);
     expect(result).toHaveLength(2); // U-target, R2
-    expect(result[0].desc).toBe("target");
+    expect(result[0]?.desc).toBe("target");
   });
 
   test("マッチなしは空配列", () => {
@@ -595,7 +613,7 @@ describe("filterByGrepContext", () => {
     const result = filterByGrepContext(events, "target", 10, 0);
     // target はターン1, before=10 → ターン0まで
     expect(result).toHaveLength(4); // ターン0,1
-    expect(result[0].desc).toBe("user1");
+    expect(result[0]?.desc).toBe("user1");
   });
 });
 
@@ -615,10 +633,10 @@ describe("pipeline", () => {
     // filterByType("UR") -> U,R のみ -> bbb(R), ddd(U) -> 2件
     const result = pipeline(events, { types: "UR", from: "bbb", to: "ddd" });
     expect(result).toHaveLength(2);
-    expect(result[0].kind).toBe("R");
-    expect(result[0].ref).toBe("bbb22222");
-    expect(result[1].kind).toBe("U");
-    expect(result[1].ref).toBe("ddd44444");
+    expect(result[0]?.kind).toBe("R");
+    expect(result[0]?.ref).toBe("bbb22222");
+    expect(result[1]?.kind).toBe("U");
+    expect(result[1]?.ref).toBe("ddd44444");
   });
 
   test("デフォルトオプション -> 全件（dedup+removeNoBackupのみ適用）", () => {

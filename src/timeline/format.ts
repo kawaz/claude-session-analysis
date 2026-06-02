@@ -3,12 +3,14 @@ import { truncate, formatTzOffset } from "../lib.ts";
 
 /** ソートサフィックス _NNNNN を除去 */
 export function cleanTime(time: string): string {
-  return time.split("_")[0];
+  if (!time) return "";
+  return time.split("_")[0] ?? "";
 }
 
 /** ローカルタイムゾーン付き ISO8601 (秒精度) に変換 */
 export function localTime(time: string): string {
-  const d = new Date(time.split("_")[0]);
+  if (!time) return "";
+  const d = new Date(time.split("_")[0] ?? "");
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${formatTzOffset(d)}`;
 }
@@ -69,6 +71,7 @@ export function colorize(line: string, opts?: ColorizeOpts): string {
   if (!m) return line;
 
   const kind = m[1];
+  if (kind === undefined) return line;
   const ansi = ANSI_MAP[kind];
   if (!ansi) return line;
 
@@ -92,7 +95,13 @@ function eventEmoji(event: TimelineEvent): string {
 /** 単一イベントをフォーマット: {emoji?} {timestamp?} {kind}{ref} {turn} {content} */
 export function formatEvent(
   event: TimelineEvent,
-  opts: { jsonlMode: "none" | "redact" | "full"; width: number; timestamps: boolean; mdMode?: "none" | "render" | "source"; emoji?: boolean },
+  opts: {
+    jsonlMode: "none" | "redact" | "full";
+    width: number;
+    timestamps: boolean;
+    mdMode?: "none" | "render" | "source";
+    emoji?: boolean;
+  },
 ): string {
   const useEmoji = opts.emoji ?? false;
   const emojiPrefix = useEmoji ? `${eventEmoji(event)} ` : "";
@@ -142,9 +151,10 @@ export interface FormatEventsOpts {
  * 同一 turn 内では表示順で最初/最後のイベントを端に採用する。
  */
 export function computeRangeMarker(events: TimelineEvent[]): string {
-  if (events.length === 0) return "";
-  let lo = events[0]!;
-  let hi = events[0]!;
+  const first = events[0];
+  if (!first) return "";
+  let lo = first;
+  let hi = first;
   for (const e of events) {
     if (e.turn < lo.turn) lo = e;
     if (e.turn > hi.turn) hi = e;
@@ -176,17 +186,12 @@ export function mdFrontMatter(
   forkHints: string[] = [],
 ): string {
   const forkBlock =
-    forkHints.length > 0
-      ? `forked_from:\n${forkHints.map((h) => `  - ${h}`).join("\n")}\n`
-      : "";
+    forkHints.length > 0 ? `forked_from:\n${forkHints.map((h) => `  - ${h}`).join("\n")}\n` : "";
   return `---\ncommand: ${command}\ncommand_computed: ${commandComputed}\ncommand_help: ${commandHelp}\nnow: ${now}\n${forkBlock}---\n\n`;
 }
 
 /** 複数イベントをフォーマットして結合 */
-export function formatEvents(
-  events: TimelineEvent[],
-  opts: FormatEventsOpts,
-): string {
+export function formatEvents(events: TimelineEvent[], opts: FormatEventsOpts): string {
   const isMd = opts.mdMode === "render" || opts.mdMode === "source";
 
   const output: string[] = [];

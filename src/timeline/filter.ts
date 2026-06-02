@@ -67,9 +67,10 @@ export function parseRangeMarker(s: string): RangeMarker {
   // 末尾の +N or -N を抽出
   const offsetMatch = rest.match(/([+-]\d+)$/);
   let offset = 0;
-  if (offsetMatch) {
-    offset = parseInt(offsetMatch[1], 10);
-    rest = rest.slice(0, -offsetMatch[1].length);
+  const offsetStr = offsetMatch?.[1];
+  if (offsetStr !== undefined) {
+    offset = parseInt(offsetStr, 10);
+    rest = rest.slice(0, -offsetStr.length);
   }
 
   return { id: rest, offset };
@@ -133,7 +134,8 @@ export function filterByRange(
     // 最後のマッチを見つける
     let lastIdx = -1;
     for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].ref.startsWith(toMarker.id)) {
+      const ev = events[i];
+      if (ev && ev.ref.startsWith(toMarker.id)) {
         lastIdx = i;
         break;
       }
@@ -184,7 +186,7 @@ export function filterBySince(events: TimelineEvent[], since: string): TimelineE
   if (since === "") return events;
   const cutoff = parseSinceSpec(since);
   return events.filter((e) => {
-    const time = e.time.split("_")[0];
+    const time = e.time.split("_")[0] ?? "";
     return time >= cutoff;
   });
 }
@@ -217,7 +219,9 @@ export function filterByLastTurn(events: TimelineEvent[], n: number): TimelineEv
 export function filterByLastSince(events: TimelineEvent[], spec: string): TimelineEvent[] {
   if (spec === "" || events.length === 0) return events;
   // 末尾イベントの時刻を基準にする
-  const lastTime = events[events.length - 1].time.split("_")[0];
+  const lastEvent = events[events.length - 1];
+  if (!lastEvent) return events;
+  const lastTime = lastEvent.time.split("_")[0] ?? "";
   const lastMs = new Date(lastTime).getTime();
   if (!DURATION_RE.test(spec)) {
     throw new Error(`Invalid --last-since value: ${spec} (expected duration like 1h, 30m, 2d)`);
@@ -225,7 +229,7 @@ export function filterByLastSince(events: TimelineEvent[], spec: string): Timeli
   const seconds = parseDuration(spec);
   const cutoff = new Date(lastMs - seconds * 1000).toISOString();
   return events.filter((e) => {
-    const time = e.time.split("_")[0];
+    const time = e.time.split("_")[0] ?? "";
     return time >= cutoff;
   });
 }
@@ -243,7 +247,8 @@ export function filterByGrepContext(
   // マッチするターンのインデックスを特定
   const matchIndices = new Set<number>();
   for (let i = 0; i < turns.length; i++) {
-    if (turns[i].some((e) => re.test(e.desc))) {
+    const turn = turns[i];
+    if (turn && turn.some((e) => re.test(e.desc))) {
       matchIndices.add(i);
     }
   }
@@ -260,7 +265,7 @@ export function filterByGrepContext(
 
   // ソート済みインデックス順にflatten
   const sorted = [...includeIndices].sort((a, b) => a - b);
-  return sorted.flatMap((i) => turns[i]);
+  return sorted.flatMap((i) => turns[i] ?? []);
 }
 
 /**
@@ -279,19 +284,34 @@ export function filterByGrepContext(
 export function pipeline(
   events: TimelineEvent[],
   opts: {
-    types: string; from: string; to: string;
-    grep?: string; since?: string;
-    lastTurn?: number; lastSince?: string;
-    before?: number; after?: number;
+    types: string;
+    from: string;
+    to: string;
+    grep?: string;
+    since?: string;
+    lastTurn?: number;
+    lastSince?: string;
+    before?: number;
+    after?: number;
   },
   onWarn: (msg: string) => void = () => {},
 ): TimelineEvent[] {
   let result = dedup(events);
   result = removeNoBackup(result);
   result = result.sort((a, b) =>
-    a.time < b.time ? -1 : a.time > b.time ? 1 :
-    a.ref < b.ref ? -1 : a.ref > b.ref ? 1 :
-    a.desc < b.desc ? -1 : a.desc > b.desc ? 1 : 0
+    a.time < b.time
+      ? -1
+      : a.time > b.time
+        ? 1
+        : a.ref < b.ref
+          ? -1
+          : a.ref > b.ref
+            ? 1
+            : a.desc < b.desc
+              ? -1
+              : a.desc > b.desc
+                ? 1
+                : 0,
   );
   if (opts.since) {
     result = filterBySince(result, opts.since);

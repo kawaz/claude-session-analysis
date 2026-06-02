@@ -55,19 +55,13 @@ export async function findBackupFile(
  * file-history-snapshot エントリの trackedFileBackups を走査し、
  * backupFileName が `{fullHash}@` で始まるエントリの key を返す。
  */
-export function findOriginalPath(
-  jsonlContent: string,
-  fullHash: string,
-): string | null {
+export function findOriginalPath(jsonlContent: string, fullHash: string): string | null {
   const entries = parseJsonl(jsonlContent);
   for (const entry of entries) {
     if (entry.type !== "file-history-snapshot") continue;
 
     const snapshot = entry.snapshot as {
-      trackedFileBackups?: Record<
-        string,
-        { backupFileName?: string }
-      >;
+      trackedFileBackups?: Record<string, { backupFileName?: string }>;
     };
     const backups = snapshot?.trackedFileBackups;
     if (!backups) continue;

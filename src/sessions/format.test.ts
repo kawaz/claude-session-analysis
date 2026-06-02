@@ -4,12 +4,12 @@ import {
   formatAgo,
   formatDuration,
   formatDateTime,
-
   formatSessionLine,
   formatSessionsOutput,
   formatSessionsJsonl,
 } from "./format.ts";
 import type { SessionInfo, SessionStats } from "./search.ts";
+import { unwrap } from "../test-utils.ts";
 
 describe("formatHumanSize", () => {
   test("KB range: 1500 -> 1.5K", () => {
@@ -124,7 +124,6 @@ describe("formatDateTime", () => {
   });
 });
 
-
 describe("formatSessionLine", () => {
   const now = Math.floor(new Date(2026, 2, 6, 12, 0, 0).getTime() / 1000);
   const base: SessionInfo = {
@@ -143,7 +142,7 @@ describe("formatSessionLine", () => {
   };
 
   test("end, duration, full sessionId, turns, full path を含む", () => {
-    const line = formatSessionLine(base, { now });
+    const line = formatSessionLine(base);
     expect(line).toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}/);
     expect(line).not.toMatch(/2026-03-06T\d{2}:\d{2}:\d{2}[+-]/);
     expect(line).toContain(" 1h");
@@ -155,7 +154,7 @@ describe("formatSessionLine", () => {
 
   test("with context: appends context", () => {
     const session = { ...base, context: "found keyword here" };
-    const line = formatSessionLine(session, { now });
+    const line = formatSessionLine(session);
     expect(line).toContain("  found keyword here");
   });
 });
@@ -231,8 +230,8 @@ describe("formatSessionsOutput", () => {
     }
     const stats: SessionStats = {
       total: 5,
-      oldestMtime: sessions[0]!.mtime,
-      newestMtime: sessions[4]!.mtime,
+      oldestMtime: unwrap(sessions[0], "sessions[0]").mtime,
+      newestMtime: unwrap(sessions[4], "sessions[4]").mtime,
     };
     const output = formatSessionsOutput(stats, sessions, {
       tail: 2,
@@ -240,7 +239,9 @@ describe("formatSessionsOutput", () => {
     });
     const lines = output.split("\n");
     // データ行は末尾2行
-    const dataLines = lines.filter((l) => !l.startsWith("#") && !l.startsWith("TIMESTAMP") && l.trim());
+    const dataLines = lines.filter(
+      (l) => !l.startsWith("#") && !l.startsWith("TIMESTAMP") && l.trim(),
+    );
     expect(dataLines.length).toBe(2);
     expect(dataLines[0]).toContain("sess3000");
     expect(dataLines[1]).toContain("sess4000");
@@ -302,7 +303,7 @@ describe("formatSessionsJsonl", () => {
     const lines = output.split("\n").filter((l) => l);
     expect(lines.length).toBe(2);
 
-    const obj0 = JSON.parse(lines[0]!);
+    const obj0 = JSON.parse(unwrap(lines[0], "lines[0]"));
     expect(obj0.sessionId).toBe("aaaaaaaa-1111-2222-3333-444444444444");
     expect(obj0.file).toBe("/a/b.jsonl");
     expect(obj0.cwd).toBe("/x/y");
@@ -313,7 +314,7 @@ describe("formatSessionsJsonl", () => {
     expect(obj0.startTime).toMatch(/^2026-03-06T/);
     expect(obj0.endTime).toMatch(/^2026-03-06T/);
 
-    const obj1 = JSON.parse(lines[1]!);
+    const obj1 = JSON.parse(unwrap(lines[1], "lines[1]"));
     expect(obj1.sessionId).toBe("bbbbbbbb-1111-2222-3333-444444444444");
     expect(obj1.turns).toBe(10);
   });
@@ -340,8 +341,8 @@ describe("formatSessionsJsonl", () => {
     const output = formatSessionsJsonl(sessions, { tail: 2 });
     const lines = output.split("\n").filter((l) => l);
     expect(lines.length).toBe(2);
-    expect(JSON.parse(lines[0]!).sessionId).toBe("sess3000");
-    expect(JSON.parse(lines[1]!).sessionId).toBe("sess4000");
+    expect(JSON.parse(unwrap(lines[0], "lines[0]")).sessionId).toBe("sess3000");
+    expect(JSON.parse(unwrap(lines[1], "lines[1]")).sessionId).toBe("sess4000");
   });
 
   test("contextがあれば含まれる", () => {

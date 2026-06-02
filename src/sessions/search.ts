@@ -16,11 +16,11 @@ export interface SessionInfo {
   effectiveUserTurns: number; // turns のうち classifyUserTurn が "effective" のもの（hidden_tag/short_ascii/slash_only は除外）
   forkedFrom: string | null; // フォーク元 session ID（entry の forkedFrom.sessionId。fork でなければ null）
   forkFirstNewUuid: string | null; // フォーク後最初の新規 entry の uuid（fork でなければ null）
-  context?: string; // keyword search context
+  context?: string; // keyword search context (multi-keyword は " | " 区切りで連結)
 }
 
 export interface SessionStats {
-  total: number;       // stat取得できた有効ファイル総数
+  total: number; // stat取得できた有効ファイル総数
   oldestMtime: number; // 最古のmtime (Unix epoch seconds)
   newestMtime: number; // 最新のmtime (Unix epoch seconds)
 }
@@ -33,7 +33,7 @@ export interface SearchResult {
 export interface SearchOptions {
   configDirs: string[];
   since?: number; // Unix epoch seconds (cutoff): sessions with mtime >= since are included
-  keyword?: string;
+  keywords?: string[]; // 複数指定時は全キーワードを含むセッション (AND)。各キーワードは行単位 OR
   path?: string; // cwd を正規表現でフィルタ
   files?: string[]; // 直接指定のファイルリスト（指定時はglob検索をスキップ）
 }
@@ -42,10 +42,8 @@ export interface SearchOptions {
  * セッションJSONLファイルを検索し、メタ情報を返す。
  * sh版の grep + perl 相当をTS化。
  */
-export async function searchSessions(
-  opts: SearchOptions,
-): Promise<SearchResult> {
-  const { configDirs, since, keyword, path, files } = opts;
+export async function searchSessions(opts: SearchOptions): Promise<SearchResult> {
+  const { configDirs, since, keywords, path, files } = opts;
 
   let allFiles: string[];
   if (files) {
@@ -95,21 +93,19 @@ export async function searchSessions(
   // 3.5. stats を計算（フィルタ前の全ファイル統計、高速）
   const stats: SessionStats = {
     total: allValidFiles.length,
-    oldestMtime: allValidFiles.length > 0
-      ? Math.min(...allValidFiles.map((f) => f.mtime))
-      : 0,
-    newestMtime: allValidFiles.length > 0
-      ? Math.max(...allValidFiles.map((f) => f.mtime))
-      : 0,
+    oldestMtime: allValidFiles.length > 0 ? Math.min(...allValidFiles.map((f) => f.mtime)) : 0,
+    newestMtime: allValidFiles.length > 0 ? Math.max(...allValidFiles.map((f) => f.mtime)) : 0,
   };
 
   // 3.6. since で早期フィルタ
-  const validFiles = since != null
-    ? allValidFiles.filter((f) => f.mtime >= since)
-    : allValidFiles;
+  const validFiles = since != null ? allValidFiles.filter((f) => f.mtime >= since) : allValidFiles;
 
   // 4. ファイル内容を並列読み込み + メタ情報抽出（JSON.parseベース）
-  const parseFile = async (entry: { file: string; size: number; mtime: number }): Promise<SessionInfo | null> => {
+  const parseFile = async (entry: {
+    file: string;
+    size: number;
+    mtime: number;
+  }): Promise<SessionInfo | null> => {
     let text: string;
     try {
       text = await Bun.file(entry.file).text();
@@ -128,29 +124,40 @@ export async function searchSessions(
     // 境界判定ロジックは lib.ts の findForkSplit に集約（timeline / sessions の単一の正）。
     // ここでは fork 判定に必要な最小情報（type / uuid / forkedFrom）だけを軽量に蓄積し、
     // ループ後に findForkSplit へ渡す（全 obj を保持してメモリを増やさないため）。
-    const forkEntries: Record<string, unknown>[] = [];
+    const forkEntries: { type?: unknown; uuid?: unknown; forkedFrom?: { sessionId?: unknown } }[] =
+      [];
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
+    type JsonlRow = {
+      type?: unknown;
+      uuid?: unknown;
+      cwd?: unknown;
+      sessionId?: unknown;
+      timestamp?: unknown;
+      forkedFrom?: { sessionId?: unknown };
+      isMeta?: unknown;
+      isCompactSummary?: unknown;
+      message?: { content?: unknown };
+    };
+    for (const line of lines) {
       if (line.trim() === "") continue;
       lineCount++;
-      let obj: any;
+      let obj: JsonlRow;
       try {
-        obj = JSON.parse(line);
+        obj = JSON.parse(line) as JsonlRow;
       } catch {
         continue;
       }
 
       // timestamp: 最初と最後
-      if (obj.timestamp) {
+      if (typeof obj.timestamp === "string" && obj.timestamp) {
         const ts = Math.floor(new Date(obj.timestamp).getTime() / 1000);
         if (startTime === 0) startTime = ts;
         endTime = ts;
       }
 
       // sessionId / cwd: 最初に見つかったもの
-      if (cwd === "?" && obj.cwd) {
-        if (obj.sessionId) sessionId = obj.sessionId;
+      if (cwd === "?" && typeof obj.cwd === "string" && obj.cwd) {
+        if (typeof obj.sessionId === "string") sessionId = obj.sessionId;
         cwd = obj.cwd;
       }
 
@@ -158,9 +165,9 @@ export async function searchSessions(
       forkEntries.push({ type: obj.type, uuid: obj.uuid, forkedFrom: obj.forkedFrom });
 
       // ターンカウント: isUserTurn() で統一判定
-      if (isUserTurn(obj as Record<string, unknown>)) {
+      if (isUserTurn(obj)) {
         turns++;
-        if (classifyUserTurn(obj as Record<string, unknown>) === "effective") {
+        if (classifyUserTurn(obj) === "effective") {
           effectiveUserTurns++;
         }
       }
@@ -173,7 +180,20 @@ export async function searchSessions(
     const split = findForkSplit(forkEntries);
     const forkedFrom = split.parentSessionId;
     const forkFirstNewUuid = split.forkFirstNewUuid;
-    return { file: entry.file, mtime: entry.mtime, startTime, endTime, size: entry.size, sessionId, cwd, turns, lines: lineCount, effectiveUserTurns, forkedFrom, forkFirstNewUuid };
+    return {
+      file: entry.file,
+      mtime: entry.mtime,
+      startTime,
+      endTime,
+      size: entry.size,
+      sessionId,
+      cwd,
+      turns,
+      lines: lineCount,
+      effectiveUserTurns,
+      forkedFrom,
+      forkFirstNewUuid,
+    };
   };
 
   const parseResults = await Promise.all(validFiles.map(parseFile));
@@ -186,32 +206,44 @@ export async function searchSessions(
     filtered = filtered.filter((e) => re.test(e.cwd));
   }
 
-  // 6. キーワード検索（正規表現対応、並列、全マッチ行を収集）
-  if (keyword) {
-    const re = new RegExp(keyword);
+  // 6. キーワード検索（正規表現対応、並列）
+  //    複数キーワード指定時はセッション単位 AND（各キーワードが少なくとも1行にマッチ）。
+  //    context は各キーワードの最初のヒット周辺を " | " で連結。
+  if (keywords && keywords.length > 0) {
+    const res = keywords.map((k) => new RegExp(k));
     const searchFile = async (e: SessionInfo): Promise<SessionInfo | null> => {
       const text = await Bun.file(e.file).text();
       const lines = text.split("\n");
-      let firstCtx = "";
-      let matchCount = 0;
+      const firstCtx: (string | null)[] = res.map(() => null);
+      const hitCounts: number[] = res.map(() => 0);
       for (const line of lines) {
-        const m = re.exec(line);
-        if (m) {
-          matchCount++;
-          if (matchCount === 1) {
-            const idx = m.index;
-            const matchLen = m[0].length;
-            const preStart = Math.max(0, idx - 20);
-            let pre = line.slice(preStart, idx);
-            pre = pre.replace(/.*\n/s, "");
-            let post = line.slice(idx + matchLen, idx + matchLen + 50);
-            post = post.replace(/\n.*/s, "");
-            firstCtx = `${pre}${m[0]}${post}`.replace(/[\r\n]/g, " ");
+        for (let k = 0; k < res.length; k++) {
+          const re = res[k];
+          if (!re) continue;
+          const m = re.exec(line);
+          if (m) {
+            hitCounts[k] = (hitCounts[k] ?? 0) + 1;
+            if (firstCtx[k] === null) {
+              const idx = m.index;
+              const matchLen = m[0].length;
+              const preStart = Math.max(0, idx - 20);
+              let pre = line.slice(preStart, idx);
+              pre = pre.replace(/.*\n/s, "");
+              let post = line.slice(idx + matchLen, idx + matchLen + 50);
+              post = post.replace(/\n.*/s, "");
+              firstCtx[k] = `${pre}${m[0]}${post}`.replace(/[\r\n]/g, " ");
+            }
           }
         }
       }
-      if (matchCount === 0) return null;
-      const ctx = `[${matchCount} hit${matchCount > 1 ? "s" : ""}] ${firstCtx}`;
+      // AND: いずれかのキーワードがゼロヒットならセッション全体を捨てる
+      if (firstCtx.some((c) => c === null)) return null;
+      const totalHits = hitCounts.reduce((a, b) => a + b, 0);
+      const header =
+        res.length === 1
+          ? `[${totalHits} hit${totalHits > 1 ? "s" : ""}]`
+          : `[${totalHits} hits / ${res.length} kw]`;
+      const ctx = `${header} ${firstCtx.join(" | ")}`;
       return { ...e, context: ctx };
     };
     const matchResults = await Promise.all(filtered.map(searchFile));

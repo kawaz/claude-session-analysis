@@ -6,11 +6,13 @@ import type {
   AssistantEntry,
   SystemEntry,
   FileHistorySnapshotEntry,
-  TimelineEvent,
 } from "./types.ts";
 
 // --- ヘルパー ---
-function mkUser(content: string | { type: string; [k: string]: unknown }[], opts?: Partial<UserEntry>): UserEntry {
+function mkUser(
+  content: string | { type: string; [k: string]: unknown }[],
+  opts?: Partial<UserEntry>,
+): UserEntry {
   return {
     type: "user",
     uuid: "aabbccdd-1111-2222-3333-444444444444",
@@ -21,7 +23,10 @@ function mkUser(content: string | { type: string; [k: string]: unknown }[], opts
   };
 }
 
-function mkAssistant(content: { type: string; [k: string]: unknown }[], opts?: Partial<AssistantEntry>): AssistantEntry {
+function mkAssistant(
+  content: { type: string; [k: string]: unknown }[],
+  opts?: Partial<AssistantEntry>,
+): AssistantEntry {
   return {
     type: "assistant",
     uuid: "bbccddee-1111-2222-3333-444444444444",
@@ -64,18 +69,23 @@ describe("U (User) events", () => {
   });
 
   test("スラッシュコマンド (XML)", () => {
-    const xml = '<something><command-name>commit</command-name><command-args>-m "fix"</command-args></something>';
+    const xml =
+      '<something><command-name>commit</command-name><command-args>-m "fix"</command-args></something>';
     const entries: SessionEntry[] = [mkUser(xml)];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "U", turn: 1, ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: 'commit -m "fix"' },
+      {
+        kind: "U",
+        turn: 1,
+        ref: "aabbccdd",
+        time: "2025-01-01T00:00:00Z",
+        desc: 'commit -m "fix"',
+      },
     ]);
   });
 
   test("array content の通常テキスト", () => {
-    const entries: SessionEntry[] = [
-      mkUser([{ type: "text", text: "array text" }]),
-    ];
+    const entries: SessionEntry[] = [mkUser([{ type: "text", text: "array text" }])];
     const events = extractEvents(entries);
     expect(events).toEqual([
       { kind: "U", turn: 1, ref: "aabbccdd", time: "2025-01-01T00:00:00Z", desc: "array text" },
@@ -83,9 +93,9 @@ describe("U (User) events", () => {
   });
 
   test("system entry のスラッシュコマンド", () => {
-    const xml = '<foo><command-name>review</command-name><command-args>--all</command-args></foo>';
+    const xml = "<foo><command-name>review</command-name><command-args>--all</command-args></foo>";
     const entries: SessionEntry[] = [
-      mkUser("initial"),  // cwd 提供用
+      mkUser("initial"), // cwd 提供用
       mkSystem(xml),
     ];
     const events = extractEvents(entries);
@@ -124,7 +134,13 @@ describe("T (Think) events", () => {
     ];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "T", turn: 0, ref: "bbccddee", time: "2025-01-01T00:01:00Z", desc: "Let me consider..." },
+      {
+        kind: "T",
+        turn: 0,
+        ref: "bbccddee",
+        time: "2025-01-01T00:01:00Z",
+        desc: "Let me consider...",
+      },
     ]);
   });
 });
@@ -132,19 +148,21 @@ describe("T (Think) events", () => {
 // --- R (Response) ---
 describe("R (Response) events", () => {
   test("textブロック", () => {
-    const entries: SessionEntry[] = [
-      mkAssistant([{ type: "text", text: "Here is my response." }]),
-    ];
+    const entries: SessionEntry[] = [mkAssistant([{ type: "text", text: "Here is my response." }])];
     const events = extractEvents(entries);
     expect(events).toEqual([
-      { kind: "R", turn: 0, ref: "bbccddee", time: "2025-01-01T00:01:00Z", desc: "Here is my response." },
+      {
+        kind: "R",
+        turn: 0,
+        ref: "bbccddee",
+        time: "2025-01-01T00:01:00Z",
+        desc: "Here is my response.",
+      },
     ]);
   });
 
   test("空白のみのテキストはスキップ", () => {
-    const entries: SessionEntry[] = [
-      mkAssistant([{ type: "text", text: "  \n\t  " }]),
-    ];
+    const entries: SessionEntry[] = [mkAssistant([{ type: "text", text: "  \n\t  " }])];
     const events = extractEvents(entries);
     const rEvents = events.filter((e) => e.kind === "R");
     expect(rEvents).toHaveLength(0);
@@ -155,7 +173,7 @@ describe("R (Response) events", () => {
 describe("F (File) events", () => {
   test("file-history-snapshot", () => {
     const entries: SessionEntry[] = [
-      mkUser("init"),  // cwd用
+      mkUser("init"), // cwd用
       mkFileSnapshot({
         "/home/user/project/src/foo.ts": {
           backupFileName: "abcdef12@v1",
@@ -177,7 +195,7 @@ describe("F (File) events", () => {
 
   test("file-history-snapshot 相対パスは session_cwd で絶対パス化", () => {
     const entries: SessionEntry[] = [
-      mkUser("init"),  // cwd=/home/user/project
+      mkUser("init"), // cwd=/home/user/project
       mkFileSnapshot({
         "src/bar.ts": {
           backupFileName: "11223344@v2",
@@ -189,7 +207,7 @@ describe("F (File) events", () => {
     const fEvents = events.filter((e) => e.kind === "F");
     expect(fEvents).toHaveLength(1);
     // /home/user/project/src/bar.ts -> .../src/bar.ts
-    expect(fEvents[0].desc).toBe("src/bar.ts 11223344@v2");
+    expect(fEvents[0]?.desc).toBe("src/bar.ts 11223344@v2");
   });
 
   test("Read tool_use", () => {
@@ -231,7 +249,15 @@ describe("F (File) events", () => {
   test("Edit tool_use (no-backup)", () => {
     const entries: SessionEntry[] = [
       mkAssistant([
-        { type: "tool_use", name: "Edit", input: { file_path: "/home/user/project/src/lib.ts", old_string: "foo", new_string: "bar" } },
+        {
+          type: "tool_use",
+          name: "Edit",
+          input: {
+            file_path: "/home/user/project/src/lib.ts",
+            old_string: "foo",
+            new_string: "bar",
+          },
+        },
       ]),
     ];
     const events = extractEvents(entries);
@@ -251,9 +277,7 @@ describe("F (File) events", () => {
 describe("B (Bash) events", () => {
   test("通常コマンド", () => {
     const entries: SessionEntry[] = [
-      mkAssistant([
-        { type: "tool_use", name: "Bash", input: { command: "ls -la" } },
-      ]),
+      mkAssistant([{ type: "tool_use", name: "Bash", input: { command: "ls -la" } }]),
     ];
     const events = extractEvents(entries);
     const bEvents = events.filter((e) => e.kind === "B");
@@ -276,7 +300,7 @@ describe("B (Bash) events", () => {
     const events = extractEvents(entries);
     const bEvents = events.filter((e) => e.kind === "B");
     expect(bEvents).toHaveLength(1);
-    expect(bEvents[0].desc).toBe("\u2026/bin/node script.js");
+    expect(bEvents[0]?.desc).toBe("\u2026/bin/node script.js");
   });
 
   test("BashOutput も B イベント", () => {
@@ -288,7 +312,7 @@ describe("B (Bash) events", () => {
     const events = extractEvents(entries);
     const bEvents = events.filter((e) => e.kind === "B");
     expect(bEvents).toHaveLength(1);
-    expect(bEvents[0].desc).toBe("check status");
+    expect(bEvents[0]?.desc).toBe("check status");
   });
 });
 
@@ -296,9 +320,7 @@ describe("B (Bash) events", () => {
 describe("W (Web) events", () => {
   test("WebFetch", () => {
     const entries: SessionEntry[] = [
-      mkAssistant([
-        { type: "tool_use", name: "WebFetch", input: { url: "https://example.com" } },
-      ]),
+      mkAssistant([{ type: "tool_use", name: "WebFetch", input: { url: "https://example.com" } }]),
     ];
     const events = extractEvents(entries);
     const wEvents = events.filter((e) => e.kind === "W");
@@ -315,9 +337,7 @@ describe("W (Web) events", () => {
 
   test("WebSearch", () => {
     const entries: SessionEntry[] = [
-      mkAssistant([
-        { type: "tool_use", name: "WebSearch", input: { query: "bun test runner" } },
-      ]),
+      mkAssistant([{ type: "tool_use", name: "WebSearch", input: { query: "bun test runner" } }]),
     ];
     const events = extractEvents(entries);
     const wEvents = events.filter((e) => e.kind === "W");
@@ -337,26 +357,22 @@ describe("W (Web) events", () => {
 describe("G (Grep/Glob) events", () => {
   test("Grep", () => {
     const entries: SessionEntry[] = [
-      mkAssistant([
-        { type: "tool_use", name: "Grep", input: { pattern: "TODO" } },
-      ]),
+      mkAssistant([{ type: "tool_use", name: "Grep", input: { pattern: "TODO" } }]),
     ];
     const events = extractEvents(entries);
     const gEvents = events.filter((e) => e.kind === "G");
     expect(gEvents).toHaveLength(1);
-    expect(gEvents[0].desc).toBe("Grep: TODO");
+    expect(gEvents[0]?.desc).toBe("Grep: TODO");
   });
 
   test("Glob", () => {
     const entries: SessionEntry[] = [
-      mkAssistant([
-        { type: "tool_use", name: "Glob", input: { pattern: "**/*.ts" } },
-      ]),
+      mkAssistant([{ type: "tool_use", name: "Glob", input: { pattern: "**/*.ts" } }]),
     ];
     const events = extractEvents(entries);
     const gEvents = events.filter((e) => e.kind === "G");
     expect(gEvents).toHaveLength(1);
-    expect(gEvents[0].desc).toBe("Glob: **/*.ts");
+    expect(gEvents[0]?.desc).toBe("Glob: **/*.ts");
   });
 });
 
@@ -365,25 +381,28 @@ describe("A (Agent/Task) events", () => {
   test("Task", () => {
     const entries: SessionEntry[] = [
       mkAssistant([
-        { type: "tool_use", name: "Task", id: "toolu_01AbCdEfGhIjKlMnOpQrStUv", input: { description: "analyze code", prompt: "find bugs" } },
+        {
+          type: "tool_use",
+          name: "Task",
+          id: "toolu_01AbCdEfGhIjKlMnOpQrStUv",
+          input: { description: "analyze code", prompt: "find bugs" },
+        },
       ]),
     ];
     const events = extractEvents(entries);
     const aEvents = events.filter((e) => e.kind === "A");
     expect(aEvents).toHaveLength(1);
-    expect(aEvents[0].desc).toBe("OpQrStUv analyze code: find bugs");
+    expect(aEvents[0]?.desc).toBe("OpQrStUv analyze code: find bugs");
   });
 
   test("TaskOutput", () => {
     const entries: SessionEntry[] = [
-      mkAssistant([
-        { type: "tool_use", name: "TaskOutput", input: { task_id: "task-123" } },
-      ]),
+      mkAssistant([{ type: "tool_use", name: "TaskOutput", input: { task_id: "task-123" } }]),
     ];
     const events = extractEvents(entries);
     const aEvents = events.filter((e) => e.kind === "A");
     expect(aEvents).toHaveLength(1);
-    expect(aEvents[0].desc).toBe("task-123 output");
+    expect(aEvents[0]?.desc).toBe("task-123 output");
   });
 });
 
@@ -391,14 +410,12 @@ describe("A (Agent/Task) events", () => {
 describe("S (Skill) events", () => {
   test("Skill", () => {
     const entries: SessionEntry[] = [
-      mkAssistant([
-        { type: "tool_use", name: "Skill", input: { skill: "commit" } },
-      ]),
+      mkAssistant([{ type: "tool_use", name: "Skill", input: { skill: "commit" } }]),
     ];
     const events = extractEvents(entries);
     const sEvents = events.filter((e) => e.kind === "S");
     expect(sEvents).toHaveLength(1);
-    expect(sEvents[0].desc).toBe("commit");
+    expect(sEvents[0]?.desc).toBe("commit");
   });
 });
 
@@ -417,7 +434,7 @@ describe("Q (Question) events", () => {
     const events = extractEvents(entries);
     const qEvents = events.filter((e) => e.kind === "Q");
     expect(qEvents).toHaveLength(1);
-    expect(qEvents[0].desc).toBe("Which option?");
+    expect(qEvents[0]?.desc).toBe("Which option?");
   });
 });
 
@@ -436,26 +453,24 @@ describe("D (toDo) events", () => {
     const events = extractEvents(entries);
     const dEvents = events.filter((e) => e.kind === "D");
     expect(dEvents).toHaveLength(1);
-    expect(dEvents[0].desc).toBe("Todo: 3 items");
+    expect(dEvents[0]?.desc).toBe("Todo: 3 items");
   });
 });
 
 // --- I (Info) ---
 describe("I (Info) events", () => {
   test("auto-compact", () => {
-    const entries: SessionEntry[] = [
-      mkUser("summary text", { isCompactSummary: true }),
-    ];
+    const entries: SessionEntry[] = [mkUser("summary text", { isCompactSummary: true })];
     const events = extractEvents(entries);
     const iEvents = events.filter((e) => e.kind === "I");
     expect(iEvents).toHaveLength(1);
-    expect(iEvents[0].desc).toBe("[auto-compact]");
+    expect(iEvents[0]?.desc).toBe("[auto-compact]");
   });
 
   test("task-notification (文字列content)", () => {
     const entries: SessionEntry[] = [
-      mkUser("init"),  // cwd用
-      mkUser('<task-notification><summary>Task done</summary></task-notification>', {
+      mkUser("init"), // cwd用
+      mkUser("<task-notification><summary>Task done</summary></task-notification>", {
         uuid: "11223344-aaaa-bbbb-cccc-dddddddddddd",
         timestamp: "2025-01-01T00:10:00Z",
       }),
@@ -463,7 +478,7 @@ describe("I (Info) events", () => {
     const events = extractEvents(entries);
     const iEvents = events.filter((e) => e.kind === "I");
     expect(iEvents).toHaveLength(1);
-    expect(iEvents[0].desc).toBe("[task-notification] Task done");
+    expect(iEvents[0]?.desc).toBe("[task-notification] Task done");
   });
 
   test("teammate-message (文字列content)", () => {
@@ -477,7 +492,7 @@ describe("I (Info) events", () => {
     const events = extractEvents(entries);
     const iEvents = events.filter((e) => e.kind === "I");
     expect(iEvents).toHaveLength(1);
-    expect(iEvents[0].desc).toBe("[teammate-message] agent-42");
+    expect(iEvents[0]?.desc).toBe("[teammate-message] agent-42");
   });
 
   test("Request interrupted (文字列content)", () => {
@@ -491,31 +506,33 @@ describe("I (Info) events", () => {
     const events = extractEvents(entries);
     const iEvents = events.filter((e) => e.kind === "I");
     expect(iEvents).toHaveLength(1);
-    expect(iEvents[0].desc).toBe("[Request interrupted by user]");
+    expect(iEvents[0]?.desc).toBe("[Request interrupted by user]");
   });
 
   test("Request interrupted (配列content)", () => {
     const entries: SessionEntry[] = [
       mkUser("init"),
-      mkUser(
-        [{ type: "text", text: "[Request interrupted by user]" }],
-        {
-          uuid: "44556677-aaaa-bbbb-cccc-dddddddddddd",
-          timestamp: "2025-01-01T00:13:00Z",
-        },
-      ),
+      mkUser([{ type: "text", text: "[Request interrupted by user]" }], {
+        uuid: "44556677-aaaa-bbbb-cccc-dddddddddddd",
+        timestamp: "2025-01-01T00:13:00Z",
+      }),
     ];
     const events = extractEvents(entries);
     const iEvents = events.filter((e) => e.kind === "I");
     expect(iEvents).toHaveLength(1);
-    expect(iEvents[0].desc).toBe("[Request interrupted by user]");
+    expect(iEvents[0]?.desc).toBe("[Request interrupted by user]");
   });
 
   test("task-notification (配列content)", () => {
     const entries: SessionEntry[] = [
       mkUser("init"),
       mkUser(
-        [{ type: "text", text: '<task-notification><summary>Sub done</summary></task-notification>' }],
+        [
+          {
+            type: "text",
+            text: "<task-notification><summary>Sub done</summary></task-notification>",
+          },
+        ],
         {
           uuid: "55667788-aaaa-bbbb-cccc-dddddddddddd",
           timestamp: "2025-01-01T00:14:00Z",
@@ -525,7 +542,7 @@ describe("I (Info) events", () => {
     const events = extractEvents(entries);
     const iEvents = events.filter((e) => e.kind === "I");
     expect(iEvents).toHaveLength(1);
-    expect(iEvents[0].desc).toBe("[task-notification] Sub done");
+    expect(iEvents[0]?.desc).toBe("[task-notification] Sub done");
   });
 
   test("teammate-message (配列content)", () => {
@@ -542,7 +559,7 @@ describe("I (Info) events", () => {
     const events = extractEvents(entries);
     const iEvents = events.filter((e) => e.kind === "I");
     expect(iEvents).toHaveLength(1);
-    expect(iEvents[0].desc).toBe("[teammate-message] worker-7");
+    expect(iEvents[0]?.desc).toBe("[teammate-message] worker-7");
   });
 });
 
@@ -550,7 +567,7 @@ describe("I (Info) events", () => {
 describe("除外条件", () => {
   test("task-notification文字列のUserメッセージはUではなくIに分類", () => {
     const entries: SessionEntry[] = [
-      mkUser('<task-notification><summary>done</summary></task-notification>'),
+      mkUser("<task-notification><summary>done</summary></task-notification>"),
     ];
     const events = extractEvents(entries);
     const uEvents = events.filter((e) => e.kind === "U");
@@ -560,9 +577,7 @@ describe("除外条件", () => {
   });
 
   test("[Request interrupted で始まる文字列はUではなくI", () => {
-    const entries: SessionEntry[] = [
-      mkUser("[Request interrupted by user]"),
-    ];
+    const entries: SessionEntry[] = [mkUser("[Request interrupted by user]")];
     const events = extractEvents(entries);
     const uEvents = events.filter((e) => e.kind === "U");
     const iEvents = events.filter((e) => e.kind === "I");
@@ -601,12 +616,20 @@ describe("extractEventsWithFork (forked session)", () => {
     const entries: SessionEntry[] = [
       // 親からのコピー entry 群（forkedFrom 付き）
       mkUser("親の発言1", { uuid: "c0000001-0000-0000-0000-000000000000", ...fork("parent-abc") }),
-      mkAssistant([{ type: "text", text: "親の応答1" }], { uuid: "c0000002-0000-0000-0000-000000000000", ...fork("parent-abc") }),
+      mkAssistant([{ type: "text", text: "親の応答1" }], {
+        uuid: "c0000002-0000-0000-0000-000000000000",
+        ...fork("parent-abc"),
+      }),
       mkUser("親の発言2", { uuid: "c0000003-0000-0000-0000-000000000000", ...fork("parent-abc") }),
-      mkAssistant([{ type: "text", text: "親の応答2" }], { uuid: "c0000004-0000-0000-0000-000000000000", ...fork("parent-abc") }),
+      mkAssistant([{ type: "text", text: "親の応答2" }], {
+        uuid: "c0000004-0000-0000-0000-000000000000",
+        ...fork("parent-abc"),
+      }),
       // fork 後最初の新規 user entry（forkedFrom 無し = forkFirstNewUuid）
       mkUser("fork後の最初の質問", { uuid: "n0000001-0000-0000-0000-000000000000" }),
-      mkAssistant([{ type: "text", text: "fork後の応答" }], { uuid: "n0000002-0000-0000-0000-000000000000" }),
+      mkAssistant([{ type: "text", text: "fork後の応答" }], {
+        uuid: "n0000002-0000-0000-0000-000000000000",
+      }),
       mkUser("fork後2つ目", { uuid: "n0000003-0000-0000-0000-000000000000" }),
     ];
     const result = extractEventsWithFork(entries);
@@ -622,9 +645,9 @@ describe("extractEventsWithFork (forked session)", () => {
     expect(result.events.map((e) => e.ref)).toEqual(["n0000001", "n0000002", "n0000003"]);
 
     // turn は fork 後の最初の U を 1 として振り直す
-    expect(result.events.find((e) => e.ref === "n0000001")!.turn).toBe(1);
-    expect(result.events.find((e) => e.ref === "n0000002")!.turn).toBe(1);
-    expect(result.events.find((e) => e.ref === "n0000003")!.turn).toBe(2);
+    expect(result.events.find((e) => e.ref === "n0000001")?.turn).toBe(1);
+    expect(result.events.find((e) => e.ref === "n0000002")?.turn).toBe(1);
+    expect(result.events.find((e) => e.ref === "n0000003")?.turn).toBe(2);
   });
 
   test("fork: ForkInfo の parentSessionId は forkedFrom.sessionId", () => {
@@ -634,19 +657,22 @@ describe("extractEventsWithFork (forked session)", () => {
     ];
     const result = extractEventsWithFork(entries);
     expect(result.fork).not.toBeNull();
-    expect(result.fork!.parentSessionId).toBe("parent-xyz");
+    expect(result.fork?.parentSessionId).toBe("parent-xyz");
   });
 
   test("fork: marker は最後のコピー entry に対応する timeline marker（kind+ref）", () => {
     // 最後のコピー entry は assistant の text → R イベント。ref = uuid 先頭8桁。
     const entries: SessionEntry[] = [
       mkUser("親の発言", { uuid: "c0000001-0000-0000-0000-000000000000", ...fork("parent-m") }),
-      mkAssistant([{ type: "text", text: "親の最後の応答" }], { uuid: "deadbeef-0000-0000-0000-000000000000", ...fork("parent-m") }),
+      mkAssistant([{ type: "text", text: "親の最後の応答" }], {
+        uuid: "deadbeef-0000-0000-0000-000000000000",
+        ...fork("parent-m"),
+      }),
       mkUser("fork後", { uuid: "n0000001-0000-0000-0000-000000000000" }),
     ];
     const result = extractEventsWithFork(entries);
     // 親 timeline で `..Rdeadbeef` 指定すると fork 前が見られる
-    expect(result.fork!.marker).toBe("Rdeadbeef");
+    expect(result.fork?.marker).toBe("Rdeadbeef");
   });
 
   // 修正1/2: 実機 /fork（c1e81ed5）相当の境界。
@@ -655,8 +681,14 @@ describe("extractEventsWithFork (forked session)", () => {
   test("fork: 境界の非 user（custom-title/自動応答assistant/file-history-snapshot）を fork 後先頭に含めず turn 0 を出さない", () => {
     const entries: SessionEntry[] = [
       // 親からのコピー entry 群（forkedFrom 付き）。最後はコピー user。
-      mkAssistant([{ type: "text", text: "親の応答" }], { uuid: "c0000001-0000-0000-0000-000000000000", ...fork("parent-real") }),
-      mkUser("最後のコピーuser", { uuid: "c0000002-0000-0000-0000-000000000000", ...fork("parent-real") }),
+      mkAssistant([{ type: "text", text: "親の応答" }], {
+        uuid: "c0000001-0000-0000-0000-000000000000",
+        ...fork("parent-real"),
+      }),
+      mkUser("最後のコピーuser", {
+        uuid: "c0000002-0000-0000-0000-000000000000",
+        ...fork("parent-real"),
+      }),
       // 境界の非 user 群（forkedFrom 無し）
       mkSystem("<command-name>/fork</command-name><command-args></command-args>", {
         uuid: "b0000001-0000-0000-0000-000000000000",
@@ -666,12 +698,19 @@ describe("extractEventsWithFork (forked session)", () => {
         uuid: "b0000002-0000-0000-0000-000000000000",
       }),
       mkFileSnapshot(
-        { "/home/user/project/src/x.ts": { backupFileName: "deadbeef@v1", backupTime: "2020-01-01T00:00:00Z" } },
+        {
+          "/home/user/project/src/x.ts": {
+            backupFileName: "deadbeef@v1",
+            backupTime: "2020-01-01T00:00:00Z",
+          },
+        },
         { messageId: "b0000003-0000-0000-0000-000000000000" },
       ),
       // fork 後最初の user（forkFirstNewUuid）
       mkUser("fork後の最初の質問", { uuid: "n0000001-0000-0000-0000-000000000000" }),
-      mkAssistant([{ type: "text", text: "fork後の応答" }], { uuid: "n0000002-0000-0000-0000-000000000000" }),
+      mkAssistant([{ type: "text", text: "fork後の応答" }], {
+        uuid: "n0000002-0000-0000-0000-000000000000",
+      }),
     ];
     const result = extractEventsWithFork(entries);
 
@@ -679,9 +718,9 @@ describe("extractEventsWithFork (forked session)", () => {
     expect(result.events.filter((e) => e.turn === 0)).toHaveLength(0);
 
     // 出力先頭は turn 1 の U（fork 後最初の user）
-    expect(result.events[0]!.kind).toBe("U");
-    expect(result.events[0]!.turn).toBe(1);
-    expect(result.events[0]!.ref).toBe("n0000001");
+    expect(result.events[0]?.kind).toBe("U");
+    expect(result.events[0]?.turn).toBe(1);
+    expect(result.events[0]?.ref).toBe("n0000001");
 
     // 境界の非 user（system の /fork は U にならず、自動応答 assistant / file-history-snapshot）は含まれない
     const refs = result.events.map((e) => e.ref);
@@ -705,6 +744,6 @@ describe("extractEventsWithFork (forked session)", () => {
       mkUser("fork後", { uuid: "n0000001-0000-0000-0000-000000000000" }),
     ];
     const result = extractEventsWithFork(entries);
-    expect(result.fork!.marker).toBe("Rfeedface");
+    expect(result.fork?.marker).toBe("Rfeedface");
   });
 });

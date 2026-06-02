@@ -2,7 +2,7 @@ import { $ } from "bun";
 import { mkdirSync } from "node:fs";
 
 const SHEBANG =
-  "#!/bin/sh\n':' //; b=$(command -v bun) && exec \"$b\" --bun \"$0\" \"$@\"; exec node \"$0\" \"$@\"\n";
+  '#!/bin/sh\n\':\' //; b=$(command -v bun) && exec "$b" --bun "$0" "$@"; exec node "$0" "$@"\n';
 const OUTDIR = "skills/claude-session-analysis/bin";
 const OUTFILE = `${OUTDIR}/claude-session-analysis`;
 const ENTRYPOINT = "src/cli.ts";

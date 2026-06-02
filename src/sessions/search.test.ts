@@ -1,8 +1,9 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { searchSessions, parseDuration, type SessionInfo, type SearchResult, type SessionStats } from "./search.ts";
+import { searchSessions, parseDuration } from "./search.ts";
 import { mkdtemp, rm, mkdir, writeFile, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { unwrap } from "../test-utils.ts";
 
 describe("parseDuration", () => {
   test("秒のみ", () => {
@@ -70,15 +71,15 @@ describe("searchSessions", () => {
 
     const { sessions: results, stats } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.sessionId).toBe("abc12345-6789-0123-4567-890123456789");
-    expect(results[0]!.cwd).toBe("/home/user/project");
-    expect(results[0]!.size).toBeGreaterThan(0);
+    expect(results[0]?.sessionId).toBe("abc12345-6789-0123-4567-890123456789");
+    expect(results[0]?.cwd).toBe("/home/user/project");
+    expect(results[0]?.size).toBeGreaterThan(0);
     // turns検証: type:"user" + message.content ありが1行 → turns=1
-    expect(results[0]!.turns).toBe(1);
+    expect(results[0]?.turns).toBe(1);
     // stats検証
     expect(stats.total).toBe(1);
-    expect(stats.oldestMtime).toBe(results[0]!.mtime);
-    expect(stats.newestMtime).toBe(results[0]!.mtime);
+    expect(stats.oldestMtime).toBe(unwrap(results[0]).mtime);
+    expect(stats.newestMtime).toBe(unwrap(results[0]).mtime);
   });
 
   test("空ファイル（サイズ0）はスキップ", async () => {
@@ -102,7 +103,7 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.sessionId).toBe("def67890");
+    expect(results[0]?.sessionId).toBe("def67890");
   });
 
   test("since フィルタ: cutoff以降のセッションのみ取得", async () => {
@@ -130,7 +131,7 @@ describe("searchSessions", () => {
       since: cutoff,
     });
     expect(results.length).toBe(1);
-    expect(results[0]!.sessionId).toBe("recent111");
+    expect(results[0]?.sessionId).toBe("recent111");
     // statsはsinceフィルタ前の全有効ファイル統計
     expect(stats.total).toBe(2);
   });
@@ -175,11 +176,11 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({
       configDirs: [tmpDir],
-      keyword: "brown fox",
+      keywords: ["brown fox"],
     });
     expect(results.length).toBe(1);
-    expect(results[0]!.sessionId).toBe("match1234");
-    expect(results[0]!.context).toContain("brown fox");
+    expect(results[0]?.sessionId).toBe("match1234");
+    expect(results[0]?.context).toContain("brown fox");
   });
 
   test("キーワード検索: 前20文字+後50文字のコンテキスト", async () => {
@@ -192,14 +193,14 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({
       configDirs: [tmpDir],
-      keyword: "KEYWORD",
+      keywords: ["KEYWORD"],
     });
     expect(results.length).toBe(1);
     // [N hit(s)] + 前20文字+後50文字に切り詰め
-    expect(results[0]!.context).toMatch(/^\[\d+ hits?\] /);
-    const digest = results[0]!.context!.replace(/^\[\d+ hits?\] /, "");
+    expect(results[0]?.context).toMatch(/^\[\d+ hits?\] /);
+    const digest = unwrap(unwrap(results[0]).context).replace(/^\[\d+ hits?\] /, "");
     expect(digest.length).toBeLessThanOrEqual(20 + "KEYWORD".length + 50);
-    expect(results[0]!.context).toContain("KEYWORD");
+    expect(results[0]?.context).toContain("KEYWORD");
   });
 
   test("結果はmtimeでソートされる（昇順）", async () => {
@@ -225,17 +226,13 @@ describe("searchSessions", () => {
     );
 
     const { sessions: results, stats } = await searchSessions({ configDirs: [tmpDir] });
-    expect(results.map((r) => r.sessionId)).toEqual([
-      "first111",
-      "second22",
-      "third333",
-    ]);
+    expect(results.map((r) => r.sessionId)).toEqual(["first111", "second22", "third333"]);
     // turns検証: 各セッションにtype:"user"が1行ずつ
     expect(results.map((r) => r.turns)).toEqual([1, 1, 1]);
     // statsのmtime範囲を検証
     expect(stats.total).toBe(3);
-    expect(stats.oldestMtime).toBe(results[0]!.mtime);
-    expect(stats.newestMtime).toBe(results[2]!.mtime);
+    expect(stats.oldestMtime).toBe(unwrap(results[0]).mtime);
+    expect(stats.newestMtime).toBe(unwrap(results[2]).mtime);
   });
 
   test("複数のconfigDirsを検索", async () => {
@@ -273,8 +270,8 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.sessionId).toBe("?");
-    expect(results[0]!.cwd).toBe("/a");
+    expect(results[0]?.sessionId).toBe("?");
+    expect(results[0]?.cwd).toBe("/a");
   });
 
   test("cwdを含む行がないファイルはスキップ（sh版grep -m1互換）", async () => {
@@ -304,11 +301,83 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({
       configDirs: [tmpDir],
-      keyword: "Prev.*Next",
+      keywords: ["Prev.*Next"],
     });
     expect(results.length).toBe(1);
-    expect(results[0]!.sessionId).toBe("regex123");
-    expect(results[0]!.context).toContain("Previous and Next");
+    expect(results[0]?.sessionId).toBe("regex123");
+    expect(results[0]?.context).toContain("Previous and Next");
+  });
+
+  test("キーワード検索: 複数キーワードはセッション単位 AND（異なる行に分散していてもマッチ）", async () => {
+    // 各キーワードが別々の行に出現するセッション → 全部含むので採用
+    await createSession("p1", "all3.jsonl", [
+      '{"sessionId":"all33333","cwd":"/a","type":"user","message":{"content":"alpha"}}',
+      '{"type":"assistant","message":"intermediate text bravo line"}',
+      '{"type":"user","message":{"content":"final charlie here"}}',
+    ]);
+    // alpha と bravo はあるが charlie 無し → 除外
+    await createSession("p2", "two-of-three.jsonl", [
+      '{"sessionId":"two22222","cwd":"/b","type":"user","message":{"content":"alpha then bravo"}}',
+    ]);
+    // 全部無し → 除外
+    await createSession("p3", "none.jsonl", [
+      '{"sessionId":"non33333","cwd":"/c","type":"user","message":{"content":"unrelated"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({
+      configDirs: [tmpDir],
+      keywords: ["alpha", "bravo", "charlie"],
+    });
+    expect(results.length).toBe(1);
+    expect(results[0]?.sessionId).toBe("all33333");
+    // context は各キーワードの最初のヒットが " | " 区切りで連結される
+    const ctx = results[0]?.context ?? "";
+    expect(ctx).toMatch(/^\[\d+ hits \/ 3 kw\] /);
+    expect(ctx).toContain("alpha");
+    expect(ctx).toContain("bravo");
+    expect(ctx).toContain("charlie");
+    expect(ctx.split(" | ").length).toBe(3);
+  });
+
+  test("キーワード検索: 単一キーワードは従来通り [N hit(s)] ヘッダ", async () => {
+    await createSession("p1", "single.jsonl", [
+      '{"sessionId":"sng11111","cwd":"/a","type":"user","message":{"content":"hello"}}',
+      '{"type":"assistant","message":"foo bar baz"}',
+    ]);
+
+    const { sessions: results } = await searchSessions({
+      configDirs: [tmpDir],
+      keywords: ["bar"],
+    });
+    expect(results.length).toBe(1);
+    expect(results[0]?.context).toMatch(/^\[\d+ hits?\] /);
+    // 単一キーワード時は "/ K kw" 表記を出さない
+    expect(results[0]?.context).not.toContain("kw]");
+  });
+
+  test("キーワード検索: 1つでもヒット0のキーワードがあればセッション除外", async () => {
+    await createSession("p1", "miss-one.jsonl", [
+      '{"sessionId":"miss1111","cwd":"/a","type":"user","message":{"content":"alpha bravo"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({
+      configDirs: [tmpDir],
+      keywords: ["alpha", "zzz-not-there"],
+    });
+    expect(results.length).toBe(0);
+  });
+
+  test("キーワード検索: 空配列は検索しない（全件パススルー）", async () => {
+    await createSession("p1", "any.jsonl", [
+      '{"sessionId":"any11111","cwd":"/a","type":"user","message":{"content":"anything"}}',
+    ]);
+
+    const { sessions: results } = await searchSessions({
+      configDirs: [tmpDir],
+      keywords: [],
+    });
+    expect(results.length).toBe(1);
+    expect(results[0]?.context).toBeUndefined();
   });
 
   test("キーワード検索: 不正な正規表現でエラー", async () => {
@@ -318,7 +387,7 @@ describe("searchSessions", () => {
     ]);
 
     await expect(
-      searchSessions({ configDirs: [tmpDir], keyword: "[invalid" })
+      searchSessions({ configDirs: [tmpDir], keywords: ["[invalid"] }),
     ).rejects.toThrow();
   });
 
@@ -334,9 +403,9 @@ describe("searchSessions", () => {
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
     // turns は isUserTurn を通過した全 user ターン
-    expect(results[0]!.turns).toBe(5);
+    expect(results[0]?.turns).toBe(5);
     // effective は 2 件のみ
-    expect(results[0]!.effectiveUserTurns).toBe(2);
+    expect(results[0]?.effectiveUserTurns).toBe(2);
   });
 
   test("effectiveUserTurns: 複数 text ブロックの user は連結して1ターンとして分類", async () => {
@@ -346,8 +415,8 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.turns).toBe(1);
-    expect(results[0]!.effectiveUserTurns).toBe(1);
+    expect(results[0]?.turns).toBe(1);
+    expect(results[0]?.effectiveUserTurns).toBe(1);
   });
 
   test("fork なしセッション: forkedFrom / forkFirstNewUuid は null", async () => {
@@ -357,8 +426,8 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.forkedFrom).toBeNull();
-    expect(results[0]!.forkFirstNewUuid).toBeNull();
+    expect(results[0]?.forkedFrom).toBeNull();
+    expect(results[0]?.forkFirstNewUuid).toBeNull();
   });
 
   test("fork セッション: forkedFrom は親 sessionId、forkFirstNewUuid は最初の非コピー entry uuid", async () => {
@@ -373,8 +442,8 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.forkedFrom).toBe("parent-abc");
-    expect(results[0]!.forkFirstNewUuid).toBe("new-first");
+    expect(results[0]?.forkedFrom).toBe("parent-abc");
+    expect(results[0]?.forkFirstNewUuid).toBe("new-first");
   });
 
   // 修正2/4: 実機 /fork の境界構造を模した fixture。
@@ -395,9 +464,9 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.forkedFrom).toBe("parent-xyz");
+    expect(results[0]?.forkedFrom).toBe("parent-xyz");
     // assistant(asst-1) や system(sys-1) を拾わず、最初の user(user-first) を指すこと
-    expect(results[0]!.forkFirstNewUuid).toBe("user-first");
+    expect(results[0]?.forkFirstNewUuid).toBe("user-first");
   });
 
   // 修正2: /btw fork 模擬（custom-title→assistant→user 境界）でも user を拾う
@@ -411,7 +480,7 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.forkFirstNewUuid).toBe("btw-user-first");
+    expect(results[0]?.forkFirstNewUuid).toBe("btw-user-first");
   });
 
   // 修正5(c): forkedFrom が複数の異なる親を指す異常系 → 最初を採用
@@ -424,8 +493,8 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.forkedFrom).toBe("parent-A");
-    expect(results[0]!.forkFirstNewUuid).toBe("first-new");
+    expect(results[0]?.forkedFrom).toBe("parent-A");
+    expect(results[0]?.forkFirstNewUuid).toBe("first-new");
   });
 
   // 修正5(d): forkFirstNewUuid 算出後にさらに forkedFrom 付き entry が出る順序乱れ → 最初の確定値を維持
@@ -440,7 +509,7 @@ describe("searchSessions", () => {
 
     const { sessions: results } = await searchSessions({ configDirs: [tmpDir] });
     expect(results.length).toBe(1);
-    expect(results[0]!.forkFirstNewUuid).toBe("first-new");
+    expect(results[0]?.forkFirstNewUuid).toBe("first-new");
   });
 });
 
@@ -470,7 +539,7 @@ describe("effectiveUserTurns 異常系 (修正5)", () => {
     expect(sessions.length).toBe(1);
     // isUserTurn は空文字を除外する（text falsy）が、もし turn になれば effective 側
     // 実機準拠: 空文字 content は isUserTurn=false（text なし）なので turn にもならない
-    expect(sessions[0]!.effectiveUserTurns).toBe(0);
+    expect(sessions[0]?.effectiveUserTurns).toBe(0);
   });
 
   test("空白のみ user は isUserTurn を通過し effective に数える", async () => {
@@ -480,8 +549,8 @@ describe("effectiveUserTurns 異常系 (修正5)", () => {
     const { sessions } = await searchSessions({ configDirs: [tmpDir2] });
     expect(sessions.length).toBe(1);
     // 空白のみは text truthy なので isUserTurn=true、classify は effective（安全側）
-    expect(sessions[0]!.turns).toBe(1);
-    expect(sessions[0]!.effectiveUserTurns).toBe(1);
+    expect(sessions[0]?.turns).toBe(1);
+    expect(sessions[0]?.effectiveUserTurns).toBe(1);
   });
 
   // 修正5(b): hidden_tag 残文字閾値の境界は classifyUserTurnKind 単体テスト（lib.test.ts）で検証。
@@ -494,7 +563,7 @@ describe("effectiveUserTurns 異常系 (修正5)", () => {
       `{"sessionId":"b2112345","cwd":"/a","type":"user","message":{"content":"<system-reminder>x</system-reminder> ${residue}"}}`,
     ]);
     const { sessions } = await searchSessions({ configDirs: [tmpDir2] });
-    expect(sessions[0]!.effectiveUserTurns).toBe(1);
+    expect(sessions[0]?.effectiveUserTurns).toBe(1);
   });
 
   // effectiveUserTurns <= turns の不変条件
@@ -506,6 +575,6 @@ describe("effectiveUserTurns 異常系 (修正5)", () => {
       '{"type":"user","message":{"content":"<command-name>/clear</command-name><command-args></command-args>"}}',
     ]);
     const { sessions } = await searchSessions({ configDirs: [tmpDir2] });
-    expect(sessions[0]!.effectiveUserTurns).toBeLessThanOrEqual(sessions[0]!.turns);
+    expect(sessions[0]?.effectiveUserTurns).toBeLessThanOrEqual(unwrap(sessions[0]).turns);
   });
 });

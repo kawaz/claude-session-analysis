@@ -2,15 +2,33 @@ import { parseArgs, PURE_NUMBER_RE } from "./parse-args.ts";
 import { resolveSession } from "../resolve-session.ts";
 import { extractEventsWithFork } from "./extract.ts";
 import { pipeline } from "./filter.ts";
-import { formatEvents, mdFrontMatter, localTimeMs, computeRangeMarker, buildForkValues } from "./format.ts";
+import {
+  formatEvents,
+  mdFrontMatter,
+  localTimeMs,
+  computeRangeMarker,
+  buildForkValues,
+} from "./format.ts";
 import { omit, redact, redactWithHint, writeJsonl, parseJsonl, progName } from "../lib.ts";
 import type { SessionEntry, TimelineEvent, ForkInfo } from "./types.ts";
 
 // OMIT: タイムライン分析に不要なメタデータ系フィールド。出力のノイズになるため完全除去
 const OMIT_KEYS = [
-  "signature", "isSidechain", "userType", "version", "slug",
-  "requestId", "sessionId", "stop_reason", "stop_sequence",
-  "usage", "id", "role", "parentUuid", "uuid", "thinkingMetadata",
+  "signature",
+  "isSidechain",
+  "userType",
+  "version",
+  "slug",
+  "requestId",
+  "sessionId",
+  "stop_reason",
+  "stop_sequence",
+  "usage",
+  "id",
+  "role",
+  "parentUuid",
+  "uuid",
+  "thinkingMetadata",
 ];
 // REDACT: バイナリや大きなペイロードを含みうるが、存在自体は情報として有用なのでサイズ表示に置換
 const REDACT_KEYS = ["data"];
@@ -66,7 +84,13 @@ export async function run(args: string[]) {
 
   // フォールバック: inputs が空で range に4桁以下の数字がある場合、session ID として試す
   // (例: "timeline 1234" → "1234" は turn range と判定されるが、セッションIDの可能性もある)
-  if (opts.inputs.length === 0 && !args.includes("--help") && opts.from && opts.from === opts.to && PURE_NUMBER_RE.test(opts.from)) {
+  if (
+    opts.inputs.length === 0 &&
+    !args.includes("--help") &&
+    opts.from &&
+    opts.from === opts.to &&
+    PURE_NUMBER_RE.test(opts.from)
+  ) {
     try {
       await resolveSession(opts.from);
       opts.inputs.push(opts.from);
@@ -87,12 +111,17 @@ export async function run(args: string[]) {
   const isTty = process.stdout.isTTY ?? false;
 
   // セッション解決（複数入力対応）+ エントリ読み込みを一括で行う
-  const resolved: { file: string; startTime: number; fullId: string; entries: SessionEntry[] }[] = [];
+  const resolved: { file: string; startTime: number; fullId: string; entries: SessionEntry[] }[] =
+    [];
   for (const input of opts.inputs) {
     const file = await resolveSession(input);
     const entries = await loadSession(file);
     const fullId = (file.split("/").pop() || "").replace(/\.jsonl$/, "");
-    const startTime = entries.length > 0 && "timestamp" in entries[0] ? new Date((entries[0] as any).timestamp).getTime() : Infinity;
+    const first = entries[0];
+    const startTime =
+      first && "timestamp" in first
+        ? new Date((first as { timestamp: string }).timestamp).getTime()
+        : Infinity;
     resolved.push({ file, startTime, fullId, entries });
   }
 
@@ -117,17 +146,21 @@ export async function run(args: string[]) {
   // フィルタリング
   let filtered;
   try {
-    filtered = pipeline(allEvents, {
-      types: opts.types,
-      from: opts.from,
-      to: opts.to,
-      grep: opts.grep,
-      since: opts.since,
-      lastTurn: opts.lastTurn,
-      lastSince: opts.lastSince,
-      before: opts.before,
-      after: opts.after,
-    }, (msg) => console.error(msg));
+    filtered = pipeline(
+      allEvents,
+      {
+        types: opts.types,
+        from: opts.from,
+        to: opts.to,
+        grep: opts.grep,
+        since: opts.since,
+        lastTurn: opts.lastTurn,
+        lastSince: opts.lastSince,
+        before: opts.before,
+        after: opts.after,
+      },
+      (msg) => console.error(msg),
+    );
   } catch (e) {
     if (e instanceof SyntaxError) {
       console.error(`Error: Invalid regex pattern: ${opts.grep} (${e.message})`);
@@ -138,9 +171,7 @@ export async function run(args: string[]) {
 
   // mdMode auto 解決: tty なら render、それ以外なら source
   const mdMode: "none" | "render" | "source" =
-    opts.mdMode === "auto"
-      ? (isTty ? "render" : "source")
-      : opts.mdMode;
+    opts.mdMode === "auto" ? (isTty ? "render" : "source") : opts.mdMode;
 
   // --jsonl: マーカーからエントリを検索して JSON 出力
   if (opts.jsonlMode !== "none") {
@@ -176,30 +207,18 @@ export async function run(args: string[]) {
   }
 
   // カラー判定
-  const useColors =
-    opts.color === "always"
-      ? true
-      : opts.color === "none"
-        ? false
-        : isTty;
+  const useColors = opts.color === "always" ? true : opts.color === "none" ? false : isTty;
 
   // 絵文字判定
-  const useEmoji =
-    opts.emoji === "always"
-      ? true
-      : opts.emoji === "never"
-        ? false
-        : useColors; // auto: colors に連動
+  const useEmoji = opts.emoji === "always" ? true : opts.emoji === "never" ? false : useColors; // auto: colors に連動
 
   // mdモード時のtimestampsデフォルト: 明示的に指定がなければ有効
   const timestamps =
-    (mdMode !== "none" && !args.includes("--no-timestamps"))
-      ? true
-      : opts.timestamps;
+    mdMode !== "none" && !args.includes("--no-timestamps") ? true : opts.timestamps;
 
   // 共通メタ情報
   const isMd = mdMode === "render" || mdMode === "source";
-  const resolvedInputs = resolved.map(r => r.fullId);
+  const resolvedInputs = resolved.map((r) => r.fullId);
   const command = `${progName("timeline")} ${args.join(" ")}`;
   const commandComputed = buildCommandComputed(opts, resolvedInputs, filtered, isTty);
   const commandHelp = buildCommandHelp();
@@ -221,14 +240,16 @@ export async function run(args: string[]) {
       forkValues.map((v) => `# forked_from: ${v}\n`).join("");
 
   // 出力生成
-  const output = metaBlock + formatEvents(filtered, {
-    jsonlMode: opts.jsonlMode,
-    width: opts.width,
-    timestamps,
-    colors: useColors,
-    emoji: useEmoji,
-    mdMode,
-  });
+  const output =
+    metaBlock +
+    formatEvents(filtered, {
+      jsonlMode: opts.jsonlMode,
+      width: opts.width,
+      timestamps,
+      colors: useColors,
+      emoji: useEmoji,
+      mdMode,
+    });
 
   // --md render: mdp にパイプ
   if (mdMode === "render") {

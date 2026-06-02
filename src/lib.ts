@@ -9,10 +9,7 @@
  * Claude 環境を切り替えて使っているケースを拾うため。settings.json の存在を
  * 持って「実体ある Claude 設定ディレクトリ」と判定する。
  */
-export function getConfigDirs(
-  claudeConfigDir?: string,
-  home?: string,
-): string[] {
+export function getConfigDirs(claudeConfigDir?: string, home?: string): string[] {
   const configDir = claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR;
   const homeDir = home ?? process.env.HOME;
 
@@ -48,8 +45,8 @@ export function truncate(str: string, width: number): string {
 // sessions/format.ts の formatHumanSize は 1000 ベース（K=1e3, M=1e6, G=1e9）でセッション一覧の人間向け表示用。
 // 用途が異なるため意図的に2つ並存させている。
 export function formatSize(bytes: number): string {
-  if (bytes >= 1048576) return `${(Math.floor(bytes / 1048576 * 10) / 10).toFixed(1)}M`;
-  if (bytes >= 1024) return `${(Math.floor(bytes / 1024 * 10) / 10).toFixed(1)}K`;
+  if (bytes >= 1048576) return `${(Math.floor((bytes / 1048576) * 10) / 10).toFixed(1)}M`;
+  if (bytes >= 1024) return `${(Math.floor((bytes / 1024) * 10) / 10).toFixed(1)}K`;
   return `${bytes}B`;
 }
 
@@ -107,10 +104,7 @@ export function redactWithHint(obj: unknown, keys: string[]): unknown {
   return obj;
 }
 
-export function pick(
-  obj: Record<string, unknown>,
-  keys: string[],
-): Record<string, unknown> {
+export function pick(obj: Record<string, unknown>, keys: string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const k of keys) {
     if (k in obj) {
@@ -121,19 +115,46 @@ export function pick(
 }
 
 /**
+ * 全 entry 種に共通する横断属性の最小構造 (internal)。
+ * findForkSplit / getSessionCwd / getForkedFromSessionId が受ける。
+ * `Record<string, unknown>` 受けにすると、強い型を持つ呼び出し側 (UserEntry など) が
+ * index signature 不足で渡せないため、構造的にゆるい同義の型を用意して受け取る。
+ *
+ * @internal
+ */
+type EntryLike = {
+  type?: unknown;
+  uuid?: unknown;
+  cwd?: unknown;
+  forkedFrom?: { sessionId?: unknown };
+};
+
+/**
+ * user turn 分類 (isUserTurn / classifyUserTurn / extractUserTurnText) 用の最小構造 (internal)。
+ *
+ * @internal
+ */
+type UserClassifiable = {
+  type?: unknown;
+  isMeta?: unknown;
+  isCompactSummary?: unknown;
+  message?: { content?: unknown };
+};
+
+/**
  * user エントリがターン開始（U イベント）になるか判定する。
  *
  * Claude Code の JSONL ではシステムが自動挿入するメッセージも type:"user" になる。
  * これらはユーザーの意思による入力ではないため、ターンカウントから除外する。
  */
-export function isUserTurn(entry: Record<string, unknown>): boolean {
+export function isUserTurn(entry: UserClassifiable): boolean {
   if (entry.type !== "user") return false;
   // isMeta: セッション初期化時のシステムメタデータ。ユーザー入力ではない
   if (entry.isMeta === true) return false;
   // isCompactSummary: コンテキスト圧縮時にClaude Codeが自動生成する要約。ユーザー入力ではない
   if (entry.isCompactSummary === true) return false;
 
-  const message = entry.message as Record<string, unknown> | undefined;
+  const message = entry.message;
   if (!message) return false;
 
   // 本文抽出は classifyUserTurn と共通のヘルパを用いる（同一 entry で別テキストを見る非対称を解消）。
@@ -162,7 +183,8 @@ const HIDDEN_TAG_RESIDUE_MAX = 20;
 
 /** ASCII (U+0000〜U+007F) のみで構成されるか。絵文字・全角・CJK は非ASCII扱い。 */
 function isAsciiOnly(text: string): boolean {
-  return /^[\x00-\x7f]*$/.test(text);
+  // oxlint-disable-next-line no-control-regex -- ASCII 範囲判定は U+0000-U+007F の意図的な含意。
+  return /^[\u0000-\u007f]*$/.test(text);
 }
 
 /** システム注入タグ群を除去後、残りが空 or (≤20文字 かつ ASCII のみ) なら HIDDEN_TAG。
@@ -204,9 +226,7 @@ function isShortAscii(text: string): boolean {
  *
  * SLASH_ONLY は呼び出し元（extract.ts のスラッシュ分岐）が直接付与する責務のため、本関数の対象外。
  */
-export function classifyUserTurnKind(
-  text: string,
-): "hidden_tag" | "short_ascii" | "effective" {
+export function classifyUserTurnKind(text: string): "hidden_tag" | "short_ascii" | "effective" {
   if (isHiddenTag(text)) return "hidden_tag";
   if (isShortAscii(text)) return "short_ascii";
   return "effective";
@@ -235,9 +255,8 @@ export function isSlashCommandContent(text: string): boolean {
  * - 配列 content は type:"text" ブロックのみを `\n` 連結（情報欠落しない方向に揃える）
  * - それ以外（content 無し / 非文字列・非配列）は空文字
  */
-export function extractUserTurnText(entry: Record<string, unknown>): string {
-  const message = entry.message as Record<string, unknown> | undefined;
-  const content = message?.content;
+export function extractUserTurnText(entry: UserClassifiable): string {
+  const content = entry.message?.content;
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
@@ -263,7 +282,7 @@ export function extractUserTurnText(entry: Record<string, unknown>): string {
  * @param entry isUserTurn() が true を返す user entry
  */
 export function classifyUserTurn(
-  entry: Record<string, unknown>,
+  entry: UserClassifiable,
 ): "slash_only" | "hidden_tag" | "short_ascii" | "effective" {
   // isUserTurn と同一の本文抽出を用いる（母集合の不一致を解消）。
   const text = extractUserTurnText(entry);
@@ -276,8 +295,8 @@ export function classifyUserTurn(
  * entry の forkedFrom.sessionId を取り出す（無ければ null）。
  * fork 境界判定の単一の正（findings 2026-05-29-btw-fork-session-recording）。
  */
-export function getForkedFromSessionId(entry: Record<string, unknown>): string | null {
-  const ff = (entry as { forkedFrom?: { sessionId?: unknown } }).forkedFrom;
+export function getForkedFromSessionId(entry: EntryLike): string | null {
+  const ff = entry.forkedFrom;
   if (ff && typeof ff.sessionId === "string") return ff.sessionId;
   return null;
 }
@@ -308,7 +327,7 @@ export interface ForkSplit {
  * 「fork 後の開始は最初の type:"user" entry、境界の非 user はスキップ」という
  * findings 仕様を単一の実装に集約する（非対称の再発防止）。
  */
-export function findForkSplit(entries: Record<string, unknown>[]): ForkSplit {
+export function findForkSplit(entries: readonly EntryLike[]): ForkSplit {
   let parentSessionId: string | null = null;
   let lastCopyIndex = -1;
   let splitIndex = entries.length;
@@ -316,16 +335,22 @@ export function findForkSplit(entries: Record<string, unknown>[]): ForkSplit {
   let sawCopy = false;
 
   for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i]!;
+    const entry = entries[i];
+    if (entry === undefined) continue;
     const ff = getForkedFromSessionId(entry);
     if (ff !== null) {
       if (parentSessionId === null) parentSessionId = ff;
       lastCopyIndex = i;
       sawCopy = true;
-    } else if (sawCopy && forkFirstNewUuid === null && entry.type === "user" && typeof entry.uuid === "string") {
+    } else if (
+      sawCopy &&
+      forkFirstNewUuid === null &&
+      entry.type === "user" &&
+      typeof entry.uuid === "string"
+    ) {
       // コピー entry 群の後、最初の forkedFrom 無し user entry = fork 後の開始。
       // 非 user（custom-title/assistant/system/file-history-snapshot）はスキップ。
-      forkFirstNewUuid = entry.uuid as string;
+      forkFirstNewUuid = entry.uuid;
       splitIndex = i;
     }
   }
@@ -379,14 +404,27 @@ export const DURATION_RE = /^(\d+[smhd])+$/;
  * duration文字列を秒数に変換する。
  * 対応形式: "5m", "1h", "30s", "2d", "1h30m" など
  * s=秒, m=分, h=時, d=日
+ *
+ * @remarks 入口で `DURATION_RE` 全体一致を assert する。"5x" / "5d5x10m" 等は throw。
+ * 空文字は 0 を返す (range 系の「未指定」)。
+ * `units` と `re` の `[smhd]` は物理的に同期する必要があるので
+ * 一方を変えるときは必ず両方を見直すこと。
  */
 export function parseDuration(spec: string): number {
-  const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  if (spec === "") return 0;
+  if (!DURATION_RE.test(spec)) {
+    throw new Error(`Invalid duration: ${spec} (expected like "5m", "1h30m", "2d")`);
+  }
+  const units: Record<"s" | "m" | "h" | "d", number> = { s: 1, m: 60, h: 3600, d: 86400 };
   let total = 0;
   const re = /(\d+)([smhd])/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(spec)) !== null) {
-    total += parseInt(m[1]!, 10) * units[m[2]!]!;
+    // DURATION_RE 通過済 → capture group は両方必ず取れる。
+    // unit は [smhd] にマッチした 1 文字なので units のキー型として narrow できる。
+    const num = m[1] as string;
+    const unit = m[2] as "s" | "m" | "h" | "d";
+    total += parseInt(num, 10) * units[unit];
   }
   return total;
 }
@@ -394,10 +432,11 @@ export function parseDuration(spec: string): number {
 /**
  * エントリ配列から最初の cwd を取得する。
  */
-export function getSessionCwd(entries: Record<string, unknown>[]): string {
-  for (const e of entries) {
-    if (e.cwd) {
-      return e.cwd as string;
+export function getSessionCwd(entries: readonly EntryLike[]): string {
+  for (const entry of entries) {
+    const cwd = entry.cwd;
+    if (typeof cwd === "string" && cwd) {
+      return cwd;
     }
   }
   return "";
