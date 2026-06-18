@@ -19,12 +19,12 @@ run *ARGS:
     bun run src/cli.ts "$@"
 
 # push (bump 済み前提、全 gate 通過後に push してローカル plugin も更新)
-push: ensure-clean ci check-versions (check-version-bumped "src/" "scripts/" "skills/" ".claude-plugin/" "tsconfig.json" "bun.lock" "package.json")
+push: ensure-clean ci check-bundle check-versions (check-version-bumped "src/" "scripts/" "skills/" ".claude-plugin/" "tsconfig.json" "bun.lock" "package.json")
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
     @just _local-plugin-reload
 
 # push (bump 不要、ドキュメント更新等のみ)
-push-without-bump: ensure-clean ci check-versions
+push-without-bump: ensure-clean ci check-bundle check-versions
     bump-semver vcs push --branch main --jj-bookmark-auto-advance
     @just _local-plugin-reload
 
@@ -34,7 +34,7 @@ bump-version bump="patch": ensure-clean
     new_version=$(bump-semver {{ bump }} {{ version-files }} --write --no-hint)
     bump-semver vcs commit -m "Release v${new_version}" {{ version-files }}
 
-ci: lint typecheck test build check-bundle validate
+ci: lint typecheck test build validate
 
 lint: lint-just lint-ts
 
