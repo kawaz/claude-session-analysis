@@ -17,3 +17,5 @@ jobs:
           bun add -g @anthropic-ai/claude-code
           echo "$(bun pm bin -g)" >> "$GITHUB_PATH"
       - run: just ci
+        env:
+          GH_TOKEN: ${{ github.token }}
